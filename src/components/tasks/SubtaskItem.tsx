@@ -1,0 +1,206 @@
+import { useState, useEffect } from "react"
+import type { Subtask } from "../../types"
+
+type SubtaskItemProps = {
+  subtask: Subtask
+  onToggle: (id: string) => void
+  onRemove: (id: string) => void
+  onCodar: (id: string) => void
+  onUpdate: (id: string, field: keyof Subtask, value: unknown) => void
+  expanded?: boolean
+  onToggleExpand: (id: string) => void
+}
+
+export function SubtaskItem({
+  subtask,
+  onToggle,
+  onRemove,
+  onCodar,
+  onUpdate,
+  expanded = false,
+  onToggleExpand,
+}: SubtaskItemProps) {
+  const [newCriteria, setNewCriteria] = useState("")
+  const [description, setDescription] = useState(subtask.description || "")
+  const [technicalNotes, setTechnicalNotes] = useState(subtask.technical_notes || "")
+
+  useEffect(() => {
+    setDescription(subtask.description || "")
+    setTechnicalNotes(subtask.technical_notes || "")
+  }, [subtask.description, subtask.technical_notes])
+
+  const isDone = subtask.status === "done"
+  const hasDetails =
+    subtask.description ||
+    (subtask.acceptance_criteria && subtask.acceptance_criteria.length > 0) ||
+    subtask.technical_notes
+
+  function addCriteria() {
+    if (!newCriteria.trim()) return
+    const current = subtask.acceptance_criteria || []
+    onUpdate(subtask.id, "acceptance_criteria", [...current, newCriteria.trim()])
+    setNewCriteria("")
+  }
+
+  function removeCriteria(index: number) {
+    const current = subtask.acceptance_criteria || []
+    const updated = current.filter((_, i) => i !== index)
+    onUpdate(subtask.id, "acceptance_criteria", updated.length > 0 ? updated : null)
+  }
+
+  return (
+    <div className={`animate-fade-in ${isDone ? "opacity-50" : ""}`}>
+      <div className="flex items-center gap-3 px-3 py-2 bg-[#232323] hover:bg-[#2a2a2a] transition-colors group">
+        <button
+          onClick={() => onToggle(subtask.id)}
+          className={`transition-colors ${isDone ? "text-[#909d63]" : "text-[#636363] hover:text-[#909d63]"}`}
+        >
+          {isDone ? "[x]" : "[ ]"}
+        </button>
+
+        <button
+          onClick={() => onToggleExpand(subtask.id)}
+          className="text-[#636363] hover:text-[#909d63] transition-colors"
+          title={expanded ? "Recolher detalhes" : "Expandir detalhes"}
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`transition-transform ${expanded ? "rotate-90" : ""}`}
+          >
+            <path d="m9 18 6-6-6-6" />
+          </svg>
+        </button>
+
+        <span className={`flex-1 text-[#d6d6d6] text-sm ${isDone ? "line-through" : ""}`}>
+          {subtask.title}
+        </span>
+
+        {!expanded && hasDetails && (
+          <span className="text-[#636363] text-xs">
+            {subtask.acceptance_criteria && subtask.acceptance_criteria.length > 0
+              ? `(${subtask.acceptance_criteria.length} criterios)`
+              : "(detalhes)"}
+          </span>
+        )}
+
+        <button
+          onClick={() => onRemove(subtask.id)}
+          className="opacity-0 group-hover:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1"
+          title="Remover subtask"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M18 6 6 18" />
+            <path d="m6 6 12 12" />
+          </svg>
+        </button>
+
+        <button
+          onClick={() => onCodar(subtask.id)}
+          disabled={isDone}
+          className="px-3 py-1 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] disabled:bg-[#3d3a34] disabled:text-[#636363] disabled:cursor-not-allowed transition-colors"
+        >
+          Codar &gt;
+        </button>
+      </div>
+
+      {expanded && (
+        <div className="px-3 py-3 bg-[#1c1c1c] border-l-2 border-[#3d3a34] ml-6 animate-slide-down space-y-4">
+          <div className="space-y-1">
+            <label className="text-[#636363] text-xs uppercase tracking-wide">Descricao</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              onBlur={() => onUpdate(subtask.id, "description", description || null)}
+              placeholder="Descreva a subtask..."
+              className="w-full bg-[#232323] text-[#d6d6d6] text-sm px-3 py-2 border border-[#3d3a34] focus:border-[#909d63] focus:outline-none resize-none transition-colors"
+              rows={2}
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-[#636363] text-xs uppercase tracking-wide">Criterios de Aceitacao</label>
+
+            {subtask.acceptance_criteria && subtask.acceptance_criteria.length > 0 && (
+              <ul className="space-y-1">
+                {subtask.acceptance_criteria.map((criteria, index) => (
+                  <li key={index} className="flex items-center gap-2 group/criteria">
+                    <span className="text-[#909d63]">-</span>
+                    <span className="flex-1 text-[#d6d6d6] text-sm">{criteria}</span>
+                    <button
+                      onClick={() => removeCriteria(index)}
+                      className="opacity-0 group-hover/criteria:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1"
+                      title="Remover criterio"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="12"
+                        height="12"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M18 6 6 18" />
+                        <path d="m6 6 12 12" />
+                      </svg>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newCriteria}
+                onChange={(e) => setNewCriteria(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && addCriteria()}
+                placeholder="Adicionar criterio..."
+                className="flex-1 bg-[#232323] text-[#d6d6d6] text-sm px-3 py-1 border border-[#3d3a34] focus:border-[#909d63] focus:outline-none transition-colors"
+              />
+              <button
+                onClick={addCriteria}
+                disabled={!newCriteria.trim()}
+                className="px-3 py-1 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] disabled:bg-[#3d3a34] disabled:text-[#636363] disabled:cursor-not-allowed transition-colors"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[#636363] text-xs uppercase tracking-wide">Notas Tecnicas</label>
+            <textarea
+              value={technicalNotes}
+              onChange={(e) => setTechnicalNotes(e.target.value)}
+              onBlur={() => onUpdate(subtask.id, "technical_notes", technicalNotes || null)}
+              placeholder="Adicione notas tecnicas, referencias, ou consideracoes de implementacao..."
+              className="w-full bg-[#232323] text-[#d6d6d6] text-sm px-3 py-2 border border-[#3d3a34] focus:border-[#909d63] focus:outline-none resize-none transition-colors"
+              rows={3}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
