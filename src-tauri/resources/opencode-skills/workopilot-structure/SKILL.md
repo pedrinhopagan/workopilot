@@ -90,8 +90,10 @@ cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.t
 
 ### 6. Finalizar estruturacao
 ```bash
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status in_progress --structuring-complete true
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --structuring-complete true --initialized true
 ```
+
+**IMPORTANTE**: O flag `--initialized true` marca a task como "pronta para executar" no WorkoPilot.
 
 ---
 
@@ -105,6 +107,7 @@ cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.t
 | `update-task {id} --description {desc}` | Atualiza descricao do contexto |
 | `update-task {id} --complexity {level}` | Atualiza complexidade (simple, medium, complex) |
 | `update-task {id} --structuring-complete true` | Marca estruturacao como completa |
+| `update-task {id} --initialized true` | Marca task como pronta para executar |
 | `create-subtask {taskId} --title {t} [--description {d}] [--order {n}]` | Cria nova subtask |
 | `list-tasks [--project {id}] [--status {s}]` | Lista tasks |
 
@@ -117,6 +120,7 @@ Estes campos NAO podem ficar null/vazios apos estruturacao:
 - `context.acceptance_criteria` - Pelo menos 1 criterio
 - `complexity` - "simple", "medium" ou "complex" (via --complexity)
 - `ai_metadata.structuring_complete` - DEVE ser `true` (via --structuring-complete)
+- `initialized` - DEVE ser `true` para ficar pronta para executar (via --initialized)
 
 **NOTA**: Alguns campos como acceptance_criteria e business_rules ainda nao tem suporte direto na CLI. Para estes, a UI do WorkoPilot deve ser usada ou a CLI deve ser expandida.
 
@@ -150,5 +154,6 @@ Antes de encerrar, verifique:
 - [ ] Defini complexidade via CLI?
 - [ ] Criei subtasks via CLI (se necessario)?
 - [ ] Setei `--structuring-complete true`?
+- [ ] Setei `--initialized true` para marcar como pronta para executar?
 
 **A CLI GRAVA DIRETAMENTE NO SQLITE - NAO USE ARQUIVOS JSON!**

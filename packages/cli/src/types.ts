@@ -12,6 +12,8 @@ export interface Database {
   daily_stats: DailyStatsTable;
   settings: SettingsTable;
   operation_logs: OperationLogsTable;
+  task_executions: TaskExecutionsTable;
+  task_terminals: TaskTerminalsTable;
 }
 
 // ============================================
@@ -107,6 +109,34 @@ export interface OperationLogsTable {
   new_data: string | null; // JSON
   source: string; // "cli" | "app" | "skill"
   created_at: Generated<string>;
+}
+
+export interface TaskExecutionsTable {
+  id: string;
+  task_id: string;
+  subtask_id: string | null; // null = full task execution
+  execution_type: string; // "full" | "subtask"
+  status: string; // "running" | "completed" | "cancelled" | "error"
+  current_step: number;
+  total_steps: number;
+  current_step_description: string | null;
+  waiting_for_input: number; // 0 or 1
+  tmux_session: string | null;
+  pid: number | null;
+  last_heartbeat: string;
+  error_message: string | null;
+  started_at: Generated<string>;
+  ended_at: string | null;
+}
+
+// Persistent terminal binding - survives across executions (unlike task_executions which is per-run)
+export interface TaskTerminalsTable {
+  id: string;
+  task_id: string;
+  tmux_session: string;
+  last_subtask_id: string | null; // For /new detection when switching subtasks
+  created_at: Generated<string>;
+  updated_at: string;
 }
 
 // ============================================
@@ -213,4 +243,38 @@ export interface OperationLogEntry {
   new_data: unknown | null;
   source: string;
   created_at: string;
+}
+
+// ============================================
+// Task Execution Types
+// ============================================
+
+export type ExecutionType = "full" | "subtask";
+export type ExecutionStatus = "running" | "completed" | "cancelled" | "error";
+
+export interface TaskExecution {
+  id: string;
+  task_id: string;
+  subtask_id: string | null;
+  execution_type: ExecutionType;
+  status: ExecutionStatus;
+  current_step: number;
+  total_steps: number;
+  current_step_description: string | null;
+  waiting_for_input: boolean;
+  tmux_session: string | null;
+  pid: number | null;
+  last_heartbeat: string;
+  error_message: string | null;
+  started_at: string;
+  ended_at: string | null;
+}
+
+export interface TaskTerminal {
+  id: string;
+  task_id: string;
+  tmux_session: string;
+  last_subtask_id: string | null;
+  created_at: string;
+  updated_at: string;
 }

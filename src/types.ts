@@ -136,3 +136,44 @@ export interface CalendarTask {
   subtask_count: number;
   subtask_done_count: number;
 }
+
+export interface TaskExecution {
+  id: string;
+  task_id: string;
+  subtask_id: string | null;
+  execution_type: string;  // "full" | "subtask"
+  status: string;  // "running" | "completed" | "error"
+  current_step: number;
+  total_steps: number;
+  current_step_description: string | null;
+  waiting_for_input: boolean;
+  tmux_session: string | null;
+  pid: number | null;
+  last_heartbeat: string;
+  error_message: string | null;
+  started_at: string;
+  ended_at: string | null;
+}
+
+export interface QuickfixPayload {
+  task_id: string;
+  status: "running" | "completed" | "failed";
+  prompt: string | null;
+  error: string | null;
+}
+
+export interface TaskImageMetadata {
+  id: string;
+  file_name: string;
+  mime_type: string;
+  created_at: string | null;
+}
+
+export interface TaskImage {
+  id: string;
+  task_id: string;
+  data: string;
+  mime_type: string;
+  file_name: string;
+  created_at: string | null;
+}
