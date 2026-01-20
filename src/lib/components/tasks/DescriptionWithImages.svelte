@@ -320,7 +320,7 @@
     border: none;
     color: #d6d6d6;
     font-size: 14px;
-    resize: none;
+    resize: vertical;
     outline: none;
     transition: opacity 0.15s ease;
   }
