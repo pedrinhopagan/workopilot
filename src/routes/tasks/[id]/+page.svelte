@@ -5,7 +5,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import Select from '$lib/components/Select.svelte';
-  import MicrotaskList from '$lib/components/tasks/MicrotaskList.svelte';
+  import SubtaskList from '$lib/components/tasks/SubtaskList.svelte';
   import type { Task, TaskFull, ProjectWithConfig, Subtask, TaskUpdatedPayload } from '$lib/types';
   
   let taskId = $derived($page.params.id);
@@ -212,11 +212,36 @@
       return s;
     });
     updateField('subtasks', newList);
+    
+    // Check if all subtasks done -> suggest review
+    const allDone = newList.every(s => s.status === 'done');
+    if (allDone && newList.length > 0 && taskFull.status !== 'done') {
+      updateField('status', 'awaiting_review');
+    }
   }
   
   function removeSubtask(id: string) {
     if (!taskFull) return;
     const newList = taskFull.subtasks.filter((s: Subtask) => s.id !== id);
+    for (let i = 0; i < newList.length; i++) {
+      newList[i].order = i;
+    }
+    updateField('subtasks', newList);
+  }
+  
+  function updateSubtask(id: string, field: keyof Subtask, value: any) {
+    if (!taskFull) return;
+    const newList = taskFull.subtasks.map((s: Subtask) => {
+      if (s.id === id) {
+        return { ...s, [field]: value };
+      }
+      return s;
+    });
+    updateField('subtasks', newList);
+  }
+  
+  function reorderSubtasks(newList: Subtask[]) {
+    if (!taskFull) return;
     updateField('subtasks', newList);
   }
   
@@ -239,10 +264,33 @@
       await invoke('launch_task_workflow', {
         projectId: task.project_id,
         taskId: task.id,
-        microtaskId: null
+        subtaskId: null
       });
     } catch (e) {
       console.error('Failed to launch task workflow:', e);
+    }
+  }
+  
+  let showReviewButton = $derived(
+    taskFull && 
+    taskFull.subtasks.length > 0 && 
+    (taskFull.status === 'awaiting_review' || taskFull.subtasks.every(s => s.status === 'done'))
+  );
+  
+  let reviewButtonHighlighted = $derived(
+    taskFull?.status === 'awaiting_review' || 
+    (taskFull?.subtasks.every(s => s.status === 'done') && taskFull?.subtasks.length > 0)
+  );
+  
+  async function reviewTask() {
+    if (!task?.project_id) return;
+    try {
+      await invoke('launch_task_review', {
+        projectId: task.project_id,
+        taskId: task.id
+      });
+    } catch (e) {
+      console.error('Failed to launch task review:', e);
     }
   }
   
@@ -328,6 +376,15 @@
     >
       Codar &gt;
     </button>
+    
+    {#if showReviewButton}
+      <button
+        onclick={reviewTask}
+        class="px-4 py-1.5 text-sm transition-colors {reviewButtonHighlighted ? 'bg-[#e5c07b] text-[#1c1c1c] hover:bg-[#f0d08b]' : 'bg-[#3d3a34] text-[#d6d6d6] hover:bg-[#4a4a4a]'}"
+      >
+        Revisar
+      </button>
+    {/if}
     
     <Select
       value={taskFull.category}
@@ -498,12 +555,14 @@
       {/if}
     </section>
     
-    <MicrotaskList
+    <SubtaskList
       subtasks={taskFull.subtasks}
       onAdd={addSubtask}
       onToggle={toggleSubtask}
       onRemove={removeSubtask}
       onCodar={codarSubtask}
+      onUpdate={updateSubtask}
+      onReorder={reorderSubtasks}
     />
     
     <section>
