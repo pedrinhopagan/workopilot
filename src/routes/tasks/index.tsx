@@ -60,7 +60,17 @@ function TasksPage() {
     return result;
   }, [tasks, selectedProjectId, filterPriority, filterCategory, filterStatus, taskFullCache]);
 
-  const pendingTasks = useMemo(() => filteredTasks.filter((t) => t.status !== "done"), [filteredTasks]);
+  const pendingTasks = useMemo(() => {
+    const pending = filteredTasks.filter((t) => t.status !== "done");
+    // Sort executing tasks to top
+    return pending.sort((a, b) => {
+      const aExecuting = activeExecutions.has(a.id);
+      const bExecuting = activeExecutions.has(b.id);
+      if (aExecuting && !bExecuting) return -1;
+      if (!aExecuting && bExecuting) return 1;
+      return 0;
+    });
+  }, [filteredTasks, activeExecutions]);
   const doneTasks = useMemo(() => filteredTasks.filter((t) => t.status === "done"), [filteredTasks]);
 
   const loadActiveExecutions = useCallback(async () => {
@@ -313,7 +323,7 @@ function TasksPage() {
       <div className="flex items-center gap-2 p-3 border-b border-[#3d3a34]">
         <input
           type="text"
-          placeholder="Nova tarefa..."
+          placeholder={selectedProjectId ? "Nova tarefa..." : "Selecione um projeto para adicionar tarefas"}
           value={newTaskTitle}
           onChange={(e) => setNewTaskTitle(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && addTask()}
@@ -367,10 +377,6 @@ function TasksPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">
-        {!selectedProjectId && projectsList.length > 0 && (
-          <div className="text-center text-[#636363] py-8">Selecione um projeto para adicionar tarefas</div>
-        )}
-
         {pendingTasks.length > 0 && (
           <div className="space-y-1">
             {pendingTasks.map((task) => {

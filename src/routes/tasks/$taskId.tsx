@@ -3,7 +3,8 @@ import { useState, useEffect, useCallback, useMemo } from "react"
 import { safeInvoke, safeListen } from "../../services/tauri"
 import { Select } from "../../components/Select"
 import { SubtaskList } from "../../components/tasks/SubtaskList"
-import { ImageGallery } from "../../components/tasks/ImageGallery"
+import { DescriptionWithImages } from "../../components/tasks/DescriptionWithImages"
+import { ImageModal } from "../../components/tasks/ImageModal"
 import { openCodeService } from "../../services/opencode"
 import {
   getTaskState,
@@ -19,6 +20,7 @@ import type {
   TaskUpdatedPayload,
   TaskExecution,
   QuickfixPayload,
+  TaskImageMetadata,
 } from "../../types"
 
 const categories = ["feature", "bug", "refactor", "test", "docs"]
@@ -66,6 +68,12 @@ function TaskDetailPage() {
   const [activeExecution, setActiveExecution] = useState<TaskExecution | null>(null)
   const [quickfixInput, setQuickfixInput] = useState("")
   const [isLaunchingQuickfix, setIsLaunchingQuickfix] = useState(false)
+  const [isAdjusting, setIsAdjusting] = useState(false)
+  const [adjustingPrompt, setAdjustingPrompt] = useState<string | null>(null)
+  const [showBusinessRules, setShowBusinessRules] = useState(false)
+  const [taskImages, setTaskImages] = useState<TaskImageMetadata[]>([])
+  const [viewingImageId, setViewingImageId] = useState<string | null>(null)
+  const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null)
 
   const isExecuting = useMemo(() => {
     if (!activeExecution || activeExecution.status !== "running") return false
@@ -76,7 +84,7 @@ function TaskDetailPage() {
     return true
   }, [activeExecution])
 
-  const isBlocked = isExecuting || isLaunchingStructure || isLaunchingExecuteAll || isLaunchingExecuteSubtask || isLaunchingReview || isLaunchingQuickfix
+  const isBlocked = isExecuting || isAdjusting || isLaunchingStructure || isLaunchingExecuteAll || isLaunchingExecuteSubtask || isLaunchingReview || isLaunchingQuickfix
 
   const taskState = getTaskState(taskFull)
   const lastAction = taskFull ? getLastActionLabel(taskFull.ai_metadata.last_completed_action) : null
@@ -143,6 +151,7 @@ function TaskDetailPage() {
         }
 
         if (!isReload) {
+          setShowBusinessRules(!!fullTask?.context.business_rules?.length)
           setShowTechnicalNotes(!!fullTask?.context.technical_notes)
           setShowAcceptanceCriteria(!!fullTask?.context.acceptance_criteria?.length)
         }
@@ -154,6 +163,45 @@ function TaskDetailPage() {
     }
   }, [taskId])
 
+  const loadTaskImages = useCallback(async () => {
+    if (!taskId) return
+    try {
+      const images = await safeInvoke<TaskImageMetadata[]>("get_task_images", { taskId })
+      setTaskImages(images)
+    } catch (e) {
+      console.error("Failed to load task images:", e)
+      setTaskImages([])
+    }
+  }, [taskId])
+
+  async function handleImageUpload() {
+    await loadTaskImages()
+  }
+
+  async function handleImageDelete(imageId: string) {
+    try {
+      await safeInvoke("delete_task_image", { imageId })
+      await loadTaskImages()
+    } catch (e) {
+      console.error("Failed to delete image:", e)
+    }
+  }
+
+  async function handleImageView(imageId: string) {
+    try {
+      const result = await safeInvoke<{ data: string; mime_type: string }>("get_task_image", { imageId })
+      setViewingImageUrl(`data:${result.mime_type};base64,${result.data}`)
+      setViewingImageId(imageId)
+    } catch (e) {
+      console.error("Failed to load image for viewing:", e)
+    }
+  }
+
+  function closeImageModal() {
+    setViewingImageId(null)
+    setViewingImageUrl(null)
+  }
+
   const syncFromFile = useCallback(async () => {
     if (!projectPath || !taskId) return
     setIsSyncing(true)
@@ -161,6 +209,7 @@ function TaskDetailPage() {
       const freshTask = await safeInvoke<TaskFull>("get_task_full", { projectPath, taskId })
       setTaskFull(freshTask)
       setLastKnownModifiedAt(freshTask.modified_at || null)
+      setShowBusinessRules(!!freshTask.context.business_rules?.length)
       setShowTechnicalNotes(!!freshTask.context.technical_notes)
       setShowAcceptanceCriteria(!!freshTask.context.acceptance_criteria?.length)
       setSyncSuccess(true)
@@ -360,7 +409,8 @@ function TaskDetailPage() {
   useEffect(() => {
     loadTask()
     loadActiveExecution()
-  }, [loadTask, loadActiveExecution])
+    loadTaskImages()
+  }, [loadTask, loadActiveExecution, loadTaskImages])
 
   useEffect(() => {
     let unlisten: (() => void) | null = null
@@ -389,11 +439,20 @@ function TaskDetailPage() {
         }
       })
 
-      unsubscribeQuickfix = await safeListen<QuickfixPayload>("quickfix-changed", (event) => {
+      unsubscribeQuickfix = await safeListen<QuickfixPayload>("quickfix-changed", async (event) => {
         if (event.payload.task_id === taskId) {
-          console.log("Quickfix update:", event.payload)
-          if (event.payload.status !== "running") {
-            loadTask(true)
+          console.log("[WorkoPilot] Quickfix status changed:", event.payload.status)
+          if (event.payload.status === "running") {
+            setIsAdjusting(true)
+            setAdjustingPrompt(event.payload.prompt || null)
+          } else {
+            setIsAdjusting(false)
+            setAdjustingPrompt(null)
+            if (event.payload.status === "completed") {
+              await loadTask(true)
+              setAiUpdatedRecently(true)
+              setTimeout(() => setAiUpdatedRecently(false), 5000)
+            }
             setIsLaunchingQuickfix(false)
           }
         }
@@ -752,6 +811,35 @@ function TaskDetailPage() {
           </div>
         )}
 
+        {isAdjusting && (
+          <div className="p-4 bg-[#1c1c1c] border border-[#61afef] rounded-lg animate-fade-in">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-3 h-3 bg-[#61afef] rounded-full animate-pulse" />
+                  <div className="absolute inset-0 w-3 h-3 bg-[#61afef] rounded-full animate-ping opacity-50" />
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-[#61afef]">Agent ajustando tarefa...</div>
+                  <div className="text-xs text-[#636363]">Os campos estao bloqueados durante o ajuste</div>
+                </div>
+              </div>
+              
+              {adjustingPrompt && (
+                <div className="flex-1 text-sm text-[#d6d6d6] truncate italic">
+                  &quot;{adjustingPrompt}&quot;
+                </div>
+              )}
+              
+              <div className="flex items-center gap-2">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#61afef" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                </svg>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex gap-2">
           <input
             type="text"
@@ -781,49 +869,76 @@ function TaskDetailPage() {
           </button>
         </div>
 
-        <section>
-          <label className="block text-xs text-[#828282] uppercase tracking-wide mb-2">Descrição</label>
-          <textarea
-            value={taskFull.context.description || ""}
-            onChange={(e) => setTaskFull({ ...taskFull, context: { ...taskFull.context, description: e.target.value || null } })}
-            onBlur={() => updateContext("description", taskFull.context.description)}
-            placeholder="Descreva o objetivo desta tarefa..."
-            rows={3}
-            disabled={isBlocked}
-            className="w-full px-3 py-2 bg-[#232323] border border-[#3d3a34] text-[#d6d6d6] text-sm focus:border-[#909d63] focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          />
-        </section>
+        <DescriptionWithImages
+          taskId={taskId}
+          description={taskFull.context.description || ""}
+          images={taskImages}
+          maxImages={5}
+          disabled={isBlocked}
+          onDescriptionChange={(value) => {
+            setTaskFull({ ...taskFull, context: { ...taskFull.context, description: value || null } })
+            updateContext("description", value || null)
+          }}
+          onImageUpload={handleImageUpload}
+          onImageDelete={handleImageDelete}
+          onImageView={handleImageView}
+        />
 
         <section>
-          <label className="block text-xs text-[#828282] uppercase tracking-wide mb-2">Regras de Negócio</label>
-          <div className="space-y-2">
-            {taskFull.context.business_rules.map((rule, i) => (
-              <div key={i} className="flex items-center gap-2 group animate-fade-in">
-                <span className="text-[#636363]">•</span>
-                <span className="flex-1 text-[#d6d6d6] text-sm">{rule}</span>
-                <button
-                  onClick={() => removeRule(i)}
-                  className="opacity-0 group-hover:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M18 6 6 18" /><path d="m6 6 12 12" />
-                  </svg>
-                </button>
+          <button
+            type="button"
+            onClick={() => setShowBusinessRules(!showBusinessRules)}
+            className="flex items-center gap-2 text-xs text-[#828282] uppercase tracking-wide mb-2 hover:text-[#d6d6d6] transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="transition-transform duration-200"
+              style={{ transform: `rotate(${showBusinessRules ? 90 : 0}deg)` }}
+            >
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+            Regras de Negocio (opcional)
+          </button>
+          {showBusinessRules && (
+            <div className={`space-y-2 animate-slide-down ${isBlocked ? "opacity-50 pointer-events-none" : ""}`}>
+              {taskFull.context.business_rules.map((rule, i) => (
+                <div key={i} className="flex items-center gap-2 group animate-fade-in">
+                  <span className="text-[#636363]">*</span>
+                  <span className="flex-1 text-[#d6d6d6] text-sm">{rule}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeRule(i)}
+                    disabled={isBlocked}
+                    className="opacity-0 group-hover:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1 disabled:cursor-not-allowed"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 6 6 18" /><path d="m6 6 12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+              <div className="flex items-center gap-2">
+                <span className="text-[#636363]">+</span>
+                <input
+                  type="text"
+                  value={newRule}
+                  onChange={(e) => setNewRule(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && addRule()}
+                  placeholder="Adicionar regra..."
+                  disabled={isBlocked}
+                  className="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a] disabled:opacity-50 disabled:cursor-not-allowed"
+                />
               </div>
-            ))}
-            <div className="flex items-center gap-2">
-              <span className="text-[#636363]">+</span>
-              <input
-                type="text"
-                value={newRule}
-                onChange={(e) => setNewRule(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addRule()}
-                placeholder="Adicionar regra..."
-                disabled={isBlocked}
-                className="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a] disabled:opacity-50 disabled:cursor-not-allowed"
-              />
             </div>
-          </div>
+          )}
         </section>
 
         <section>
@@ -929,10 +1044,6 @@ function TaskDetailPage() {
         />
 
         <section>
-          <ImageGallery taskId={taskId} />
-        </section>
-
-        <section>
           <div className="flex items-center justify-between">
             <label className="block text-xs text-[#828282] uppercase tracking-wide">Configuração</label>
           </div>
@@ -965,6 +1076,7 @@ function TaskDetailPage() {
         </section>
       </div>
 
+      <ImageModal imageUrl={viewingImageUrl} onClose={closeImageModal} />
     </>
   )
 }
