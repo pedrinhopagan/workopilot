@@ -675,3 +675,29 @@ pub fn stop_watching_project(state: State<AppState>, project_path: String) -> Re
     watcher.stop_watching(&project_path);
     Ok(())
 }
+
+#[tauri::command]
+pub fn enrich_calendar_tasks(
+    tasks: Vec<CalendarTask>,
+    project_paths: std::collections::HashMap<String, String>,
+) -> Result<Vec<CalendarTask>, String> {
+    let mut enriched = vec![];
+
+    for mut task in tasks {
+        if let Some(project_id) = &task.project_id {
+            if let Some(project_path) = project_paths.get(project_id) {
+                if let Ok(task_full) = load_task_json(project_path, &task.id) {
+                    task.subtask_count = task_full.subtasks.len() as i32;
+                    task.subtask_done_count = task_full
+                        .subtasks
+                        .iter()
+                        .filter(|s| s.status == "done")
+                        .count() as i32;
+                }
+            }
+        }
+        enriched.push(task);
+    }
+
+    Ok(enriched)
+}

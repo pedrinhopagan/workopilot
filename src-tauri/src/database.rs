@@ -549,8 +549,8 @@ impl Database {
                 scheduled_date: scheduled,
                 due_date: due,
                 is_overdue,
-                is_microtask: false,
-                parent_task_id: None,
+                subtask_count: 0,
+                subtask_done_count: 0,
             })
         })?;
 
@@ -762,7 +762,7 @@ pub struct Task {
     pub scheduled_date: Option<String>,
 }
 
-#[derive(serde::Serialize, Clone)]
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct CalendarTask {
     pub id: String,
     pub title: String,
@@ -774,8 +774,8 @@ pub struct CalendarTask {
     pub scheduled_date: String,
     pub due_date: Option<String>,
     pub is_overdue: bool,
-    pub is_microtask: bool,
-    pub parent_task_id: Option<String>,
+    pub subtask_count: i32,
+    pub subtask_done_count: i32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]

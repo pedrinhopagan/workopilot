@@ -70,6 +70,7 @@ pub fn run() {
             commands::launch_task_review,
             commands::start_watching_project,
             commands::stop_watching_project,
+            commands::enrich_calendar_tasks,
             settings::get_shortcut,
             settings::set_shortcut,
             window::hide_window,
