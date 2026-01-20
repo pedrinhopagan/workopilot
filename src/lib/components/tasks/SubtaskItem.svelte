@@ -112,7 +112,6 @@
         ></textarea>
       </div>
       
-      <!-- Acceptance Criteria -->
       <div class="space-y-2">
         <label class="text-[#636363] text-xs uppercase tracking-wide">Criterios de Aceitacao</label>
         
@@ -154,7 +153,6 @@
         </div>
       </div>
       
-      <!-- Technical Notes -->
       <div class="space-y-1">
         <label class="text-[#636363] text-xs uppercase tracking-wide">Notas Tecnicas</label>
         <textarea
