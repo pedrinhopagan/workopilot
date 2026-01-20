@@ -3,11 +3,12 @@
   import { invoke } from "@tauri-apps/api/core";
   import { goto } from '$app/navigation';
   import { selectedProjectId, projectsList } from '$lib/stores/selectedProject';
-  import type { Task, ProjectWithConfig } from '$lib/types';
+  import type { Task, TaskFull, ProjectWithConfig, Subtask } from '$lib/types';
   
   let tasks: Task[] = $state([]);
   let projectPath: string | null = $state(null);
   let deleteConfirmId: string | null = $state(null);
+  let taskFullCache = $state<Map<string, TaskFull>>(new Map());
   
   let newTaskTitle = $state('');
   let newTaskPriority = $state(2);
@@ -34,6 +35,34 @@
       tasks = await invoke('get_tasks');
     } catch (e) {
       console.error('Failed to load tasks:', e);
+    }
+  }
+  
+  async function loadTaskFull(taskId: string, projectPathArg: string): Promise<TaskFull | null> {
+    try {
+      const full: TaskFull = await invoke('get_task_full', { projectPath: projectPathArg, taskId });
+      taskFullCache.set(taskId, full);
+      taskFullCache = new Map(taskFullCache);
+      return full;
+    } catch {
+      return null;
+    }
+  }
+  
+  function getSubtasksForTask(taskId: string): Subtask[] {
+    return taskFullCache.get(taskId)?.subtasks || [];
+  }
+  
+  async function loadAllTaskFulls() {
+    for (const task of tasks) {
+      if (task.project_id && task.json_path) {
+        try {
+          const project: ProjectWithConfig = await invoke('get_project_with_config', { projectId: task.project_id });
+          await loadTaskFull(task.id, project.path);
+        } catch (e) {
+          console.error('Failed to load task full:', e);
+        }
+      }
     }
   }
   
@@ -95,6 +124,70 @@
     }
   }
   
+  async function toggleSubtaskInList(taskId: string, subtaskId: string) {
+    const taskFull = taskFullCache.get(taskId);
+    if (!taskFull) return;
+    
+    const task = tasks.find(t => t.id === taskId);
+    if (!task?.project_id) return;
+    
+    try {
+      const project: ProjectWithConfig = await invoke('get_project_with_config', { projectId: task.project_id });
+      
+      const newSubtasks = taskFull.subtasks.map(s => {
+        if (s.id === subtaskId) {
+          const newStatus = s.status === 'done' ? 'pending' : 'done';
+          return { ...s, status: newStatus, completed_at: newStatus === 'done' ? new Date().toISOString() : null };
+        }
+        return s;
+      });
+      
+      const updatedTask: TaskFull = { 
+        ...taskFull, 
+        subtasks: newSubtasks, 
+        modified_at: new Date().toISOString(), 
+        modified_by: 'user' 
+      };
+      
+      // Check if all done -> update status
+      if (newSubtasks.every(s => s.status === 'done') && newSubtasks.length > 0) {
+        updatedTask.status = 'awaiting_review';
+      }
+      
+      await invoke('update_task_and_sync', { projectPath: project.path, task: updatedTask });
+      taskFullCache.set(taskId, updatedTask);
+      taskFullCache = new Map(taskFullCache);
+      await loadTasks();
+    } catch (e) {
+      console.error('Failed to toggle subtask:', e);
+    }
+  }
+  
+  async function codarSubtaskInList(task: Task, subtaskId: string) {
+    if (!task.project_id) return;
+    try {
+      await invoke('launch_task_workflow', {
+        projectId: task.project_id,
+        taskId: task.id,
+        subtaskId
+      });
+    } catch (e) {
+      console.error('Failed to launch subtask workflow:', e);
+    }
+  }
+  
+  async function reviewTask(task: Task) {
+    if (!task.project_id) return;
+    try {
+      await invoke('launch_task_review', {
+        projectId: task.project_id,
+        taskId: task.id
+      });
+    } catch (e) {
+      console.error('Failed to launch task review:', e);
+    }
+  }
+  
   function handleDeleteClick(e: MouseEvent, taskId: string) {
     e.stopPropagation();
     if (deleteConfirmId === taskId) {
@@ -146,6 +239,12 @@
   $effect(() => {
     loadProjectPath();
   });
+  
+  $effect(() => {
+    if (tasks.length > 0) {
+      loadAllTaskFulls();
+    }
+  });
 </script>
 
 <div class="flex items-center gap-2 p-3 border-b border-[#3d3a34]">
@@ -186,40 +285,84 @@
   {#if pendingTasks.length > 0}
     <div class="space-y-1">
       {#each pendingTasks as task}
-        <div 
-          onclick={() => editTask(task.id)}
-          class="flex items-center gap-3 px-3 py-2 bg-[#232323] hover:bg-[#2a2a2a] transition-colors group cursor-pointer"
-        >
-          <button 
-            onclick={(e) => { e.stopPropagation(); toggleTask(task.id, task.status); }}
-            class="text-[#636363] hover:text-[#909d63] transition-colors"
+        {@const taskSubtasks = getSubtasksForTask(task.id)}
+        {@const doneSubtasks = taskSubtasks.filter(s => s.status === 'done').length}
+        
+        <div class="bg-[#232323] hover:bg-[#2a2a2a] transition-colors group">
+          <div 
+            onclick={() => editTask(task.id)}
+            class="flex items-center gap-3 px-3 py-2 cursor-pointer"
           >
-            [ ]
-          </button>
-          <span class="flex-1 text-[#d6d6d6] text-sm">{task.title}</span>
-          <span class="px-2 py-0.5 text-xs text-[#1c1c1c] bg-[#6b7c5e]">{task.category}</span>
-          <span class="px-2 py-0.5 text-xs text-[#1c1c1c] {getPriorityClass(task.priority)}">P{task.priority}</span>
-          <button
-            onclick={(e) => handleDeleteClick(e, task.id)}
-            class="opacity-0 group-hover:opacity-100 p-1 transition-all {deleteConfirmId === task.id ? 'text-[#bc5653]' : 'text-[#636363] hover:text-[#bc5653]'}"
-            title={deleteConfirmId === task.id ? 'Confirmar exclusão' : 'Excluir tarefa'}
-          >
-            {#if deleteConfirmId === task.id}
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-            {:else}
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
-              </svg>
+            <button 
+              onclick={(e) => { e.stopPropagation(); toggleTask(task.id, task.status); }}
+              class="text-[#636363] hover:text-[#909d63] transition-colors"
+            >
+              [ ]
+            </button>
+            <span class="flex-1 text-[#d6d6d6] text-sm">{task.title}</span>
+            
+            {#if taskSubtasks.length > 0}
+              <span class="text-xs text-[#636363]">{doneSubtasks}/{taskSubtasks.length}</span>
             {/if}
-          </button>
-          <button
-            onclick={(e) => { e.stopPropagation(); codarTask(task); }}
-            class="px-3 py-1 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] transition-colors"
-          >
-            Codar &gt;
-          </button>
+            
+            <span class="px-2 py-0.5 text-xs text-[#1c1c1c] bg-[#6b7c5e]">{task.category}</span>
+            <span class="px-2 py-0.5 text-xs text-[#1c1c1c] {getPriorityClass(task.priority)}">P{task.priority}</span>
+            
+            <button
+              onclick={(e) => handleDeleteClick(e, task.id)}
+              class="opacity-0 group-hover:opacity-100 p-1 transition-all {deleteConfirmId === task.id ? 'text-[#bc5653]' : 'text-[#636363] hover:text-[#bc5653]'}"
+              title={deleteConfirmId === task.id ? 'Confirmar exclusão' : 'Excluir tarefa'}
+            >
+              {#if deleteConfirmId === task.id}
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              {:else}
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/>
+                </svg>
+              {/if}
+            </button>
+            
+            {#if taskSubtasks.length > 0 && taskSubtasks.every(s => s.status === 'done')}
+              <button
+                onclick={(e) => { e.stopPropagation(); reviewTask(task); }}
+                class="px-3 py-1 text-xs bg-[#ebc17a] text-[#1c1c1c] hover:bg-[#f5d08a] transition-colors"
+              >
+                Revisar
+              </button>
+            {/if}
+            
+            <button
+              onclick={(e) => { e.stopPropagation(); codarTask(task); }}
+              class="px-3 py-1 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] transition-colors"
+            >
+              Codar &gt;
+            </button>
+          </div>
+          
+          {#if taskSubtasks.length > 0}
+            <div class="pl-8 pr-3 pb-2 space-y-1">
+              {#each taskSubtasks as subtask}
+                <div class="flex items-center gap-2 text-sm {subtask.status === 'done' ? 'opacity-50' : ''}">
+                  <button 
+                    onclick={() => toggleSubtaskInList(task.id, subtask.id)}
+                    class="text-xs {subtask.status === 'done' ? 'text-[#909d63]' : 'text-[#636363] hover:text-[#909d63]'}"
+                  >
+                    {subtask.status === 'done' ? '[x]' : '[ ]'}
+                  </button>
+                  <span class="text-[#d6d6d6] {subtask.status === 'done' ? 'line-through' : ''}">{subtask.title}</span>
+                  <button
+                    onclick={(e) => { e.stopPropagation(); codarSubtaskInList(task, subtask.id); }}
+                    disabled={subtask.status === 'done'}
+                    class="ml-auto px-2 py-0.5 text-xs bg-[#3d3a34] text-[#d6d6d6] hover:bg-[#4a4a4a] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Codar &gt;
+                  </button>
+                </div>
+              {/each}
+            </div>
+          {/if}
         </div>
       {/each}
     </div>
