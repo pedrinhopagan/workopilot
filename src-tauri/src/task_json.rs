@@ -5,6 +5,7 @@ use std::path::PathBuf;
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct TaskContext {
     pub description: Option<String>,
+    #[serde(default)]
     pub business_rules: Vec<String>,
     pub technical_notes: Option<String>,
     pub acceptance_criteria: Option<Vec<String>>,
@@ -15,6 +16,7 @@ pub struct Subtask {
     pub id: String,
     pub title: String,
     pub status: String,
+    #[serde(default)]
     pub order: i32,
 
     #[serde(default)]
@@ -26,15 +28,22 @@ pub struct Subtask {
     #[serde(default)]
     pub prompt_context: Option<String>,
 
+    #[serde(default = "default_created_at")]
     pub created_at: String,
     #[serde(default)]
     pub completed_at: Option<String>,
 }
 
+fn default_created_at() -> String {
+    chrono::Utc::now().to_rfc3339()
+}
+
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct AIMetadata {
     pub last_interaction: Option<String>,
+    #[serde(default)]
     pub session_ids: Vec<String>,
+    #[serde(default)]
     pub tokens_used: i64,
     #[serde(default)]
     pub structuring_complete: bool,
@@ -42,9 +51,48 @@ pub struct AIMetadata {
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct TaskTimestamps {
+    #[serde(default = "default_created_at")]
     pub created_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
+}
+
+// V1 Microtask for migration
+#[derive(Deserialize, Clone)]
+struct MicrotaskV1 {
+    id: String,
+    title: String,
+    status: String,
+    #[serde(default)]
+    prompt_context: Option<String>,
+    #[serde(default)]
+    completed_at: Option<String>,
+}
+
+// Intermediate struct for loading both v1 and v2
+#[derive(Deserialize)]
+struct TaskFullRaw {
+    schema_version: i32,
+    initialized: bool,
+    id: String,
+    title: String,
+    status: String,
+    priority: i32,
+    category: String,
+    complexity: Option<String>,
+    context: TaskContext,
+    #[serde(default)]
+    subtasks: Option<Vec<Subtask>>,
+    #[serde(default)]
+    microtasks: Option<Vec<MicrotaskV1>>,
+    #[serde(default)]
+    ai_metadata: AIMetadata,
+    #[serde(default)]
+    timestamps: TaskTimestamps,
+    #[serde(default)]
+    modified_at: Option<String>,
+    #[serde(default)]
+    modified_by: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -115,12 +163,19 @@ pub fn save_task_json(project_path: &str, task: &TaskFull) -> Result<(), String>
     fs::write(&path, json).map_err(|e| format!("Failed to write task JSON: {}", e))
 }
 
-pub fn migrate_v1_to_v2(task: &mut TaskFull) {
-    if task.schema_version >= 2 {
-        return;
+fn convert_microtask_to_subtask(mt: MicrotaskV1, order: i32) -> Subtask {
+    Subtask {
+        id: mt.id,
+        title: mt.title,
+        status: mt.status,
+        order,
+        description: None,
+        acceptance_criteria: None,
+        technical_notes: None,
+        prompt_context: mt.prompt_context,
+        created_at: chrono::Utc::now().to_rfc3339(),
+        completed_at: mt.completed_at,
     }
-    task.schema_version = 2;
-    task.ai_metadata.structuring_complete = true;
 }
 
 pub fn load_task_json(project_path: &str, task_id: &str) -> Result<TaskFull, String> {
@@ -128,11 +183,47 @@ pub fn load_task_json(project_path: &str, task_id: &str) -> Result<TaskFull, Str
     let content =
         fs::read_to_string(&path).map_err(|e| format!("Failed to read task JSON: {}", e))?;
 
-    let mut task: TaskFull =
+    let raw: TaskFullRaw =
         serde_json::from_str(&content).map_err(|e| format!("Failed to parse task JSON: {}", e))?;
 
-    if task.schema_version < 2 {
-        migrate_v1_to_v2(&mut task);
+    let subtasks = if let Some(st) = raw.subtasks {
+        st
+    } else if let Some(mt) = raw.microtasks {
+        mt.into_iter()
+            .enumerate()
+            .map(|(i, m)| convert_microtask_to_subtask(m, i as i32))
+            .collect()
+    } else {
+        vec![]
+    };
+
+    let task = TaskFull {
+        schema_version: 2,
+        initialized: raw.initialized,
+        id: raw.id,
+        title: raw.title,
+        status: raw.status,
+        priority: raw.priority,
+        category: raw.category,
+        complexity: raw.complexity,
+        context: raw.context,
+        subtasks,
+        ai_metadata: AIMetadata {
+            last_interaction: raw.ai_metadata.last_interaction,
+            session_ids: raw.ai_metadata.session_ids,
+            tokens_used: raw.ai_metadata.tokens_used,
+            structuring_complete: if raw.schema_version < 2 {
+                true
+            } else {
+                raw.ai_metadata.structuring_complete
+            },
+        },
+        timestamps: raw.timestamps,
+        modified_at: raw.modified_at,
+        modified_by: raw.modified_by,
+    };
+
+    if raw.schema_version < 2 {
         save_task_json(project_path, &task)?;
     }
 
