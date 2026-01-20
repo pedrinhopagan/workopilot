@@ -6,6 +6,7 @@
   import { onDestroy } from 'svelte';
   import { selectedProjectId, projectsList } from '$lib/stores/selectedProject';
   import type { Task, TaskFull, ProjectWithConfig, Subtask, TaskUpdatedPayload, TaskExecution } from '$lib/types';
+  import { getStatusLabel, getStatusColor, getComplexityLabel, getComplexityColor, getStatusFilterOptions } from '$lib/constants/taskStatus';
   
   let tasks: Task[] = $state([]);
   let projectPath: string | null = $state(null);
@@ -26,10 +27,18 @@
     { value: 3, label: 'Baixa', color: 'bg-[#8b7355]' }
   ];
   
+  let filterPriority: number | null = $state(null);
+  let filterCategory: string | null = $state(null);
+  let filterStatus: string | null = $state(null);
+  
   let filteredTasks = $derived(
-    $selectedProjectId 
-      ? tasks.filter(t => t.project_id === $selectedProjectId)
-      : tasks
+    tasks.filter(t => {
+      if ($selectedProjectId && t.project_id !== $selectedProjectId) return false;
+      if (filterPriority !== null && t.priority !== filterPriority) return false;
+      if (filterCategory && t.category !== filterCategory) return false;
+      if (filterStatus && t.status !== filterStatus) return false;
+      return true;
+    })
   );
   
   let sortedPendingTasks = $derived(() => {
@@ -269,6 +278,26 @@
     return priorities.map(p => ({ value: String(p.value), label: p.label }));
   }
   
+  function getFilterPriorityOptions() {
+    return [
+      { value: '', label: 'Todas' },
+      ...priorities.map(p => ({ value: String(p.value), label: p.label }))
+    ];
+  }
+  
+  function getFilterCategoryOptions() {
+    return [
+      { value: '', label: 'Todas' },
+      ...categories.map(c => ({ value: c, label: c }))
+    ];
+  }
+  
+  function getProjectName(projectId: string | null): string {
+    if (!projectId) return 'Sem projeto';
+    const project = $projectsList.find(p => p.id === projectId);
+    return project?.name || 'Projeto desconhecido';
+  }
+  
   async function setupEventListener() {
     unlisten = await listen<TaskUpdatedPayload>('task-updated', async (event) => {
       if (event.payload.source === 'ai') {
@@ -325,53 +354,81 @@
   });
 </script>
 
-<div class="flex items-center gap-2 p-3 border-b border-[#3d3a34]">
-  <input 
-    type="text" 
-    placeholder="Nova tarefa..."
-    bind:value={newTaskTitle}
-    onkeydown={(e) => e.key === 'Enter' && addTask()}
-    disabled={!$selectedProjectId}
-    class="flex-1 px-3 py-2 bg-[#1c1c1c] border border-[#3d3a34] text-[#d6d6d6] text-sm focus:border-[#909d63] focus:outline-none disabled:opacity-50"
-  />
-  <Select
-    value={newTaskCategory}
-    options={getCategoryOptions()}
-    onchange={(v) => newTaskCategory = v}
-  />
-  <Select
-    value={String(newTaskPriority)}
-    options={getPriorityOptions()}
-    onchange={(v) => newTaskPriority = parseInt(v)}
-  />
-  <button 
-    onclick={addTask}
-    disabled={!$selectedProjectId || !newTaskTitle.trim()}
-    class="px-4 py-2 bg-[#909d63] text-[#1c1c1c] text-sm hover:bg-[#a0ad73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-  >
-    Adicionar
-  </button>
-</div>
-
-<div class="flex-1 overflow-y-auto p-3">
-  {#if !$selectedProjectId && $projectsList.length > 0}
-    <div class="text-center text-[#636363] py-8">
-      Selecione um projeto para adicionar tarefas
+<div class="flex-1 overflow-y-auto">
+  <div class="px-3 pt-3 pb-3 space-y-2">
+    <div class="flex items-center gap-2">
+      <input 
+        type="text" 
+        placeholder={$selectedProjectId ? "Nova tarefa..." : "Selecione um projeto..."}
+        bind:value={newTaskTitle}
+        onkeydown={(e) => e.key === 'Enter' && addTask()}
+        disabled={!$selectedProjectId}
+        class="flex-1 px-3 py-2 bg-[#1c1c1c] border border-[#3d3a34] text-[#d6d6d6] text-sm focus:border-[#909d63] focus:outline-none disabled:opacity-50"
+      />
+      <Select
+        value={newTaskCategory}
+        options={getCategoryOptions()}
+        onchange={(v) => newTaskCategory = v}
+      />
+      <Select
+        value={String(newTaskPriority)}
+        options={getPriorityOptions()}
+        onchange={(v) => newTaskPriority = parseInt(v)}
+      />
+      <button 
+        onclick={addTask}
+        disabled={!$selectedProjectId || !newTaskTitle.trim()}
+        class="px-4 py-2 bg-[#909d63] text-[#1c1c1c] text-sm hover:bg-[#a0ad73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      >
+        Adicionar
+      </button>
     </div>
-  {/if}
+    
+    <div class="flex items-center gap-2 flex-wrap">
+      <span class="text-xs text-[#636363]">Filtros:</span>
+      <Select
+        value={filterPriority !== null ? String(filterPriority) : ''}
+        options={getFilterPriorityOptions()}
+        onchange={(v) => filterPriority = v ? parseInt(v) : null}
+      />
+      <Select
+        value={filterCategory || ''}
+        options={getFilterCategoryOptions()}
+        onchange={(v) => filterCategory = v || null}
+      />
+      <Select
+        value={filterStatus || ''}
+        options={getStatusFilterOptions()}
+        onchange={(v) => filterStatus = v || null}
+      />
+      {#if filterPriority !== null || filterCategory || filterStatus}
+        <button 
+          onclick={() => { filterPriority = null; filterCategory = null; filterStatus = null; }}
+          class="text-xs text-[#636363] hover:text-[#d6d6d6] underline transition-colors"
+        >
+          Limpar filtros
+        </button>
+      {/if}
+    </div>
+  </div>
+
+  <div class="px-3 pb-3">
   
-  {#if pendingTasks.length > 0}
+    {#if pendingTasks.length > 0}
     <div class="space-y-1">
       {#each pendingTasks as task}
         {@const taskSubtasks = getSubtasksForTask(task.id)}
         {@const doneSubtasks = taskSubtasks.filter(s => s.status === 'done').length}
         {@const executing = isTaskExecuting(task.id)}
         {@const execution = getTaskExecution(task.id)}
+        {@const taskFull = taskFullCache.get(task.id)}
         
-        <div class="bg-[#232323] hover:bg-[#2a2a2a] transition-colors group {executing ? 'ring-1 ring-[#909d63] border border-[#909d63]/50' : ''}">
+        <div 
+          class="bg-[#232323] hover:bg-[#2a2a2a] transition-colors group {executing ? 'ring-1 ring-[#909d63]' : ''}"
+          style={task.status !== 'pending' && !executing ? `border-left: 3px solid ${getStatusColor(task.status)}` : ''}>
           <div 
             onclick={() => editTask(task.id)}
-            class="flex items-center gap-3 px-3 py-2 cursor-pointer"
+            class="flex items-center gap-2 px-3 py-2 cursor-pointer"
           >
             {#if executing}
               <span class="flex items-center gap-1 text-[#909d63]" title="Executando...">
@@ -388,7 +445,12 @@
                 [ ]
               </button>
             {/if}
-            <span class="flex-1 text-[#d6d6d6] text-sm">{task.title}</span>
+            
+            {#if taskFull?.initialized}
+              <span class="w-1.5 h-1.5 rounded-full bg-[#909d63]" title="Estruturada"></span>
+            {/if}
+            
+            <span class="flex-1 text-[#d6d6d6] text-sm truncate">{task.title}</span>
             
             {#if executing && execution}
               <span class="text-xs text-[#909d63] font-medium px-2 py-0.5 bg-[#909d63]/10 rounded">
@@ -400,7 +462,23 @@
             {/if}
             
             {#if taskSubtasks.length > 0}
-              <span class="text-xs text-[#636363]">{doneSubtasks}/{taskSubtasks.length}</span>
+              <span class="text-xs text-[#636363] bg-[#2a2a2a] px-1.5 py-0.5 rounded">{doneSubtasks}/{taskSubtasks.length}</span>
+            {/if}
+            
+            <span 
+              class="px-2 py-0.5 text-xs rounded" 
+              style="background-color: {getStatusColor(task.status)}20; color: {getStatusColor(task.status)};"
+            >
+              {getStatusLabel(task.status)}
+            </span>
+            
+            {#if taskFull?.complexity}
+              <span 
+                class="px-2 py-0.5 text-xs rounded"
+                style="background-color: {getComplexityColor(taskFull.complexity)}20; color: {getComplexityColor(taskFull.complexity)};"
+              >
+                {getComplexityLabel(taskFull.complexity)}
+              </span>
             {/if}
             
             <span class="px-2 py-0.5 text-xs text-[#1c1c1c] bg-[#6b7c5e]">{task.category}</span>
@@ -483,12 +561,14 @@
   
   {#if doneTasks.length > 0}
     <div class="mt-4">
-      <div class="text-xs text-[#636363] uppercase tracking-wide mb-2">Concluídas ({doneTasks.length})</div>
+      <div class="text-xs text-[#636363] uppercase tracking-wide mb-2">Concluidas ({doneTasks.length})</div>
       <div class="space-y-1 opacity-50">
         {#each doneTasks as task}
+          {@const taskFull = taskFullCache.get(task.id)}
           <div 
             onclick={() => editTask(task.id)}
-            class="flex items-center gap-3 px-3 py-2 bg-[#232323] hover:bg-[#2a2a2a] transition-colors group cursor-pointer"
+            class="flex items-center gap-2 px-3 py-2 bg-[#232323] hover:bg-[#2a2a2a] transition-colors group cursor-pointer"
+            style="border-left: 3px solid {getStatusColor(task.status)}"
           >
             <button 
               onclick={(e) => { e.stopPropagation(); toggleTask(task.id, task.status); }}
@@ -496,12 +576,26 @@
             >
               [x]
             </button>
-            <span class="flex-1 text-[#d6d6d6] text-sm line-through">{task.title}</span>
+            <span class="flex-1 text-[#d6d6d6] text-sm line-through truncate">{task.title}</span>
+            <span 
+              class="px-2 py-0.5 text-xs rounded" 
+              style="background-color: {getStatusColor(task.status)}20; color: {getStatusColor(task.status)};"
+            >
+              {getStatusLabel(task.status)}
+            </span>
+            {#if taskFull?.complexity}
+              <span 
+                class="px-2 py-0.5 text-xs rounded"
+                style="background-color: {getComplexityColor(taskFull.complexity)}20; color: {getComplexityColor(taskFull.complexity)};"
+              >
+                {getComplexityLabel(taskFull.complexity)}
+              </span>
+            {/if}
             <span class="px-2 py-0.5 text-xs text-[#1c1c1c] bg-[#6b7c5e]">{task.category}</span>
             <button
               onclick={(e) => handleDeleteClick(e, task.id)}
               class="opacity-0 group-hover:opacity-100 p-1 transition-all {deleteConfirmId === task.id ? 'text-[#bc5653]' : 'text-[#636363] hover:text-[#bc5653]'}"
-              title={deleteConfirmId === task.id ? 'Confirmar exclusão' : 'Excluir tarefa'}
+              title={deleteConfirmId === task.id ? 'Confirmar exclusao' : 'Excluir tarefa'}
             >
               {#if deleteConfirmId === task.id}
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -524,4 +618,5 @@
       Nenhuma tarefa encontrada. Adicione uma nova!
     </div>
   {/if}
+  </div>
 </div>
