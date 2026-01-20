@@ -58,19 +58,27 @@ export interface TaskContext {
   acceptance_criteria: string[] | null;
 }
 
-export interface Microtask {
+export interface Subtask {
   id: string;
   title: string;
-  status: string;
+  status: string;  // pending | in_progress | done
+  order: number;
+  
+  // Optional fields
+  description: string | null;
+  acceptance_criteria: string[] | null;
+  technical_notes: string | null;
   prompt_context: string | null;
+  
+  created_at: string;
   completed_at: string | null;
-  scheduled_date: string | null;
 }
 
 export interface AIMetadata {
   last_interaction: string | null;
   session_ids: string[];
   tokens_used: number;
+  structuring_complete: boolean;
 }
 
 export interface TaskTimestamps {
@@ -84,12 +92,12 @@ export interface TaskFull {
   initialized: boolean;
   id: string;
   title: string;
-  status: string;
+  status: string;  // pending | in_progress | awaiting_review | done
   priority: number;
   category: string;
   complexity: string | null;
   context: TaskContext;
-  microtasks: Microtask[];
+  subtasks: Subtask[];
   ai_metadata: AIMetadata;
   timestamps: TaskTimestamps;
   modified_at?: string | null;
@@ -127,6 +135,6 @@ export interface CalendarTask {
   scheduled_date: string;
   due_date: string | null;
   is_overdue: boolean;
-  is_microtask: boolean;
-  parent_task_id: string | null;
+  subtask_count: number;
+  subtask_done_count: number;
 }
