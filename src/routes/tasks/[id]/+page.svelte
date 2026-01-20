@@ -2,12 +2,16 @@
 import { goto } from "$app/navigation";
 import { page } from "$app/stores";
 import Select from "$lib/components/Select.svelte";
-import SubtaskList from "$lib/components/tasks/SubtaskList.svelte";
-import ImageUploader from "$lib/components/tasks/ImageUploader.svelte";
-import ImageGallery from "$lib/components/tasks/ImageGallery.svelte";
+import DescriptionWithImages from "$lib/components/tasks/DescriptionWithImages.svelte";
 import ImageModal from "$lib/components/tasks/ImageModal.svelte";
+import SubtaskList from "$lib/components/tasks/SubtaskList.svelte";
+import {
+	getStateColor,
+	getStateLabel,
+	getTaskState as getTaskStateFromFull,
+	type TaskState,
+} from "$lib/constants/taskStatus";
 import { openCodeConnected, openCodeService } from "$lib/services/opencode";
-import { getTaskState as getTaskStateFromFull, getStateLabel, getStateColor, type TaskState } from "$lib/constants/taskStatus";
 import type {
 	ProjectWithConfig,
 	QuickfixPayload,
@@ -35,12 +39,11 @@ let isLoading = $state(true);
 let isSaving = $state(false);
 let newRule = $state("");
 let newCriteria = $state("");
+let showBusinessRules = $state(false);
 let showTechnicalNotes = $state(false);
 let showAcceptanceCriteria = $state(false);
 let aiUpdatedRecently = $state(false);
 let conflictWarning = $state(false);
-let isSyncing = $state(false);
-let syncSuccess = $state(false);
 let isLaunchingStructure = $state(false);
 let isLaunchingExecuteAll = $state(false);
 let isLaunchingExecuteSubtask = $state(false);
@@ -163,11 +166,12 @@ async function loadTask(isReload = false) {
 			}
 
 			if (!isReload) {
+				showBusinessRules = !!taskFull?.context.business_rules?.length;
 				showTechnicalNotes = !!taskFull?.context.technical_notes;
 				showAcceptanceCriteria =
 					!!taskFull?.context.acceptance_criteria?.length;
 			}
-			
+
 			await loadTaskImages();
 		}
 	} catch (e) {
@@ -194,7 +198,9 @@ async function loadActiveExecution() {
 async function loadTaskImages() {
 	if (!taskId) return;
 	try {
-		taskImages = await invoke<TaskImageMetadata[]>("get_task_images", { taskId });
+		taskImages = await invoke<TaskImageMetadata[]>("get_task_images", {
+			taskId,
+		});
 	} catch (e) {
 		console.error("Failed to load task images:", e);
 		taskImages = [];
@@ -275,32 +281,6 @@ async function focusTerminal() {
 	}
 }
 
-async function syncFromFile() {
-	if (!projectPath || !taskId) return;
-
-	isSyncing = true;
-	try {
-		const freshTask: TaskFull = await invoke("get_task_full", {
-			projectPath,
-			taskId,
-		});
-		taskFull = freshTask;
-		lastKnownModifiedAt = freshTask.modified_at || null;
-
-		showTechnicalNotes = !!freshTask.context.technical_notes;
-		showAcceptanceCriteria = !!freshTask.context.acceptance_criteria?.length;
-
-		syncSuccess = true;
-		setTimeout(() => {
-			syncSuccess = false;
-		}, 2000);
-	} catch (e) {
-		console.error("Failed to sync from file:", e);
-	} finally {
-		isSyncing = false;
-	}
-}
-
 async function saveTask() {
 	if (!taskFull || !projectPath) return;
 
@@ -353,25 +333,31 @@ async function setupEventListener() {
 		await loadActiveExecution();
 	});
 
-	unlistenQuickfix = await tauriListen<QuickfixPayload>("quickfix-changed", async (event) => {
-		if (event.payload.task_id === taskId) {
-			console.log("[WorkoPilot] Quickfix status changed:", event.payload.status);
-			if (event.payload.status === "running") {
-				isAdjusting = true;
-				adjustingPrompt = event.payload.prompt;
-			} else {
-				isAdjusting = false;
-				adjustingPrompt = null;
-				if (event.payload.status === "completed") {
-					await loadTask(true);
-					aiUpdatedRecently = true;
-					setTimeout(() => {
-						aiUpdatedRecently = false;
-					}, 5000);
+	unlistenQuickfix = await tauriListen<QuickfixPayload>(
+		"quickfix-changed",
+		async (event) => {
+			if (event.payload.task_id === taskId) {
+				console.log(
+					"[WorkoPilot] Quickfix status changed:",
+					event.payload.status,
+				);
+				if (event.payload.status === "running") {
+					isAdjusting = true;
+					adjustingPrompt = event.payload.prompt;
+				} else {
+					isAdjusting = false;
+					adjustingPrompt = null;
+					if (event.payload.status === "completed") {
+						await loadTask(true);
+						aiUpdatedRecently = true;
+						setTimeout(() => {
+							aiUpdatedRecently = false;
+						}, 5000);
+					}
 				}
 			}
-		}
-	});
+		},
+	);
 
 	setupOpenCodeListener();
 }
@@ -713,12 +699,12 @@ $effect(() => {
     Carregando...
   </div>
 {:else if !taskFull}
-  <div class="flex-1 flex flex-col items-center justify-center text-[#636363] gap-4">
+  <div class="flex-1 flex justify-center items-center justify-center text-[#636363] gap-4">
     <span>Tarefa não encontrada</span>
     <button onclick={goBack} class="text-[#909d63] hover:underline">Voltar</button>
   </div>
 {:else}
-  <div class="flex items-center gap-3 p-3 border-b border-[#3d3a34] bg-[#1c1c1c]">
+  <div class="flex items-center gap-2 p-2 border-b border-[#3d3a34] bg-[#1c1c1c]">
     <button
       onclick={goBack}
       class="text-[#636363] hover:text-[#d6d6d6] transition-colors p-1"
@@ -735,30 +721,6 @@ $effect(() => {
       onblur={() => updateField('title', taskFull!.title)}
       class="flex-1 bg-transparent text-[#d6d6d6] text-base font-medium focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors"
     />
-    
-    <button
-      onclick={syncFromFile}
-      disabled={isSyncing}
-      class="p-1.5 text-[#636363] hover:text-[#909d63] hover:bg-[#2a2a2a] transition-colors rounded disabled:opacity-50"
-      title="Sincronizar do arquivo JSON"
-    >
-      {#if isSyncing}
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin">
-          <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-        </svg>
-      {:else if syncSuccess}
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#909d63" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M20 6 9 17l-5-5"/>
-        </svg>
-      {:else}
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
-          <path d="M3 3v5h5"/>
-          <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
-          <path d="M16 16h5v5"/>
-        </svg>
-      {/if}
-    </button>
     
     <Select
       value={taskFull.category}
@@ -842,7 +804,7 @@ $effect(() => {
       <button
         onclick={structureTask}
         disabled={!canStructure() || isLaunchingStructure}
-        class="action-btn flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200 cursor-pointer
+        class="action-btn flex-1 flex justify-center items-center gap-2 p-4 rounded-lg border transition-all duration-200 cursor-pointer
           {suggestedAction === 'structure'
             ? 'border-[#e5c07b] bg-[#e5c07b]/10 text-[#e5c07b] ring-2 ring-[#e5c07b]/50 shadow-[0_0_20px_rgba(229,192,123,0.3)]' 
             : canStructure()
@@ -868,7 +830,7 @@ $effect(() => {
       <button
         onclick={executeAll}
         disabled={!canExecuteAll() || isLaunchingExecuteAll}
-        class="action-btn flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200 cursor-pointer
+        class="action-btn flex-1 flex justify-center items-center gap-2 p-4 rounded-lg border transition-all duration-200 cursor-pointer
           {suggestedAction === 'execute_all'
             ? 'border-[#909d63] bg-[#909d63]/10 text-[#909d63] ring-2 ring-[#909d63]/50 shadow-[0_0_20px_rgba(144,157,99,0.3)]'
             : canExecuteAll()
@@ -894,7 +856,7 @@ $effect(() => {
         <button
           onclick={() => { if (canExecuteSubtask()) showSubtaskSelector = !showSubtaskSelector; }}
           disabled={!canExecuteSubtask() || isLaunchingExecuteSubtask}
-          class="action-btn w-full h-full flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200 cursor-pointer
+          class="action-btn w-full h-full flex justify-center items-center gap-2 p-4 rounded-lg border transition-all duration-200 cursor-pointer
             {suggestedAction === 'execute_subtask'
               ? 'border-[#61afef] bg-[#61afef]/10 text-[#61afef] ring-2 ring-[#61afef]/50 shadow-[0_0_20px_rgba(97,175,239,0.3)]'
               : canExecuteSubtask()
@@ -943,7 +905,7 @@ $effect(() => {
       <button
         onclick={() => { console.log('BOTAO REVISAR CLICADO!', { canReview: canReview(), isLaunchingReview, task }); reviewTask(); }}
         disabled={!canReview() || isLaunchingReview}
-        class="action-btn flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200 cursor-pointer
+        class="action-btn flex-1 flex justify-center items-center gap-2 p-4 rounded-lg border transition-all duration-200 cursor-pointer
           {suggestedAction === 'review'
             ? 'border-[#e5c07b] bg-[#e5c07b]/10 text-[#e5c07b] ring-2 ring-[#e5c07b]/50 shadow-[0_0_20px_rgba(229,192,123,0.3)]'
             : canReview()
@@ -1090,48 +1052,72 @@ $effect(() => {
   </div>
   
   <div class="flex-1 overflow-y-auto p-4 space-y-6">
-    <section>
-      <label class="block text-xs text-[#828282] uppercase tracking-wide mb-2">Descrição</label>
-      <textarea
-        bind:value={taskFull.context.description}
-        onblur={() => updateContext('description', taskFull!.context.description)}
+    {#if taskId}
+      <DescriptionWithImages
+        taskId={taskId}
+        description={taskFull.context.description || ''}
+        images={taskImages}
+        maxImages={5}
         disabled={isBlocked()}
-        placeholder="Descreva o objetivo desta tarefa..."
-        rows="3"
-        class="w-full px-3 py-2 bg-[#232323] border border-[#3d3a34] text-[#d6d6d6] text-sm focus:border-[#909d63] focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-      ></textarea>
-    </section>
+        onDescriptionChange={(value) => updateContext('description', value)}
+        onImageUpload={handleImageUpload}
+        onImageDelete={handleImageDelete}
+        onImageView={handleImageView}
+      />
+    {/if}
     
-    <section class={isBlocked() ? 'opacity-50 pointer-events-none' : ''}>
-      <label class="block text-xs text-[#828282] uppercase tracking-wide mb-2">Regras de Negócio</label>
-      <div class="space-y-2">
-        {#each taskFull.context.business_rules as rule, i}
-          <div class="flex items-center gap-2 group animate-fade-in">
-            <span class="text-[#636363]">•</span>
-            <span class="flex-1 text-[#d6d6d6] text-sm">{rule}</span>
-            <button
-              onclick={() => removeRule(i)}
+    <section>
+      <button 
+        onclick={() => showBusinessRules = !showBusinessRules}
+        class="flex items-center gap-2 text-xs text-[#828282] uppercase tracking-wide mb-2 hover:text-[#d6d6d6] transition-colors"
+      >
+        <svg 
+          xmlns="http://www.w3.org/2000/svg" 
+          width="12" 
+          height="12" 
+          viewBox="0 0 24 24" 
+          fill="none" 
+          stroke="currentColor" 
+          stroke-width="2" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"
+          class="transition-transform duration-200"
+          style="transform: rotate({showBusinessRules ? 90 : 0}deg)"
+        >
+          <path d="m9 18 6-6-6-6"/>
+        </svg>
+        Regras de Negócio (opcional)
+      </button>
+      {#if showBusinessRules}
+        <div class="space-y-2 animate-slide-down {isBlocked() ? 'opacity-50 pointer-events-none' : ''}">
+          {#each taskFull.context.business_rules as rule, i}
+            <div class="flex items-center gap-2 group animate-fade-in">
+              <span class="text-[#636363]">•</span>
+              <span class="flex-1 text-[#d6d6d6] text-sm">{rule}</span>
+              <button
+                onclick={() => removeRule(i)}
+                disabled={isBlocked()}
+                class="opacity-0 group-hover:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1 disabled:cursor-not-allowed"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+                </svg>
+              </button>
+            </div>
+          {/each}
+          <div class="flex items-center gap-2">
+            <span class="text-[#636363]">+</span>
+            <input
+              type="text"
+              bind:value={newRule}
+              onkeydown={(e) => e.key === 'Enter' && addRule()}
               disabled={isBlocked()}
-              class="opacity-0 group-hover:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1 disabled:cursor-not-allowed"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
-              </svg>
-            </button>
+              placeholder="Adicionar regra..."
+              class="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a] disabled:cursor-not-allowed"
+            />
           </div>
-        {/each}
-        <div class="flex items-center gap-2">
-          <span class="text-[#636363]">+</span>
-          <input
-            type="text"
-            bind:value={newRule}
-            onkeydown={(e) => e.key === 'Enter' && addRule()}
-            disabled={isBlocked()}
-            placeholder="Adicionar regra..."
-            class="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a] disabled:cursor-not-allowed"
-          />
         </div>
-      </div>
+      {/if}
     </section>
     
     <section>
@@ -1222,27 +1208,6 @@ $effect(() => {
           </div>
         </div>
       {/if}
-    </section>
-    
-    <section>
-      <div class="flex items-center justify-between mb-2">
-        <label class="block text-xs text-[#828282] uppercase tracking-wide">Imagens</label>
-        {#if taskId}
-          <ImageUploader
-            taskId={taskId}
-            imageCount={taskImages.length}
-            maxImages={5}
-            disabled={isBlocked()}
-            onUpload={handleImageUpload}
-          />
-        {/if}
-      </div>
-      <ImageGallery
-        images={taskImages}
-        disabled={isBlocked()}
-        onDelete={handleImageDelete}
-        onView={handleImageView}
-      />
     </section>
     
     <SubtaskList

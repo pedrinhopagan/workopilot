@@ -355,7 +355,7 @@
 </script>
 
 <div class="flex-1 overflow-y-auto">
-  <div class="px-3 pt-3 pb-3 space-y-2">
+  <div class="px-3 pt-2 pb-2 space-y-1">
     <div class="flex items-center gap-2">
       <input 
         type="text" 
@@ -363,7 +363,7 @@
         bind:value={newTaskTitle}
         onkeydown={(e) => e.key === 'Enter' && addTask()}
         disabled={!$selectedProjectId}
-        class="flex-1 px-3 py-2 bg-[#1c1c1c] border border-[#3d3a34] text-[#d6d6d6] text-sm focus:border-[#909d63] focus:outline-none disabled:opacity-50"
+        class="flex-1 px-2 py-1 bg-[#1c1c1c] border border-[#3d3a34] text-[#d6d6d6] text-sm focus:border-[#909d63] focus:outline-none disabled:opacity-50"
       />
       <Select
         value={newTaskCategory}
@@ -378,9 +378,10 @@
       <button 
         onclick={addTask}
         disabled={!$selectedProjectId || !newTaskTitle.trim()}
-        class="px-4 py-2 bg-[#909d63] text-[#1c1c1c] text-sm hover:bg-[#a0ad73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        class="flex flex-row items-center gap-1 px-2 py-0.5 bg-[#909d63] text-[#1c1c1c] text-xs hover:bg-[#a0ad73] active:bg-[#7a8a53] active:scale-95 disabled:opacity-50 disabled:cursor-default transition-all"
       >
-        Adicionar
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        Add
       </button>
     </div>
     
@@ -404,7 +405,7 @@
       {#if filterPriority !== null || filterCategory || filterStatus}
         <button 
           onclick={() => { filterPriority = null; filterCategory = null; filterStatus = null; }}
-          class="text-xs text-[#636363] hover:text-[#d6d6d6] underline transition-colors"
+          class="text-xs text-[#636363] hover:text-[#d6d6d6] active:text-[#909d63] underline transition-colors"
         >
           Limpar filtros
         </button>
@@ -504,18 +505,20 @@
             {#if taskSubtasks.length > 0 && taskSubtasks.every(s => s.status === 'done')}
               <button
                 onclick={(e) => { e.stopPropagation(); reviewTask(task); }}
-                class="px-3 py-1 text-xs bg-[#ebc17a] text-[#1c1c1c] hover:bg-[#f5d08a] transition-colors"
+                class="flex flex-row items-center gap-1 px-2 py-0.5 text-xs bg-[#ebc17a] text-[#1c1c1c] hover:bg-[#f5d08a] active:bg-[#d4a96a] active:scale-95 transition-all"
               >
-                Revisar
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                Review
               </button>
             {/if}
             
             {#if !executing}
               <button
                 onclick={(e) => { e.stopPropagation(); codarTask(task); }}
-                class="px-3 py-1 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] transition-colors cursor-pointer"
+                class="flex flex-row items-center gap-1 px-2 py-0.5 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] active:bg-[#7a8a53] active:scale-95 transition-all cursor-pointer"
               >
-                Codar &gt;
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                Code
               </button>
             {/if}
           </div>
@@ -546,9 +549,10 @@
                     <button
                       onclick={(e) => { e.stopPropagation(); codarSubtaskInList(task, subtask.id); }}
                       disabled={subtask.status === 'done'}
-                      class="ml-auto px-2 py-0.5 text-xs bg-[#3d3a34] text-[#d6d6d6] hover:bg-[#4a4a4a] disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                      class="ml-auto flex flex-row items-center gap-1 px-1.5 py-0.5 text-xs bg-[#3d3a34] text-[#d6d6d6] hover:bg-[#4a4a4a] active:bg-[#2a2a2a] active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer"
                     >
-                      Codar &gt;
+                      <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                      Code
                     </button>
                   {/if}
                 </div>
