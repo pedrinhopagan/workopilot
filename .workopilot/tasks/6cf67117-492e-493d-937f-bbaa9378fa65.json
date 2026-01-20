@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "initialized": false,
   "id": "6cf67117-492e-493d-937f-bbaa9378fa65",
   "title": "Construir Tab agenda feature",
@@ -20,26 +20,39 @@
       "IA distribui tarefas automaticamente no periodo selecionado"
     ]
   },
-  "microtasks": [
+  "subtasks": [
     {
       "id": "mt-001",
       "title": "Criar componente Calendar base",
       "status": "pending",
+      "order": 0,
+      "description": null,
+      "acceptance_criteria": null,
+      "technical_notes": null,
       "prompt_context": "Implementar componente de calendario com FullCalendar",
+      "created_at": "2026-01-20T04:20:10.322562218+00:00",
       "completed_at": null
     },
     {
       "id": "mt-002",
       "title": "Integrar drag-and-drop de tarefas",
       "status": "pending",
+      "order": 1,
+      "description": null,
+      "acceptance_criteria": null,
+      "technical_notes": null,
       "prompt_context": null,
+      "created_at": "2026-01-20T04:20:10.322577281+00:00",
       "completed_at": null
     }
   ],
   "ai_metadata": {
     "last_interaction": "2026-01-20T01:45:00.000Z",
-    "session_ids": ["test-session-001"],
-    "tokens_used": 1500
+    "session_ids": [
+      "test-session-001"
+    ],
+    "tokens_used": 1500,
+    "structuring_complete": true
   },
   "timestamps": {
     "created_at": "2026-01-20T00:28:28.075509717+00:00",

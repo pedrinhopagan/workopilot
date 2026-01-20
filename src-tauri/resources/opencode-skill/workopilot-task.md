@@ -2,14 +2,37 @@
 
 # Skill para executar tasks do WorkoPilot
 
+## REGRA CRITICA
+
+**VOCE DEVE SALVAR O ARQUIVO JSON APOS CADA ALTERACAO.**
+
+Use a ferramenta `Write` para salvar o arquivo JSON sempre que:
+- Criar subtasks
+- Atualizar status de subtask
+- Modificar qualquer campo
+- Finalizar estruturacao
+- Finalizar execucao
+- Finalizar revisao
+
+O caminho do arquivo JSON esta no prompt inicial (ex: `.workopilot/tasks/{id}.json`).
+
+---
+
 ## Contexto
 
 Voce foi iniciado pelo WorkoPilot para trabalhar em uma task especifica.
 O arquivo JSON da task contem todas as informacoes necessarias.
 
-## Deteccao de Modo
+## Fluxo Inicial OBRIGATORIO
 
-Ao receber o prompt, identifique o modo baseado nas seguintes regras:
+1. **Ler o arquivo JSON** usando a ferramenta `Read` no path fornecido
+2. Identificar o modo baseado no prompt e estado do JSON
+3. Executar o modo correspondente
+4. **SALVAR o arquivo JSON** usando a ferramenta `Write` com as alteracoes
+
+---
+
+## Deteccao de Modo
 
 | Condicao | Modo |
 |----------|------|
@@ -17,100 +40,48 @@ Ao receber o prompt, identifique o modo baseado nas seguintes regras:
 | Prompt menciona "subtask" + ID de subtask | **Execucao** |
 | Prompt contem "REVISAR" | **Revisao** |
 
-**IMPORTANTE**: Sempre ler o JSON primeiro para verificar o estado atual.
-
 ---
 
 ## Modo 1: Estruturacao
 
 Ativado quando `ai_metadata.structuring_complete === false` ou prompt pede estruturacao.
 
-**Objetivo**: Guiar o usuario na quebra da task em subtasks detalhadas.
-
 ### Fluxo
 
-#### 1. Avaliar Complexidade
+1. **Ler o JSON** com `Read`
+2. Avaliar complexidade com o usuario (simples/media/complexa)
+3. Coletar descricao, regras de negocio, notas tecnicas, criterios de aceite
+4. Criar subtasks se media/complexa
+5. **SALVAR o JSON** com `Write` incluindo:
+   - `initialized: true`
+   - `status: "in_progress"`
+   - `complexity: "[valor]"`
+   - `context` atualizado
+   - `subtasks` criadas
+   - `ai_metadata.structuring_complete: true`
+   - `ai_metadata.last_interaction: "[agora ISO]"`
+   - `timestamps.started_at: "[agora ISO]"`
 
-Analise o titulo e contexto inicial:
-
-"Essa task parece [simples/media/complexa]. Concorda?"
-
-- **Simples**: Pode ser executada diretamente, sem subtasks
-- **Media**: 2-4 subtasks ajudam a organizar
-- **Complexa**: Essencial quebrar em subtasks detalhadas
-
-#### 2. Coletar Descricao
-
-"Descreva brevemente o objetivo dessa task (ou 'pular' se o titulo e suficiente):"
-
-#### 3. Coletar Regras de Negocio
-
-"Existe alguma regra de negocio que afeta essa task? (ou 'nenhuma')"
-
-- Perguntar uma de cada vez ate o usuario dizer "pronto"
-
-#### 4. Coletar Notas Tecnicas (se media/complexa)
-
-"Alguma nota tecnica importante? Stack, libs, padroes a seguir? (ou 'pular')"
-
-#### 5. Definir Criterios de Aceite (se media/complexa)
-
-"Quais sao os criterios de aceite? Como saberemos que esta pronto? (ou 'pular')"
-
-#### 6. Criar Subtasks (se media/complexa)
-
-Sugira subtasks baseado no contexto coletado:
-
-"Baseado no que discutimos, sugiro as seguintes subtasks:
-1. [sugestao 1]
-2. [sugestao 2]
-...
-Ajustar, adicionar ou remover alguma?"
-
-Para cada subtask, preencher:
+### Exemplo de subtask
 
 ```json
 {
-  "id": "uuid-gerado",
-  "title": "nome claro da subtask",
+  "id": "sub-001",
+  "title": "Implementar componente X",
   "status": "pending",
   "order": 0,
-  "description": "descricao detalhada (opcional)",
-  "acceptance_criteria": ["criterio 1", "criterio 2"],
-  "technical_notes": "notas tecnicas especificas (opcional)",
+  "description": "Criar componente com...",
+  "acceptance_criteria": ["Deve fazer X", "Deve fazer Y"],
+  "technical_notes": "Usar pattern Z",
   "prompt_context": null,
-  "created_at": "iso-date-atual",
+  "created_at": "2026-01-20T12:00:00Z",
   "completed_at": null
 }
 ```
 
-#### 7. Finalizar Estruturacao
+### Finalizacao
 
-Atualizar o JSON:
-
-```json
-{
-  "initialized": true,
-  "status": "in_progress",
-  "complexity": "[valor acordado]",
-  "context": {
-    "description": "[coletado]",
-    "business_rules": ["[coletado]"],
-    "technical_notes": "[coletado]",
-    "acceptance_criteria": ["[coletado]"]
-  },
-  "subtasks": ["[criadas]"],
-  "ai_metadata": {
-    "structuring_complete": true,
-    "last_interaction": "[agora]"
-  },
-  "timestamps": {
-    "started_at": "[agora]"
-  }
-}
-```
-
-**Mensagem final**:
+Apos salvar, dizer:
 - Se simples: "Estruturacao completa! Volte ao WorkoPilot e clique 'Codar' para executar."
 - Se media/complexa: "Estruturacao completa! Volte ao WorkoPilot e clique 'Codar' em uma subtask especifica."
 
@@ -118,59 +89,32 @@ Atualizar o JSON:
 
 ## Modo 2: Execucao
 
-Ativado quando o prompt contem um ID de subtask para executar.
-
-**Objetivo**: Executar a subtask especifica usando todo o contexto disponivel.
+Ativado quando o prompt contem um ID de subtask.
 
 ### Fluxo
 
-#### 1. Localizar Subtask
+1. **Ler o JSON** com `Read`
+2. Encontrar a subtask pelo ID
+3. Usar contexto da subtask + task pai para implementar
+4. Executar a implementacao
+5. **SALVAR o JSON** com `Write` atualizando:
+   - `subtasks[i].status: "done"`
+   - `subtasks[i].completed_at: "[agora ISO]"`
+   - `ai_metadata.last_interaction: "[agora ISO]"`
+   - Se TODAS subtasks done: `status: "awaiting_review"`
 
-Ler o JSON e encontrar a subtask pelo ID fornecido no prompt.
+### Contexto para execucao
 
-#### 2. Montar Contexto
+Da subtask:
+- `title`, `description`, `acceptance_criteria`, `technical_notes`, `prompt_context`
 
-Usar como contexto para execucao:
+Da task pai:
+- `context.business_rules`, `context.technical_notes`
 
-**Da subtask**:
-- `title`: O que fazer
-- `description`: Detalhes da implementacao
-- `acceptance_criteria`: O que "pronto" significa
-- `technical_notes`: Dicas de implementacao
-- `prompt_context`: Contexto adicional
+### Finalizacao
 
-**Da task pai**:
-- `context.business_rules`: Regras que afetam a implementacao
-- `context.technical_notes`: Notas tecnicas gerais
-
-#### 3. Executar
-
-Implementar a subtask com foco total. Nao desviar para outras subtasks.
-
-#### 4. Finalizar Subtask
-
-Ao concluir, atualizar o JSON:
-
-```json
-{
-  "subtasks": [{
-    "id": "[id-da-subtask]",
-    "status": "done",
-    "completed_at": "[agora]"
-  }],
-  "ai_metadata": {
-    "last_interaction": "[agora]",
-    "session_ids": ["[adicionar session atual]"],
-    "tokens_used": "[incrementar]"
-  }
-}
-```
-
-**Se todas as subtasks estiverem "done"**:
-- Atualizar `task.status: "awaiting_review"`
-
-**Mensagem final**:
-"Subtask concluida! Volte ao WorkoPilot para continuar com a proxima subtask ou revisar a task."
+Apos salvar, dizer:
+"Subtask concluida! Volte ao WorkoPilot para continuar com a proxima subtask ou revisar."
 
 ---
 
@@ -178,83 +122,34 @@ Ao concluir, atualizar o JSON:
 
 Ativado quando o prompt contem "REVISAR".
 
-**Objetivo**: Revisar todo o trabalho feito e marcar a task como concluida.
-
 ### Fluxo
 
-#### 1. Verificar Status das Subtasks
-
-Listar todas as subtasks e seus status:
-
-```
-Subtasks:
-- [x] Subtask 1 (done)
-- [x] Subtask 2 (done)
-- [ ] Subtask 3 (pending) <- PROBLEMA!
-```
-
-Se houver subtasks pendentes, avisar o usuario e nao prosseguir.
-
-#### 2. Revisar Trabalho
-
-Para cada subtask concluida:
-- Verificar se os criterios de aceite foram atendidos
-- Verificar se o codigo esta correto
-
-#### 3. Rodar Verificacoes
-
-Executar checks conforme o projeto:
-- `npm run check` ou `cargo build`
-- Verificar erros de lint/tipo
-
-#### 4. Apresentar Resumo
-
-```
-RESUMO DA REVISAO:
-
-Subtasks completadas: X/Y
-Criterios atendidos:
-- [x] Criterio 1
-- [x] Criterio 2
-
-Verificacoes:
-- Build: OK
-- Lint: OK
-
-Pendencias: [lista ou "nenhuma"]
-```
-
-#### 5. Confirmar Conclusao
-
-"Marcar task como concluida? (sim/nao)"
-
-Se sim, atualizar o JSON:
-
-```json
-{
-  "status": "done",
-  "timestamps": {
-    "completed_at": "[agora]"
-  },
-  "ai_metadata": {
-    "last_interaction": "[agora]"
-  }
-}
-```
+1. **Ler o JSON** com `Read`
+2. Verificar se todas subtasks estao "done"
+3. Revisar criterios de aceite
+4. Rodar verificacoes (`npm run check` ou `cargo build`)
+5. Apresentar resumo
+6. Se usuario confirmar, **SALVAR o JSON** com `Write`:
+   - `status: "done"`
+   - `timestamps.completed_at: "[agora ISO]"`
+   - `ai_metadata.last_interaction: "[agora ISO]"`
 
 ---
 
-## Regras Importantes
+## CHECKLIST DE SALVAMENTO
 
-- **SEMPRE** salvar o JSON apos qualquer alteracao
-- **NUNCA** inventar dados - perguntar ao usuario quando necessario
-- **MANTER** respostas concisas e focadas
-- **VERIFICAR** se a subtask foi realmente completada antes de marcar como done
-- **FOCAR** apenas na subtask atual durante execucao (nao desviar)
+Antes de encerrar qualquer modo, verifique:
+
+- [ ] Li o arquivo JSON atual?
+- [ ] Fiz as alteracoes necessarias no objeto JSON?
+- [ ] Usei `Write` para salvar o arquivo com o JSON completo atualizado?
+- [ ] O arquivo foi salvo com sucesso?
+
+**SE NAO SALVOU, O WORKOPILOT NAO VERA AS ALTERACOES!**
 
 ---
 
-## Schema JSON v2 (referencia)
+## Schema JSON v2
 
 ```json
 {

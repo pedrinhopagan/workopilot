@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "initialized": false,
   "id": "89facd57-2473-4a33-9ad1-59bd16d1cd48",
   "title": "Construir filtro para as tarefas na página de tarefas",
@@ -13,11 +13,12 @@
     "technical_notes": null,
     "acceptance_criteria": null
   },
-  "microtasks": [],
+  "subtasks": [],
   "ai_metadata": {
     "last_interaction": null,
     "session_ids": [],
-    "tokens_used": 0
+    "tokens_used": 0,
+    "structuring_complete": true
   },
   "timestamps": {
     "created_at": "2026-01-20T02:09:29.427347113+00:00",

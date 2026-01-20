@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "initialized": false,
   "id": "919c7ba0-4d8d-45a7-9b84-9c298e5d3b77",
   "title": "Corrigir categorizar com IA no calendario",
@@ -13,11 +13,12 @@
     "technical_notes": null,
     "acceptance_criteria": null
   },
-  "microtasks": [],
+  "subtasks": [],
   "ai_metadata": {
     "last_interaction": null,
     "session_ids": [],
-    "tokens_used": 0
+    "tokens_used": 0,
+    "structuring_complete": true
   },
   "timestamps": {
     "created_at": "2026-01-20T03:41:18.762577110+00:00",

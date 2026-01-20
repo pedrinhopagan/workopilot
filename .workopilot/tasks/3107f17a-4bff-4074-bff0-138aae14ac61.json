@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "initialized": false,
   "id": "3107f17a-4bff-4074-bff0-138aae14ac61",
   "title": "Simular ou buscar de forma correta o uso de tokens para armazenar nos logs e mostrar na home page",
@@ -13,11 +13,12 @@
     "technical_notes": null,
     "acceptance_criteria": null
   },
-  "microtasks": [],
+  "subtasks": [],
   "ai_metadata": {
     "last_interaction": null,
     "session_ids": [],
-    "tokens_used": 0
+    "tokens_used": 0,
+    "structuring_complete": true
   },
   "timestamps": {
     "created_at": "2026-01-20T02:08:57.440688631+00:00",

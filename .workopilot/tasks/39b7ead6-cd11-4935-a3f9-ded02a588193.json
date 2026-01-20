@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "initialized": false,
   "id": "39b7ead6-cd11-4935-a3f9-ded02a588193",
   "title": "Criar componentes reutilizaveis e rodar um ralph-loop para aplicar em toda a aplicacao",
@@ -13,11 +13,12 @@
     "technical_notes": null,
     "acceptance_criteria": null
   },
-  "microtasks": [],
+  "subtasks": [],
   "ai_metadata": {
     "last_interaction": null,
     "session_ids": [],
-    "tokens_used": 0
+    "tokens_used": 0,
+    "structuring_complete": true
   },
   "timestamps": {
     "created_at": "2026-01-20T02:10:13.108768532+00:00",

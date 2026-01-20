@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "initialized": false,
   "id": "50a57ebd-4e88-4bfa-b9bc-23b14c5fcc47",
   "title": "Cosntruir Logs de tarefas automático",
@@ -13,11 +13,12 @@
     "technical_notes": null,
     "acceptance_criteria": null
   },
-  "microtasks": [],
+  "subtasks": [],
   "ai_metadata": {
     "last_interaction": null,
     "session_ids": [],
-    "tokens_used": 0
+    "tokens_used": 0,
+    "structuring_complete": true
   },
   "timestamps": {
     "created_at": "2026-01-20T02:06:34.148464319+00:00",
