@@ -9,6 +9,7 @@ type SubtaskItemProps = {
   onUpdate: (id: string, field: keyof Subtask, value: unknown) => void
   expanded?: boolean
   onToggleExpand: (id: string) => void
+  disabled?: boolean
 }
 
 export function SubtaskItem({
@@ -19,6 +20,7 @@ export function SubtaskItem({
   onUpdate,
   expanded = false,
   onToggleExpand,
+  disabled = false,
 }: SubtaskItemProps) {
   const [newCriteria, setNewCriteria] = useState("")
   const [description, setDescription] = useState(subtask.description || "")
@@ -49,18 +51,20 @@ export function SubtaskItem({
   }
 
   return (
-    <div className={`animate-fade-in ${isDone ? "opacity-50" : ""}`}>
+    <div className={`animate-fade-in ${isDone ? "opacity-50" : ""} ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
       <div className="flex items-center gap-3 px-3 py-2 bg-[#232323] hover:bg-[#2a2a2a] transition-colors group">
         <button
           onClick={() => onToggle(subtask.id)}
-          className={`transition-colors ${isDone ? "text-[#909d63]" : "text-[#636363] hover:text-[#909d63]"}`}
+          disabled={disabled}
+          className={`transition-colors ${isDone ? "text-[#909d63]" : "text-[#636363] hover:text-[#909d63]"} ${disabled ? "cursor-not-allowed" : ""}`}
         >
           {isDone ? "[x]" : "[ ]"}
         </button>
 
         <button
           onClick={() => onToggleExpand(subtask.id)}
-          className="text-[#636363] hover:text-[#909d63] transition-colors"
+          disabled={disabled}
+          className={`text-[#636363] hover:text-[#909d63] transition-colors ${disabled ? "cursor-not-allowed" : ""}`}
           title={expanded ? "Recolher detalhes" : "Expandir detalhes"}
         >
           <svg
@@ -93,7 +97,8 @@ export function SubtaskItem({
 
         <button
           onClick={() => onRemove(subtask.id)}
-          className="opacity-0 group-hover:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1"
+          disabled={disabled}
+          className={`opacity-0 group-hover:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1 ${disabled ? "cursor-not-allowed hidden" : ""}`}
           title="Remover subtask"
         >
           <svg
@@ -114,7 +119,7 @@ export function SubtaskItem({
 
         <button
           onClick={() => onCodar(subtask.id)}
-          disabled={isDone}
+          disabled={isDone || disabled}
           className="px-3 py-1 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] disabled:bg-[#3d3a34] disabled:text-[#636363] disabled:cursor-not-allowed transition-colors"
         >
           Codar &gt;
@@ -129,8 +134,9 @@ export function SubtaskItem({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               onBlur={() => onUpdate(subtask.id, "description", description || null)}
+              disabled={disabled}
               placeholder="Descreva a subtask..."
-              className="w-full bg-[#232323] text-[#d6d6d6] text-sm px-3 py-2 border border-[#3d3a34] focus:border-[#909d63] focus:outline-none resize-none transition-colors"
+              className="w-full bg-[#232323] text-[#d6d6d6] text-sm px-3 py-2 border border-[#3d3a34] focus:border-[#909d63] focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               rows={2}
             />
           </div>
@@ -146,7 +152,8 @@ export function SubtaskItem({
                     <span className="flex-1 text-[#d6d6d6] text-sm">{criteria}</span>
                     <button
                       onClick={() => removeCriteria(index)}
-                      className="opacity-0 group-hover/criteria:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1"
+                      disabled={disabled}
+                      className={`opacity-0 group-hover/criteria:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1 ${disabled ? "hidden" : ""}`}
                       title="Remover criterio"
                     >
                       <svg
@@ -175,12 +182,13 @@ export function SubtaskItem({
                 value={newCriteria}
                 onChange={(e) => setNewCriteria(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && addCriteria()}
+                disabled={disabled}
                 placeholder="Adicionar criterio..."
-                className="flex-1 bg-[#232323] text-[#d6d6d6] text-sm px-3 py-1 border border-[#3d3a34] focus:border-[#909d63] focus:outline-none transition-colors"
+                className="flex-1 bg-[#232323] text-[#d6d6d6] text-sm px-3 py-1 border border-[#3d3a34] focus:border-[#909d63] focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
                 onClick={addCriteria}
-                disabled={!newCriteria.trim()}
+                disabled={!newCriteria.trim() || disabled}
                 className="px-3 py-1 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] disabled:bg-[#3d3a34] disabled:text-[#636363] disabled:cursor-not-allowed transition-colors"
               >
                 +
@@ -194,8 +202,9 @@ export function SubtaskItem({
               value={technicalNotes}
               onChange={(e) => setTechnicalNotes(e.target.value)}
               onBlur={() => onUpdate(subtask.id, "technical_notes", technicalNotes || null)}
+              disabled={disabled}
               placeholder="Adicione notas tecnicas, referencias, ou consideracoes de implementacao..."
-              className="w-full bg-[#232323] text-[#d6d6d6] text-sm px-3 py-2 border border-[#3d3a34] focus:border-[#909d63] focus:outline-none resize-none transition-colors"
+              className="w-full bg-[#232323] text-[#d6d6d6] text-sm px-3 py-2 border border-[#3d3a34] focus:border-[#909d63] focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               rows={3}
             />
           </div>

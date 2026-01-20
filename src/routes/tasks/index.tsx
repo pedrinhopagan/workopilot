@@ -3,7 +3,15 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { safeInvoke, safeListen } from "../../services/tauri";
 import { useSelectedProjectStore } from "../../stores/selectedProject";
 import { Select } from "../../components/Select";
-import type { Task, TaskFull, ProjectWithConfig, Subtask, TaskUpdatedPayload } from "../../types";
+import type { Task, TaskFull, ProjectWithConfig, Subtask, TaskUpdatedPayload, TaskExecution } from "../../types";
+import {
+  getTaskState,
+  getStateLabel,
+  getStateColor,
+  getComplexityLabel,
+  getComplexityColor,
+  getStatusFilterOptions,
+} from "../../lib/constants/taskStatus";
 
 const categories = ["feature", "bug", "refactor", "test", "docs"];
 const priorities = [
@@ -22,18 +30,51 @@ function TasksPage() {
   const [projectPath, setProjectPath] = useState<string | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [taskFullCache, setTaskFullCache] = useState<Map<string, TaskFull>>(new Map());
+  const [activeExecutions, setActiveExecutions] = useState<Map<string, TaskExecution>>(new Map());
 
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState(2);
   const [newTaskCategory, setNewTaskCategory] = useState("feature");
 
-  const filteredTasks = useMemo(
-    () => (selectedProjectId ? tasks.filter((t) => t.project_id === selectedProjectId) : tasks),
-    [tasks, selectedProjectId]
-  );
+  const [filterPriority, setFilterPriority] = useState<number | null>(null);
+  const [filterCategory, setFilterCategory] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<string | null>(null);
+
+  const filteredTasks = useMemo(() => {
+    let result = selectedProjectId ? tasks.filter((t) => t.project_id === selectedProjectId) : tasks;
+
+    if (filterPriority) {
+      result = result.filter((t) => t.priority === filterPriority);
+    }
+    if (filterCategory) {
+      result = result.filter((t) => t.category === filterCategory);
+    }
+    if (filterStatus) {
+      result = result.filter((t) => {
+        const full = taskFullCache.get(t.id);
+        const state = getTaskState(full || null);
+        return state === filterStatus;
+      });
+    }
+
+    return result;
+  }, [tasks, selectedProjectId, filterPriority, filterCategory, filterStatus, taskFullCache]);
 
   const pendingTasks = useMemo(() => filteredTasks.filter((t) => t.status !== "done"), [filteredTasks]);
   const doneTasks = useMemo(() => filteredTasks.filter((t) => t.status === "done"), [filteredTasks]);
+
+  const loadActiveExecutions = useCallback(async () => {
+    try {
+      const executions = await safeInvoke<TaskExecution[]>("get_all_active_executions");
+      const newMap = new Map<string, TaskExecution>();
+      for (const exec of executions) {
+        newMap.set(exec.task_id, exec);
+      }
+      setActiveExecutions(newMap);
+    } catch (e) {
+      console.error("Failed to load executions:", e);
+    }
+  }, []);
 
   const loadTasks = useCallback(async () => {
     const data = await safeInvoke<Task[]>("get_tasks").catch(() => []);
@@ -105,7 +146,7 @@ function TasksPage() {
     await safeInvoke("launch_task_workflow", {
       projectId: task.project_id,
       taskId: task.id,
-      microtaskId: null,
+      subtaskId: null,
     }).catch((e) => console.error("Failed to launch task workflow:", e));
   }
 
@@ -214,8 +255,10 @@ function TasksPage() {
 
   useEffect(() => {
     loadTasks();
+    loadActiveExecutions();
 
     let unlisten: (() => void) | null = null;
+    let unlistenExecution: (() => void) | null = null;
 
     safeListen<TaskUpdatedPayload>("task-updated", async (event) => {
       if (event.payload.source === "ai") {
@@ -243,8 +286,15 @@ function TasksPage() {
       unlisten = fn;
     });
 
+    safeListen("execution-changed", () => {
+      loadActiveExecutions();
+    }).then((fn) => {
+      unlistenExecution = fn;
+    });
+
     return () => {
       if (unlisten) unlisten();
+      if (unlistenExecution) unlistenExecution();
     };
   }, []);
 
@@ -285,6 +335,37 @@ function TasksPage() {
         </button>
       </div>
 
+      <div className="flex items-center gap-2 p-3 bg-[#1c1c1c] border-b border-[#3d3a34]">
+        <div className="flex-1"></div>
+        <Select
+          value={filterCategory || ""}
+          onChange={(v) => setFilterCategory(v || null)}
+          options={[{ value: "", label: "Categoria" }, ...getCategoryOptions()]}
+        />
+        <Select
+          value={filterPriority ? String(filterPriority) : ""}
+          onChange={(v) => setFilterPriority(v ? parseInt(v) : null)}
+          options={[{ value: "", label: "Prioridade" }, ...getPriorityOptions()]}
+        />
+        <Select
+          value={filterStatus || ""}
+          onChange={(v) => setFilterStatus(v || null)}
+          options={[{ value: "", label: "Status" }, ...getStatusFilterOptions()]}
+        />
+        {(filterCategory || filterPriority || filterStatus) && (
+          <button
+            onClick={() => {
+              setFilterCategory(null);
+              setFilterPriority(null);
+              setFilterStatus(null);
+            }}
+            className="px-3 py-2 text-xs text-[#636363] hover:text-[#d6d6d6] transition-colors"
+          >
+            Limpar
+          </button>
+        )}
+      </div>
+
       <div className="flex-1 overflow-y-auto p-3">
         {!selectedProjectId && projectsList.length > 0 && (
           <div className="text-center text-[#636363] py-8">Selecione um projeto para adicionar tarefas</div>
@@ -296,25 +377,55 @@ function TasksPage() {
               const taskSubtasks = getSubtasksForTask(task.id);
               const doneSubtasks = taskSubtasks.filter((s) => s.status === "done").length;
 
+              const activeExec = activeExecutions.get(task.id);
+              const isExecuting = activeExec && activeExec.status === "running";
+              const taskFull = taskFullCache.get(task.id);
+              const taskState = getTaskState(taskFull || null);
+              const complexity = taskFull?.complexity;
+
               return (
-                <div key={task.id} className="bg-[#232323] hover:bg-[#2a2a2a] transition-colors group">
+                <div key={task.id} className={`bg-[#232323] hover:bg-[#2a2a2a] transition-colors group ${isExecuting ? "ring-1 ring-[#909d63]" : ""}`}>
                   <div onClick={() => editTask(task.id)} className="flex items-center gap-3 px-3 py-2 cursor-pointer">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleTask(task.id, task.status);
-                      }}
-                      className="text-[#636363] hover:text-[#909d63] transition-colors"
-                    >
-                      [ ]
-                    </button>
-                    <span className="flex-1 text-[#d6d6d6] text-sm">{task.title}</span>
+                    {isExecuting ? (
+                       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#909d63" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                      </svg>
+                    ) : (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleTask(task.id, task.status);
+                        }}
+                        className="text-[#636363] hover:text-[#909d63] transition-colors"
+                      >
+                        [ ]
+                      </button>
+                    )}
+
+                    <span className="flex-1 text-[#d6d6d6] text-sm flex items-center gap-2">
+                      {task.title}
+                      {isExecuting && activeExec && (
+                        <span className="text-xs text-[#909d63] opacity-75">
+                           (Passo {activeExec.current_step}/{activeExec.total_steps})
+                        </span>
+                      )}
+                    </span>
 
                     {taskSubtasks.length > 0 && (
                       <span className="text-xs text-[#636363]">
                         {doneSubtasks}/{taskSubtasks.length}
                       </span>
                     )}
+
+                    {complexity && (
+                      <span className={`text-xs ${getComplexityColor(complexity)}`}>
+                        {getComplexityLabel(complexity)}
+                      </span>
+                    )}
+
+                    <span className="px-2 py-0.5 text-xs text-[#1c1c1c] rounded" style={{ backgroundColor: getStateColor(taskState) }}>
+                      {getStateLabel(taskState)}
+                    </span>
 
                     <span className="px-2 py-0.5 text-xs text-[#1c1c1c] bg-[#6b7c5e]">{task.category}</span>
                     <span className={`px-2 py-0.5 text-xs text-[#1c1c1c] ${getPriorityClass(task.priority)}`}>

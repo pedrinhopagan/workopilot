@@ -1,28 +1,25 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import { safeInvoke, safeListen } from "../../services/tauri"
 import { Select } from "../../components/Select"
 import { SubtaskList } from "../../components/tasks/SubtaskList"
+import { ImageGallery } from "../../components/tasks/ImageGallery"
 import { openCodeService } from "../../services/opencode"
-import type { Task, TaskFull, ProjectWithConfig, Subtask, TaskUpdatedPayload } from "../../types"
-
-type TaskState = "pending" | "ready_to_execute" | "in_progress" | "awaiting_review" | "done"
-
-const stateLabels: Record<TaskState, string> = {
-  pending: "Pendente",
-  ready_to_execute: "Pronta para executar",
-  in_progress: "Em execução",
-  awaiting_review: "Aguardando revisão",
-  done: "Concluída",
-}
-
-const stateColors: Record<TaskState, string> = {
-  pending: "#e5c07b",
-  ready_to_execute: "#909d63",
-  in_progress: "#61afef",
-  awaiting_review: "#e5c07b",
-  done: "#909d63",
-}
+import {
+  getTaskState,
+  stateLabels,
+  stateColors,
+  type TaskState,
+} from "../../lib/constants/taskStatus"
+import type {
+  Task,
+  TaskFull,
+  ProjectWithConfig,
+  Subtask,
+  TaskUpdatedPayload,
+  TaskExecution,
+  QuickfixPayload,
+} from "../../types"
 
 const categories = ["feature", "bug", "refactor", "test", "docs"]
 const priorities = [
@@ -30,16 +27,6 @@ const priorities = [
   { value: "2", label: "Média" },
   { value: "3", label: "Baixa" },
 ]
-
-function getTaskState(taskFull: TaskFull | null): TaskState {
-  if (!taskFull) return "pending"
-  if (taskFull.status === "done") return "done"
-  if (taskFull.status === "awaiting_review") return "awaiting_review"
-  const hasInProgress = taskFull.subtasks.some((s) => s.status === "in_progress")
-  if (hasInProgress) return "in_progress"
-  if (taskFull.initialized) return "ready_to_execute"
-  return "pending"
-}
 
 function getLastActionLabel(action: string | null): string | null {
   if (!action) return null
@@ -76,6 +63,20 @@ function TaskDetailPage() {
   const [showSubtaskSelector, setShowSubtaskSelector] = useState(false)
   const [isOpenCodeConnected, setIsOpenCodeConnected] = useState(false)
   const [lastKnownModifiedAt, setLastKnownModifiedAt] = useState<string | null>(null)
+  const [activeExecution, setActiveExecution] = useState<TaskExecution | null>(null)
+  const [quickfixInput, setQuickfixInput] = useState("")
+  const [isLaunchingQuickfix, setIsLaunchingQuickfix] = useState(false)
+
+  const isExecuting = useMemo(() => {
+    if (!activeExecution || activeExecution.status !== "running") return false
+    if (activeExecution.last_heartbeat) {
+      const last = new Date(activeExecution.last_heartbeat).getTime()
+      if (Date.now() - last > 5 * 60 * 1000) return false
+    }
+    return true
+  }, [activeExecution])
+
+  const isBlocked = isExecuting || isLaunchingStructure || isLaunchingExecuteAll || isLaunchingExecuteSubtask || isLaunchingReview || isLaunchingQuickfix
 
   const taskState = getTaskState(taskFull)
   const lastAction = taskFull ? getLastActionLabel(taskFull.ai_metadata.last_completed_action) : null
@@ -99,6 +100,28 @@ function TaskDetailPage() {
   }, [taskFull, taskState])
 
   const suggestedAction = getSuggestedAction()
+
+  const loadActiveExecution = useCallback(async () => {
+    try {
+      const exec = await safeInvoke<TaskExecution | null>("get_active_task_execution", { taskId })
+      setActiveExecution(exec)
+    } catch (e) {
+      console.error("Failed to load execution:", e)
+    }
+  }, [taskId])
+
+  async function launchQuickfix() {
+    if (!task?.project_id || !quickfixInput.trim() || isLaunchingQuickfix) return
+    setIsLaunchingQuickfix(true)
+    try {
+      await safeInvoke("send_quickfix", { taskId, prompt: quickfixInput.trim() })
+      setQuickfixInput("")
+      setTimeout(() => setIsLaunchingQuickfix(false), 5000)
+    } catch (e) {
+      console.error("Failed to launch quickfix:", e)
+      setIsLaunchingQuickfix(false)
+    }
+  }
 
   const loadTask = useCallback(async (isReload = false) => {
     if (!isReload) setIsLoading(true)
@@ -336,13 +359,16 @@ function TaskDetailPage() {
 
   useEffect(() => {
     loadTask()
-  }, [loadTask])
+    loadActiveExecution()
+  }, [loadTask, loadActiveExecution])
 
   useEffect(() => {
     let unlisten: (() => void) | null = null
     let unsubscribeIdle: (() => void) | null = null
     let unsubscribeFile: (() => void) | null = null
     let unsubscribeConnection: (() => void) | null = null
+    let unsubscribeExecution: (() => void) | null = null
+    let unsubscribeQuickfix: (() => void) | null = null
 
     async function setup() {
       unlisten = await safeListen<TaskUpdatedPayload>("task-updated", async (event) => {
@@ -351,6 +377,25 @@ function TaskDetailPage() {
           await loadTask(true)
           setAiUpdatedRecently(true)
           setTimeout(() => setAiUpdatedRecently(false), 5000)
+        }
+      })
+
+      unsubscribeExecution = await safeListen<TaskExecution>("execution-changed", (event) => {
+        if (event.payload.task_id === taskId) {
+          setActiveExecution(event.payload)
+          if (event.payload.status === "completed" || event.payload.status === "error") {
+            loadTask(true)
+          }
+        }
+      })
+
+      unsubscribeQuickfix = await safeListen<QuickfixPayload>("quickfix-changed", (event) => {
+        if (event.payload.task_id === taskId) {
+          console.log("Quickfix update:", event.payload)
+          if (event.payload.status !== "running") {
+            loadTask(true)
+            setIsLaunchingQuickfix(false)
+          }
         }
       })
 
@@ -390,6 +435,8 @@ function TaskDetailPage() {
       unsubscribeIdle?.()
       unsubscribeFile?.()
       unsubscribeConnection?.()
+      unsubscribeExecution?.()
+      unsubscribeQuickfix?.()
     }
   }, [taskId, projectPath, loadTask])
 
@@ -523,7 +570,7 @@ function TaskDetailPage() {
         <div className="px-4 py-4 flex items-stretch gap-3">
           <button
             onClick={structureTask}
-            disabled={!canStructure || isLaunchingStructure}
+            disabled={!canStructure || isBlocked}
             className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
               suggestedAction === "structure"
                 ? "border-[#e5c07b] bg-[#e5c07b]/10 text-[#e5c07b] shadow-lg shadow-[#e5c07b]/10"
@@ -551,7 +598,7 @@ function TaskDetailPage() {
 
           <button
             onClick={executeAll}
-            disabled={!canExecuteAll || isLaunchingExecuteAll}
+            disabled={!canExecuteAll || isBlocked}
             className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
               suggestedAction === "execute_all"
                 ? "border-[#909d63] bg-[#909d63]/10 text-[#909d63] shadow-lg shadow-[#909d63]/10"
@@ -579,7 +626,7 @@ function TaskDetailPage() {
           <div className="flex-1 relative">
             <button
               onClick={() => canExecuteSubtask && setShowSubtaskSelector(!showSubtaskSelector)}
-              disabled={!canExecuteSubtask || isLaunchingExecuteSubtask}
+              disabled={!canExecuteSubtask || isBlocked}
               className={`w-full h-full flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
                 suggestedAction === "execute_subtask"
                   ? "border-[#61afef] bg-[#61afef]/10 text-[#61afef] shadow-lg shadow-[#61afef]/10"
@@ -632,7 +679,7 @@ function TaskDetailPage() {
 
           <button
             onClick={reviewTask}
-            disabled={!canReview || isLaunchingReview}
+            disabled={!canReview || isBlocked}
             className={`flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
               suggestedAction === "review"
                 ? "border-[#e5c07b] bg-[#e5c07b]/10 text-[#e5c07b] shadow-lg shadow-[#e5c07b]/10"
@@ -658,6 +705,82 @@ function TaskDetailPage() {
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {isExecuting && activeExecution && (
+          <div className="p-4 bg-[#1c1c1c] border border-[#909d63] rounded-lg animate-fade-in relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-[#232323]">
+              <div 
+                className="h-full bg-[#909d63] transition-all duration-500 ease-out" 
+                style={{ width: `${(activeExecution.current_step / activeExecution.total_steps) * 100}%` }} 
+              />
+            </div>
+            
+            <div className="flex items-center gap-3 mb-2">
+              <span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#909d63]/20 text-[#909d63] text-xs">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+              </span>
+              <span className="text-[#909d63] font-medium text-sm">
+                Executando: Passo {activeExecution.current_step} de {activeExecution.total_steps}
+              </span>
+              {activeExecution.execution_type === "subtask" && (
+                <span className="text-xs px-2 py-0.5 rounded bg-[#909d63]/10 text-[#909d63] border border-[#909d63]/20">
+                  Subtask
+                </span>
+              )}
+            </div>
+            
+            <div className="pl-9 text-sm text-[#d6d6d6]">
+              {activeExecution.current_step_description || "Processando..."}
+            </div>
+
+            {activeExecution.tmux_session && (
+              <div className="mt-3 pl-9">
+                <button 
+                  onClick={() => safeInvoke("focus_tmux_session", { sessionName: activeExecution.tmux_session })}
+                  className="text-xs flex items-center gap-1.5 text-[#636363] hover:text-[#909d63] transition-colors"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect width="20" height="14" x="2" y="3" rx="2" />
+                    <line x1="8" y1="21" x2="16" y2="21" />
+                    <line x1="12" y1="17" x2="12" y2="21" />
+                  </svg>
+                  Abrir Terminal ({activeExecution.tmux_session})
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={quickfixInput}
+            onChange={(e) => setQuickfixInput(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && launchQuickfix()}
+            placeholder="Quickfix: Descreva uma correção rápida..."
+            disabled={isBlocked}
+            className="flex-1 px-4 py-2 bg-[#1c1c1c] border border-[#3d3a34] rounded-lg text-[#d6d6d6] text-sm focus:border-[#e5c07b] focus:outline-none transition-colors disabled:opacity-50"
+          />
+          <button
+            onClick={launchQuickfix}
+            disabled={!quickfixInput.trim() || isBlocked}
+            className="px-4 py-2 bg-[#e5c07b] text-[#1c1c1c] font-medium text-sm rounded-lg hover:bg-[#f5d08a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+          >
+            {isLaunchingQuickfix ? (
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m5 12 7-7 7 7" />
+                <path d="M12 19V5" />
+              </svg>
+            )}
+            Fix
+          </button>
+        </div>
+
         <section>
           <label className="block text-xs text-[#828282] uppercase tracking-wide mb-2">Descrição</label>
           <textarea
@@ -666,7 +789,8 @@ function TaskDetailPage() {
             onBlur={() => updateContext("description", taskFull.context.description)}
             placeholder="Descreva o objetivo desta tarefa..."
             rows={3}
-            className="w-full px-3 py-2 bg-[#232323] border border-[#3d3a34] text-[#d6d6d6] text-sm focus:border-[#909d63] focus:outline-none resize-none transition-colors"
+            disabled={isBlocked}
+            className="w-full px-3 py-2 bg-[#232323] border border-[#3d3a34] text-[#d6d6d6] text-sm focus:border-[#909d63] focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           />
         </section>
 
@@ -695,7 +819,8 @@ function TaskDetailPage() {
                 onChange={(e) => setNewRule(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && addRule()}
                 placeholder="Adicionar regra..."
-                className="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a]"
+                disabled={isBlocked}
+                className="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a] disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
           </div>
@@ -731,7 +856,8 @@ function TaskDetailPage() {
                 onBlur={() => updateContext("technical_notes", taskFull.context.technical_notes || null)}
                 placeholder="Stack, libs, padrões relevantes..."
                 rows={2}
-                className="w-full px-3 py-2 bg-[#232323] border border-[#3d3a34] text-[#d6d6d6] text-sm focus:border-[#909d63] focus:outline-none resize-none transition-colors"
+                disabled={isBlocked}
+                className="w-full px-3 py-2 bg-[#232323] border border-[#3d3a34] text-[#d6d6d6] text-sm focus:border-[#909d63] focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               />
             </div>
           )}
@@ -783,7 +909,8 @@ function TaskDetailPage() {
                   onChange={(e) => setNewCriteria(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addCriteria()}
                   placeholder="Adicionar critério..."
-                  className="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a]"
+                  disabled={isBlocked}
+                  className="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a] disabled:opacity-50 disabled:cursor-not-allowed"
                 />
               </div>
             </div>
@@ -798,7 +925,12 @@ function TaskDetailPage() {
           onCodar={codarSubtask}
           onUpdate={updateSubtask}
           onReorder={reorderSubtasks}
+          disabled={isBlocked}
         />
+
+        <section>
+          <ImageGallery taskId={taskId} />
+        </section>
 
         <section>
           <div className="flex items-center justify-between">
@@ -807,7 +939,8 @@ function TaskDetailPage() {
           <div className="mt-2 p-3 bg-[#232323] border border-[#3d3a34]">
             <button
               onClick={() => updateField("initialized", !taskFull.initialized)}
-              className="flex items-center gap-3 w-full text-left group"
+              disabled={isBlocked}
+              className={`flex items-center gap-3 w-full text-left group ${isBlocked ? "opacity-50 cursor-not-allowed" : ""}`}
             >
               <span className={`w-10 h-5 rounded-full transition-colors relative ${taskFull.initialized ? "bg-[#909d63]" : "bg-[#3d3a34]"}`}>
                 <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-[#d6d6d6] rounded-full transition-transform ${taskFull.initialized ? "translate-x-5" : "translate-x-0"}`} />

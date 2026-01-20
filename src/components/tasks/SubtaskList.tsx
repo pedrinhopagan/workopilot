@@ -10,6 +10,7 @@ type SubtaskListProps = {
   onCodar: (id: string) => void
   onUpdate: (id: string, field: keyof Subtask, value: unknown) => void
   onReorder: (subtasks: Subtask[]) => void
+  disabled?: boolean
 }
 
 export function SubtaskList({
@@ -20,6 +21,7 @@ export function SubtaskList({
   onCodar,
   onUpdate,
   onReorder,
+  disabled = false,
 }: SubtaskListProps) {
   const [newTitle, setNewTitle] = useState("")
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
@@ -70,7 +72,7 @@ export function SubtaskList({
   }
 
   return (
-    <section>
+    <section className={disabled ? "opacity-50 pointer-events-none" : ""}>
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-[#828282] uppercase tracking-wide">Subtasks</span>
         {subtasks.length > 0 && (
@@ -87,8 +89,8 @@ export function SubtaskList({
               <div className="flex flex-col pt-2">
                 <button
                   onClick={() => moveUp(index)}
-                  disabled={index === 0}
-                  className="text-[#636363] hover:text-[#909d63] disabled:text-[#3d3a34] disabled:cursor-not-allowed transition-colors p-0.5"
+                  disabled={index === 0 || disabled}
+                  className={`text-[#636363] hover:text-[#909d63] disabled:text-[#3d3a34] disabled:cursor-not-allowed transition-colors p-0.5 ${disabled ? "cursor-not-allowed" : ""}`}
                   title="Mover para cima"
                 >
                   <svg
@@ -107,8 +109,8 @@ export function SubtaskList({
                 </button>
                 <button
                   onClick={() => moveDown(index)}
-                  disabled={index === sortedSubtasks.length - 1}
-                  className="text-[#636363] hover:text-[#909d63] disabled:text-[#3d3a34] disabled:cursor-not-allowed transition-colors p-0.5"
+                  disabled={index === sortedSubtasks.length - 1 || disabled}
+                  className={`text-[#636363] hover:text-[#909d63] disabled:text-[#3d3a34] disabled:cursor-not-allowed transition-colors p-0.5 ${disabled ? "cursor-not-allowed" : ""}`}
                   title="Mover para baixo"
                 >
                   <svg
@@ -135,6 +137,7 @@ export function SubtaskList({
                   onUpdate={onUpdate}
                   expanded={expandedIds.has(subtask.id)}
                   onToggleExpand={toggleExpand}
+                  disabled={disabled}
                 />
               </div>
             </div>
@@ -154,11 +157,12 @@ export function SubtaskList({
           onChange={(e) => setNewTitle(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           placeholder="Adicionar subtask..."
-          className="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a]"
+          disabled={disabled}
+          className="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a] disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <button
           onClick={handleAdd}
-          disabled={!newTitle.trim()}
+          disabled={!newTitle.trim() || disabled}
           className="px-3 py-1 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           Adicionar
