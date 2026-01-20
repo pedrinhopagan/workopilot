@@ -91,6 +91,7 @@ impl Database {
         self.migrate_subtasks_table()?;
         self.migrate_operation_logs_table()?;
         self.migrate_task_executions_table()?;
+        self.migrate_task_images_table()?;
 
         Ok(())
     }
@@ -309,6 +310,23 @@ impl Database {
             );
             CREATE INDEX IF NOT EXISTS idx_task_executions_task_id ON task_executions(task_id);
             CREATE INDEX IF NOT EXISTS idx_task_executions_status ON task_executions(status);
+            ",
+        )?;
+        Ok(())
+    }
+
+    fn migrate_task_images_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS task_images (
+                id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                data BLOB NOT NULL,
+                mime_type TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_task_images_task_id ON task_images(task_id);
             ",
         )?;
         Ok(())
@@ -1274,6 +1292,74 @@ impl Database {
 
         Ok(count as i32)
     }
+
+    // ============================================
+    // Task Images CRUD
+    // ============================================
+
+    pub fn get_task_image_count(&self, task_id: &str) -> Result<i32> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT COUNT(*) FROM task_images WHERE task_id = ?1")?;
+        stmt.query_row([task_id], |row| row.get(0))
+    }
+
+    pub fn add_task_image(
+        &self,
+        task_id: &str,
+        data: &[u8],
+        mime_type: &str,
+        file_name: &str,
+    ) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        self.conn.execute(
+            "INSERT INTO task_images (id, task_id, data, mime_type, file_name) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![id, task_id, data, mime_type, file_name],
+        )?;
+        Ok(id)
+    }
+
+    pub fn get_task_images_metadata(&self, task_id: &str) -> Result<Vec<TaskImageMetadata>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, file_name, mime_type, created_at FROM task_images WHERE task_id = ?1 ORDER BY created_at ASC",
+        )?;
+
+        let images = stmt
+            .query_map([task_id], |row| {
+                Ok(TaskImageMetadata {
+                    id: row.get(0)?,
+                    file_name: row.get(1)?,
+                    mime_type: row.get(2)?,
+                    created_at: row.get(3)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(images)
+    }
+
+    pub fn get_task_image(&self, image_id: &str) -> Result<TaskImage> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, task_id, data, mime_type, file_name, created_at FROM task_images WHERE id = ?1",
+        )?;
+
+        stmt.query_row([image_id], |row| {
+            Ok(TaskImage {
+                id: row.get(0)?,
+                task_id: row.get(1)?,
+                data: row.get(2)?,
+                mime_type: row.get(3)?,
+                file_name: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })
+    }
+
+    pub fn delete_task_image(&self, image_id: &str) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM task_images WHERE id = ?1", [image_id])?;
+        Ok(())
+    }
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -1497,5 +1583,45 @@ impl TaskFull {
             due_date: None,
             scheduled_date: None,
         }
+    }
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct TaskImageMetadata {
+    pub id: String,
+    pub file_name: String,
+    pub mime_type: String,
+    pub created_at: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct TaskImage {
+    pub id: String,
+    pub task_id: String,
+    #[serde(with = "base64_serde")]
+    pub data: Vec<u8>,
+    pub mime_type: String,
+    pub file_name: String,
+    pub created_at: Option<String>,
+}
+
+mod base64_serde {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S>(bytes: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let encoded = STANDARD.encode(bytes);
+        encoded.serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<Vec<u8>, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        STANDARD.decode(&s).map_err(serde::de::Error::custom)
     }
 }

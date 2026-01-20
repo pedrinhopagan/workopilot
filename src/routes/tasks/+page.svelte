@@ -6,7 +6,7 @@
   import { onDestroy } from 'svelte';
   import { selectedProjectId, projectsList } from '$lib/stores/selectedProject';
   import type { Task, TaskFull, ProjectWithConfig, Subtask, TaskUpdatedPayload, TaskExecution } from '$lib/types';
-  import { getStatusLabel, getStatusColor, getComplexityLabel, getComplexityColor, getStatusFilterOptions } from '$lib/constants/taskStatus';
+  import { getTaskState, getStateLabel, getStateColor, getComplexityLabel, getComplexityColor, getStatusFilterOptions } from '$lib/constants/taskStatus';
   
   let tasks: Task[] = $state([]);
   let projectPath: string | null = $state(null);
@@ -422,10 +422,11 @@
         {@const executing = isTaskExecuting(task.id)}
         {@const execution = getTaskExecution(task.id)}
         {@const taskFull = taskFullCache.get(task.id)}
+        {@const taskState = getTaskState(taskFull, task.status)}
         
         <div 
           class="bg-[#232323] hover:bg-[#2a2a2a] transition-colors group {executing ? 'ring-1 ring-[#909d63]' : ''}"
-          style={task.status !== 'pending' && !executing ? `border-left: 3px solid ${getStatusColor(task.status)}` : ''}>
+          style={taskState !== 'pending' && !executing ? `border-left: 3px solid ${getStateColor(taskState)}` : ''}>
           <div 
             onclick={() => editTask(task.id)}
             class="flex items-center gap-2 px-3 py-2 cursor-pointer"
@@ -467,9 +468,9 @@
             
             <span 
               class="px-2 py-0.5 text-xs rounded" 
-              style="background-color: {getStatusColor(task.status)}20; color: {getStatusColor(task.status)};"
+              style="background-color: {getStateColor(taskState)}20; color: {getStateColor(taskState)};"
             >
-              {getStatusLabel(task.status)}
+              {getStateLabel(taskState)}
             </span>
             
             {#if taskFull?.complexity}
@@ -565,10 +566,11 @@
       <div class="space-y-1 opacity-50">
         {#each doneTasks as task}
           {@const taskFull = taskFullCache.get(task.id)}
+          {@const taskState = getTaskState(taskFull, task.status)}
           <div 
             onclick={() => editTask(task.id)}
             class="flex items-center gap-2 px-3 py-2 bg-[#232323] hover:bg-[#2a2a2a] transition-colors group cursor-pointer"
-            style="border-left: 3px solid {getStatusColor(task.status)}"
+            style="border-left: 3px solid {getStateColor(taskState)}"
           >
             <button 
               onclick={(e) => { e.stopPropagation(); toggleTask(task.id, task.status); }}
@@ -579,9 +581,9 @@
             <span class="flex-1 text-[#d6d6d6] text-sm line-through truncate">{task.title}</span>
             <span 
               class="px-2 py-0.5 text-xs rounded" 
-              style="background-color: {getStatusColor(task.status)}20; color: {getStatusColor(task.status)};"
+              style="background-color: {getStateColor(taskState)}20; color: {getStateColor(taskState)};"
             >
-              {getStatusLabel(task.status)}
+              {getStateLabel(taskState)}
             </span>
             {#if taskFull?.complexity}
               <span 

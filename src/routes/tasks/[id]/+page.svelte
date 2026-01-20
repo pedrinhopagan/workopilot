@@ -3,7 +3,11 @@ import { goto } from "$app/navigation";
 import { page } from "$app/stores";
 import Select from "$lib/components/Select.svelte";
 import SubtaskList from "$lib/components/tasks/SubtaskList.svelte";
+import ImageUploader from "$lib/components/tasks/ImageUploader.svelte";
+import ImageGallery from "$lib/components/tasks/ImageGallery.svelte";
+import ImageModal from "$lib/components/tasks/ImageModal.svelte";
 import { openCodeConnected, openCodeService } from "$lib/services/opencode";
+import { getTaskState as getTaskStateFromFull, getStateLabel, getStateColor, type TaskState } from "$lib/constants/taskStatus";
 import type {
 	ProjectWithConfig,
 	QuickfixPayload,
@@ -11,6 +15,7 @@ import type {
 	Task,
 	TaskExecution,
 	TaskFull,
+	TaskImageMetadata,
 	TaskUpdatedPayload,
 } from "$lib/types";
 import { invoke } from "@tauri-apps/api/core";
@@ -52,56 +57,15 @@ let isLaunchingQuickfix = $state(false);
 let isAdjusting = $state(false);
 let adjustingPrompt = $state<string | null>(null);
 let unlistenQuickfix: TauriUnlistenFn | null = null;
+let taskImages: TaskImageMetadata[] = $state([]);
+let viewingImageId: string | null = $state(null);
 
 openCodeConnected.subscribe((value) => {
 	isOpenCodeConnected = value;
 });
 
-function getTaskState():
-	| "pending"
-	| "ready_to_execute"
-	| "in_progress"
-	| "awaiting_review"
-	| "done" {
-	if (!taskFull) return "pending";
-
-	if (taskFull.status === "done") return "done";
-
-	const hasPendingSubtasks = taskFull.subtasks.some((s) => s.status === "pending");
-	const hasInProgressSubtasks = taskFull.subtasks.some((s) => s.status === "in_progress");
-	const allSubtasksDone = taskFull.subtasks.length > 0 && taskFull.subtasks.every((s) => s.status === "done");
-
-	if (hasInProgressSubtasks) return "in_progress";
-	
-	if (allSubtasksDone) return "awaiting_review";
-
-	if (hasPendingSubtasks && taskFull.initialized) return "ready_to_execute";
-
-	if (taskFull.initialized && taskFull.subtasks.length === 0) return "ready_to_execute";
-
-	return "pending";
-}
-
-function getStateLabel(state: ReturnType<typeof getTaskState>): string {
-	const labels = {
-		pending: "Pendente",
-		ready_to_execute: "Pronta para executar",
-		in_progress: "Em execução",
-		awaiting_review: "Aguardando revisão",
-		done: "Concluída",
-	};
-	return labels[state];
-}
-
-function getStateColor(state: ReturnType<typeof getTaskState>): string {
-	const colors = {
-		pending: "#e5c07b",
-		ready_to_execute: "#909d63",
-		in_progress: "#61afef",
-		awaiting_review: "#e5c07b",
-		done: "#909d63",
-	};
-	return colors[state];
+function getTaskState(): TaskState {
+	return getTaskStateFromFull(taskFull);
 }
 
 function canStructure(): boolean {
@@ -203,6 +167,8 @@ async function loadTask(isReload = false) {
 				showAcceptanceCriteria =
 					!!taskFull?.context.acceptance_criteria?.length;
 			}
+			
+			await loadTaskImages();
 		}
 	} catch (e) {
 		console.error("Failed to load task:", e);
@@ -223,6 +189,37 @@ async function loadActiveExecution() {
 		console.error("Failed to load active execution:", e);
 		activeExecution = null;
 	}
+}
+
+async function loadTaskImages() {
+	if (!taskId) return;
+	try {
+		taskImages = await invoke<TaskImageMetadata[]>("get_task_images", { taskId });
+	} catch (e) {
+		console.error("Failed to load task images:", e);
+		taskImages = [];
+	}
+}
+
+async function handleImageUpload() {
+	await loadTaskImages();
+}
+
+async function handleImageDelete(imageId: string) {
+	try {
+		await invoke("delete_task_image", { imageId });
+		await loadTaskImages();
+	} catch (e) {
+		console.error("Failed to delete image:", e);
+	}
+}
+
+function handleImageView(imageId: string) {
+	viewingImageId = imageId;
+}
+
+function closeImageModal() {
+	viewingImageId = null;
 }
 
 function isExecuting(): boolean {
@@ -1227,6 +1224,27 @@ $effect(() => {
       {/if}
     </section>
     
+    <section>
+      <div class="flex items-center justify-between mb-2">
+        <label class="block text-xs text-[#828282] uppercase tracking-wide">Imagens</label>
+        {#if taskId}
+          <ImageUploader
+            taskId={taskId}
+            imageCount={taskImages.length}
+            maxImages={5}
+            disabled={isBlocked()}
+            onUpload={handleImageUpload}
+          />
+        {/if}
+      </div>
+      <ImageGallery
+        images={taskImages}
+        disabled={isBlocked()}
+        onDelete={handleImageDelete}
+        onView={handleImageView}
+      />
+    </section>
+    
     <SubtaskList
       subtasks={taskFull.subtasks}
       onAdd={addSubtask}
@@ -1270,6 +1288,8 @@ $effect(() => {
       <pre class="w-full px-3 py-2 bg-[#1c1c1c] border border-[#3d3a34] text-[#909d63] text-xs overflow-x-auto font-mono"><code>{JSON.stringify(taskFull.ai_metadata, null, 2)}</code></pre>
     </section>
   </div>
+  
+  <ImageModal imageId={viewingImageId} onClose={closeImageModal} />
 {/if}
 
 <style>

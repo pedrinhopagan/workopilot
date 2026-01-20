@@ -1,8 +1,9 @@
 use crate::database::{
     CalendarTask, Project, ProjectRoute, ProjectWithConfig, SessionLog, Task, TaskExecution,
-    TaskFull, TmuxConfig,
+    TaskFull, TaskImage, TaskImageMetadata, TmuxConfig,
 };
 use crate::AppState;
+use base64::{engine::general_purpose::STANDARD, Engine};
 use std::process::Command;
 use tauri::{Emitter, Manager, State};
 
@@ -1185,4 +1186,59 @@ pub async fn launch_quickfix_background(
     });
 
     Ok(())
+}
+
+const MAX_IMAGES_PER_TASK: i32 = 5;
+const ALLOWED_MIME_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "image/webp"];
+
+#[tauri::command]
+pub fn add_task_image(
+    state: State<AppState>,
+    task_id: String,
+    file_data: String,
+    file_name: String,
+    mime_type: String,
+) -> Result<String, String> {
+    if !ALLOWED_MIME_TYPES.contains(&mime_type.as_str()) {
+        return Err(format!(
+            "Invalid mime type: {}. Allowed: PNG, JPG, GIF, WebP",
+            mime_type
+        ));
+    }
+
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+
+    let current_count = db.get_task_image_count(&task_id).map_err(|e| e.to_string())?;
+    if current_count >= MAX_IMAGES_PER_TASK {
+        return Err(format!(
+            "Maximum of {} images per task reached",
+            MAX_IMAGES_PER_TASK
+        ));
+    }
+
+    let data = STANDARD
+        .decode(&file_data)
+        .map_err(|e| format!("Invalid base64 data: {}", e))?;
+
+    db.add_task_image(&task_id, &data, &mime_type, &file_name)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_task_images(state: State<AppState>, task_id: String) -> Result<Vec<TaskImageMetadata>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_task_images_metadata(&task_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_task_image(state: State<AppState>, image_id: String) -> Result<TaskImage, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_task_image(&image_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_task_image(state: State<AppState>, image_id: String) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.delete_task_image(&image_id).map_err(|e| e.to_string())
 }
