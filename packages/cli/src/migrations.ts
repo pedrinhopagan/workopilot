@@ -123,6 +123,78 @@ async function createOperationLogsTable(db: Kysely<Database>): Promise<Migration
   };
 }
 
+async function createTaskExecutionsTable(db: Kysely<Database>): Promise<MigrationResult> {
+  const exists = await tableExists(db, "task_executions");
+  if (exists) {
+    return {
+      name: "create_task_executions_table",
+      success: true,
+      message: "Table already exists",
+    };
+  }
+
+  await sql`
+    CREATE TABLE task_executions (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      subtask_id TEXT REFERENCES subtasks(id) ON DELETE CASCADE,
+      execution_type TEXT NOT NULL DEFAULT 'full',
+      status TEXT NOT NULL DEFAULT 'running',
+      current_step INTEGER DEFAULT 0,
+      total_steps INTEGER DEFAULT 0,
+      current_step_description TEXT,
+      waiting_for_input INTEGER DEFAULT 0,
+      tmux_session TEXT,
+      pid INTEGER,
+      last_heartbeat TEXT DEFAULT CURRENT_TIMESTAMP,
+      error_message TEXT,
+      started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      ended_at TEXT
+    )
+  `.execute(db);
+
+  await sql`CREATE INDEX idx_task_executions_task_id ON task_executions(task_id)`.execute(db);
+  await sql`CREATE INDEX idx_task_executions_status ON task_executions(status)`.execute(db);
+  await sql`CREATE UNIQUE INDEX idx_task_executions_running ON task_executions(task_id) WHERE status = 'running'`.execute(db);
+
+  return {
+    name: "create_task_executions_table",
+    success: true,
+    message: "Table created with indexes",
+  };
+}
+
+async function createTaskTerminalsTable(db: Kysely<Database>): Promise<MigrationResult> {
+  const exists = await tableExists(db, "task_terminals");
+  if (exists) {
+    return {
+      name: "create_task_terminals_table",
+      success: true,
+      message: "Table already exists",
+    };
+  }
+
+  await sql`
+    CREATE TABLE task_terminals (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+      tmux_session TEXT NOT NULL,
+      last_subtask_id TEXT REFERENCES subtasks(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `.execute(db);
+
+  await sql`CREATE UNIQUE INDEX idx_task_terminals_task_id ON task_terminals(task_id)`.execute(db);
+  await sql`CREATE INDEX idx_task_terminals_tmux_session ON task_terminals(tmux_session)`.execute(db);
+
+  return {
+    name: "create_task_terminals_table",
+    success: true,
+    message: "Table created with indexes",
+  };
+}
+
 export async function runMigrations(db: Kysely<Database>): Promise<MigrationResult[]> {
   const results: MigrationResult[] = [];
 
@@ -130,6 +202,8 @@ export async function runMigrations(db: Kysely<Database>): Promise<MigrationResu
     results.push(await migrateTasksTable(db));
     results.push(await createSubtasksTable(db));
     results.push(await createOperationLogsTable(db));
+    results.push(await createTaskExecutionsTable(db));
+    results.push(await createTaskTerminalsTable(db));
   } catch (error) {
     results.push({
       name: "migration_error",

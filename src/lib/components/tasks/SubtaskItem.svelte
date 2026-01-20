@@ -9,9 +9,10 @@
     onUpdate: (id: string, field: keyof Subtask, value: any) => void;
     expanded?: boolean;
     onToggleExpand: (id: string) => void;
+    disabled?: boolean;
   }
   
-  let { subtask, onToggle, onRemove, onCodar, onUpdate, expanded = false, onToggleExpand }: Props = $props();
+  let { subtask, onToggle, onRemove, onCodar, onUpdate, expanded = false, onToggleExpand, disabled = false }: Props = $props();
   
   let isDone = $derived(subtask.status === 'done');
   let hasDetails = $derived(

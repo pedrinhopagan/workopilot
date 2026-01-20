@@ -4,7 +4,7 @@ import { getDb, closeDb, getDbPathInfo } from "./db";
 import { runMigrations } from "./migrations";
 import { migrateJsonToSqlite } from "./json-migration";
 import { logOperation } from "./logger";
-import type { TaskFull, Subtask, AIMetadata, TaskContext } from "./types";
+import type { TaskFull, Subtask, AIMetadata, TaskContext, TaskTerminal } from "./types";
 
 const program = new Command();
 
@@ -672,5 +672,686 @@ program
       process.exit(1);
     }
   });
+
+program
+  .command("start-execution <taskId>")
+  .description("Start task execution tracking")
+  .option("-s, --subtask <subtaskId>", "Execute specific subtask instead of full task")
+  .option("-t, --tmux <session>", "Link to tmux session")
+  .option("-p, --pid <pid>", "Process ID to monitor")
+  .option("--total-steps <steps>", "Total number of steps", "0")
+  .action(
+    async (
+      taskId: string,
+      options: {
+        subtask?: string;
+        tmux?: string;
+        pid?: string;
+        totalSteps: string;
+      }
+    ) => {
+      try {
+        const db = getDb();
+
+        const task = await db
+          .selectFrom("tasks")
+          .select("id")
+          .where("id", "=", taskId)
+          .executeTakeFirst();
+
+        if (!task) {
+          console.error(JSON.stringify({ error: "Task not found", taskId }));
+          process.exit(1);
+        }
+
+        const existingExecution = await db
+          .selectFrom("task_executions")
+          .selectAll()
+          .where("task_id", "=", taskId)
+          .where("status", "=", "running")
+          .executeTakeFirst();
+
+        if (existingExecution) {
+          console.error(
+            JSON.stringify({
+              error: "Task already has an active execution",
+              taskId,
+              executionId: existingExecution.id,
+            })
+          );
+          process.exit(1);
+        }
+
+        const id = crypto.randomUUID();
+        const now = new Date().toISOString();
+
+        const execution = {
+          id,
+          task_id: taskId,
+          subtask_id: options.subtask ?? null,
+          execution_type: options.subtask ? "subtask" : "full",
+          status: "running",
+          current_step: 0,
+          total_steps: parseInt(options.totalSteps, 10),
+          current_step_description: null,
+          waiting_for_input: 0,
+          tmux_session: options.tmux ?? null,
+          pid: options.pid ? parseInt(options.pid, 10) : null,
+          last_heartbeat: now,
+          error_message: null,
+          ended_at: null,
+        };
+
+        await db.insertInto("task_executions").values(execution).execute();
+
+        console.log(
+          JSON.stringify(
+            {
+              success: true,
+              execution: { ...execution, started_at: now },
+            },
+            null,
+            2
+          )
+        );
+        await closeDb();
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            error: "Failed to start execution",
+            message: error instanceof Error ? error.message : String(error),
+          })
+        );
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("end-execution <taskId>")
+  .description("End task execution tracking")
+  .option("-s, --status <status>", "Final status (completed, cancelled, error)", "completed")
+  .option("-e, --error <message>", "Error message if status is error")
+  .action(
+    async (
+      taskId: string,
+      options: { status: string; error?: string }
+    ) => {
+      try {
+        const db = getDb();
+
+        const execution = await db
+          .selectFrom("task_executions")
+          .selectAll()
+          .where("task_id", "=", taskId)
+          .where("status", "=", "running")
+          .executeTakeFirst();
+
+        if (!execution) {
+          console.error(
+            JSON.stringify({ error: "No active execution found", taskId })
+          );
+          process.exit(1);
+        }
+
+        const now = new Date().toISOString();
+        const updates: Record<string, unknown> = {
+          status: options.status,
+          ended_at: now,
+          last_heartbeat: now,
+        };
+
+        if (options.error) {
+          updates.error_message = options.error;
+        }
+
+        await db
+          .updateTable("task_executions")
+          .set(updates)
+          .where("id", "=", execution.id)
+          .execute();
+
+        console.log(
+          JSON.stringify(
+            {
+              success: true,
+              executionId: execution.id,
+              taskId,
+              finalStatus: options.status,
+              endedAt: now,
+            },
+            null,
+            2
+          )
+        );
+        await closeDb();
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            error: "Failed to end execution",
+            message: error instanceof Error ? error.message : String(error),
+          })
+        );
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("update-execution <taskId>")
+  .description("Update execution progress")
+  .option("-c, --current-step <step>", "Current step number")
+  .option("-t, --total-steps <steps>", "Total number of steps")
+  .option("-d, --description <desc>", "Current step description")
+  .option("-w, --waiting-for-input <bool>", "Whether waiting for user input (true/false)")
+  .option("--heartbeat", "Update heartbeat timestamp only")
+  .action(
+    async (
+      taskId: string,
+      options: {
+        currentStep?: string;
+        totalSteps?: string;
+        description?: string;
+        waitingForInput?: string;
+        heartbeat?: boolean;
+      }
+    ) => {
+      try {
+        const db = getDb();
+
+        const execution = await db
+          .selectFrom("task_executions")
+          .selectAll()
+          .where("task_id", "=", taskId)
+          .where("status", "=", "running")
+          .executeTakeFirst();
+
+        if (!execution) {
+          console.error(
+            JSON.stringify({ error: "No active execution found", taskId })
+          );
+          process.exit(1);
+        }
+
+        const now = new Date().toISOString();
+        const updates: Record<string, unknown> = {
+          last_heartbeat: now,
+        };
+
+        if (options.currentStep) {
+          updates.current_step = parseInt(options.currentStep, 10);
+        }
+        if (options.totalSteps) {
+          updates.total_steps = parseInt(options.totalSteps, 10);
+        }
+        if (options.description) {
+          updates.current_step_description = options.description;
+        }
+        if (options.waitingForInput !== undefined) {
+          updates.waiting_for_input = options.waitingForInput === "true" ? 1 : 0;
+        }
+
+        await db
+          .updateTable("task_executions")
+          .set(updates)
+          .where("id", "=", execution.id)
+          .execute();
+
+        console.log(
+          JSON.stringify(
+            {
+              success: true,
+              executionId: execution.id,
+              taskId,
+              updated: updates,
+            },
+            null,
+            2
+          )
+        );
+        await closeDb();
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            error: "Failed to update execution",
+            message: error instanceof Error ? error.message : String(error),
+          })
+        );
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("get-execution <taskId>")
+  .description("Get current execution status for a task")
+  .action(async (taskId: string) => {
+    try {
+      const db = getDb();
+
+      const execution = await db
+        .selectFrom("task_executions")
+        .selectAll()
+        .where("task_id", "=", taskId)
+        .where("status", "=", "running")
+        .executeTakeFirst();
+
+      if (!execution) {
+        console.log(
+          JSON.stringify({ isExecuting: false, taskId }, null, 2)
+        );
+        await closeDb();
+        return;
+      }
+
+      console.log(
+        JSON.stringify(
+          {
+            isExecuting: true,
+            taskId,
+            execution: {
+              ...execution,
+              waiting_for_input: execution.waiting_for_input === 1,
+            },
+          },
+          null,
+          2
+        )
+      );
+      await closeDb();
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          error: "Failed to get execution",
+          message: error instanceof Error ? error.message : String(error),
+        })
+      );
+      process.exit(1);
+    }
+  });
+
+program
+  .command("cleanup-executions")
+  .description("Cleanup stale executions (no heartbeat for 5+ minutes)")
+  .option("-t, --timeout <minutes>", "Timeout in minutes", "5")
+  .option("--dry-run", "Show what would be cleaned up without making changes")
+  .action(async (options: { timeout: string; dryRun?: boolean }) => {
+    try {
+      const db = getDb();
+      const timeoutMs = parseInt(options.timeout, 10) * 60 * 1000;
+      const cutoffTime = new Date(Date.now() - timeoutMs).toISOString();
+
+      const staleExecutions = await db
+        .selectFrom("task_executions")
+        .selectAll()
+        .where("status", "=", "running")
+        .where("last_heartbeat", "<", cutoffTime)
+        .execute();
+
+      if (options.dryRun) {
+        console.log(
+          JSON.stringify(
+            {
+              dryRun: true,
+              staleCount: staleExecutions.length,
+              staleExecutions: staleExecutions.map((e) => ({
+                id: e.id,
+                taskId: e.task_id,
+                lastHeartbeat: e.last_heartbeat,
+              })),
+            },
+            null,
+            2
+          )
+        );
+        await closeDb();
+        return;
+      }
+
+      if (staleExecutions.length > 0) {
+        const now = new Date().toISOString();
+        await db
+          .updateTable("task_executions")
+          .set({
+            status: "error",
+            error_message: "Execution timed out (no heartbeat)",
+            ended_at: now,
+          })
+          .where("status", "=", "running")
+          .where("last_heartbeat", "<", cutoffTime)
+          .execute();
+      }
+
+      console.log(
+        JSON.stringify(
+          {
+            success: true,
+            cleanedUp: staleExecutions.length,
+            executionIds: staleExecutions.map((e) => e.id),
+          },
+          null,
+          2
+        )
+      );
+      await closeDb();
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          error: "Failed to cleanup executions",
+          message: error instanceof Error ? error.message : String(error),
+        })
+      );
+      process.exit(1);
+    }
+  });
+
+program
+  .command("link-terminal <taskId>")
+  .description("Link a tmux session to a task (persistent binding)")
+  .requiredOption("-t, --tmux <session>", "Tmux session name")
+  .option("-s, --subtask <subtaskId>", "Set initial last_subtask_id")
+  .action(
+    async (
+      taskId: string,
+      options: { tmux: string; subtask?: string }
+    ) => {
+      try {
+        const db = getDb();
+
+        const task = await db
+          .selectFrom("tasks")
+          .select("id")
+          .where("id", "=", taskId)
+          .executeTakeFirst();
+
+        if (!task) {
+          console.error(JSON.stringify({ error: "Task not found", taskId }));
+          process.exit(1);
+        }
+
+        const existing = await db
+          .selectFrom("task_terminals")
+          .selectAll()
+          .where("task_id", "=", taskId)
+          .executeTakeFirst();
+
+        const now = new Date().toISOString();
+
+        if (existing) {
+          await db
+            .updateTable("task_terminals")
+            .set({
+              tmux_session: options.tmux,
+              last_subtask_id: options.subtask ?? existing.last_subtask_id,
+              updated_at: now,
+            })
+            .where("id", "=", existing.id)
+            .execute();
+
+          console.log(
+            JSON.stringify(
+              {
+                success: true,
+                action: "updated",
+                taskId,
+                terminal: {
+                  id: existing.id,
+                  tmux_session: options.tmux,
+                  last_subtask_id: options.subtask ?? existing.last_subtask_id,
+                },
+              },
+              null,
+              2
+            )
+          );
+        } else {
+          const id = crypto.randomUUID();
+          const terminal = {
+            id,
+            task_id: taskId,
+            tmux_session: options.tmux,
+            last_subtask_id: options.subtask ?? null,
+            updated_at: now,
+          };
+
+          await db.insertInto("task_terminals").values(terminal).execute();
+
+          console.log(
+            JSON.stringify(
+              {
+                success: true,
+                action: "created",
+                taskId,
+                terminal: { ...terminal, created_at: now },
+              },
+              null,
+              2
+            )
+          );
+        }
+
+        await closeDb();
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            error: "Failed to link terminal",
+            message: error instanceof Error ? error.message : String(error),
+          })
+        );
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("get-terminal <taskId>")
+  .description("Get terminal linked to a task")
+  .action(async (taskId: string) => {
+    try {
+      const db = getDb();
+
+      const terminal = await db
+        .selectFrom("task_terminals")
+        .selectAll()
+        .where("task_id", "=", taskId)
+        .executeTakeFirst();
+
+      if (!terminal) {
+        console.log(
+          JSON.stringify({ hasTerminal: false, taskId }, null, 2)
+        );
+        await closeDb();
+        return;
+      }
+
+      const result: { hasTerminal: boolean; taskId: string; terminal: TaskTerminal } = {
+        hasTerminal: true,
+        taskId,
+        terminal: {
+          id: terminal.id,
+          task_id: terminal.task_id,
+          tmux_session: terminal.tmux_session,
+          last_subtask_id: terminal.last_subtask_id,
+          created_at: terminal.created_at,
+          updated_at: terminal.updated_at,
+        },
+      };
+
+      console.log(JSON.stringify(result, null, 2));
+      await closeDb();
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          error: "Failed to get terminal",
+          message: error instanceof Error ? error.message : String(error),
+        })
+      );
+      process.exit(1);
+    }
+  });
+
+program
+  .command("unlink-terminal <taskId>")
+  .description("Remove terminal link from a task")
+  .action(async (taskId: string) => {
+    try {
+      const db = getDb();
+
+      const terminal = await db
+        .selectFrom("task_terminals")
+        .select("id")
+        .where("task_id", "=", taskId)
+        .executeTakeFirst();
+
+      if (!terminal) {
+        console.log(
+          JSON.stringify({ success: true, message: "No terminal was linked", taskId }, null, 2)
+        );
+        await closeDb();
+        return;
+      }
+
+      await db
+        .deleteFrom("task_terminals")
+        .where("task_id", "=", taskId)
+        .execute();
+
+      console.log(
+        JSON.stringify({ success: true, unlinked: true, taskId }, null, 2)
+      );
+      await closeDb();
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          error: "Failed to unlink terminal",
+          message: error instanceof Error ? error.message : String(error),
+        })
+      );
+      process.exit(1);
+    }
+  });
+
+program
+  .command("update-terminal-subtask <taskId>")
+  .description("Update the last executed subtask for a terminal (for /new detection)")
+  .requiredOption("-s, --subtask <subtaskId>", "Subtask ID that was just executed")
+  .action(
+    async (
+      taskId: string,
+      options: { subtask: string }
+    ) => {
+      try {
+        const db = getDb();
+
+        const terminal = await db
+          .selectFrom("task_terminals")
+          .selectAll()
+          .where("task_id", "=", taskId)
+          .executeTakeFirst();
+
+        if (!terminal) {
+          console.error(
+            JSON.stringify({ error: "No terminal linked to task", taskId })
+          );
+          process.exit(1);
+        }
+
+        const previousSubtaskId = terminal.last_subtask_id;
+        const needsNewContext = previousSubtaskId !== null && previousSubtaskId !== options.subtask;
+        const now = new Date().toISOString();
+
+        await db
+          .updateTable("task_terminals")
+          .set({
+            last_subtask_id: options.subtask,
+            updated_at: now,
+          })
+          .where("id", "=", terminal.id)
+          .execute();
+
+        console.log(
+          JSON.stringify(
+            {
+              success: true,
+              taskId,
+              previousSubtaskId,
+              newSubtaskId: options.subtask,
+              needsNewContext,
+            },
+            null,
+            2
+          )
+        );
+        await closeDb();
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            error: "Failed to update terminal subtask",
+            message: error instanceof Error ? error.message : String(error),
+          })
+        );
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("check-needs-new <taskId>")
+  .description("Check if executing a subtask requires /new (context reset)")
+  .requiredOption("-s, --subtask <subtaskId>", "Subtask about to be executed")
+  .action(
+    async (
+      taskId: string,
+      options: { subtask: string }
+    ) => {
+      try {
+        const db = getDb();
+
+        const terminal = await db
+          .selectFrom("task_terminals")
+          .selectAll()
+          .where("task_id", "=", taskId)
+          .executeTakeFirst();
+
+        if (!terminal) {
+          console.log(
+            JSON.stringify({
+              needsNew: false,
+              reason: "no_terminal_linked",
+              taskId,
+            }, null, 2)
+          );
+          await closeDb();
+          return;
+        }
+
+        const needsNew = terminal.last_subtask_id !== null && terminal.last_subtask_id !== options.subtask;
+
+        console.log(
+          JSON.stringify(
+            {
+              needsNew,
+              reason: needsNew ? "different_subtask" : terminal.last_subtask_id === null ? "first_subtask" : "same_subtask",
+              taskId,
+              lastSubtaskId: terminal.last_subtask_id,
+              targetSubtaskId: options.subtask,
+              tmuxSession: terminal.tmux_session,
+            },
+            null,
+            2
+          )
+        );
+        await closeDb();
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            error: "Failed to check needs new",
+            message: error instanceof Error ? error.message : String(error),
+          })
+        );
+        process.exit(1);
+      }
+    }
+  );
 
 program.parse();

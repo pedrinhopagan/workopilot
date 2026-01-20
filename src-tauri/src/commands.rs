@@ -1,9 +1,10 @@
 use crate::database::{
-    CalendarTask, Project, ProjectRoute, ProjectWithConfig, SessionLog, Task, TaskFull, TmuxConfig,
+    CalendarTask, Project, ProjectRoute, ProjectWithConfig, SessionLog, Task, TaskExecution,
+    TaskFull, TmuxConfig,
 };
 use crate::AppState;
 use std::process::Command;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 
 #[tauri::command]
 pub fn get_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
@@ -623,6 +624,8 @@ fn launch_in_workopilot_session(
     task_id: &str,
     is_structuring: bool,
 ) -> Result<(), String> {
+    eprintln!("[WorkoPilot] launch_in_workopilot_session called");
+    
     let session_name = "workopilot";
 
     let task_short = if task_id.len() > 8 {
@@ -636,9 +639,16 @@ fn launch_in_workopilot_session(
         .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
         .collect();
     let tab_name = format!("{}-{}", safe_name, task_short);
+    
+    eprintln!("[WorkoPilot] Session: {}, Tab: {}, is_structuring: {}", session_name, tab_name, is_structuring);
 
-    let first_route = project.routes.first().ok_or("No routes configured")?;
+    let first_route = project.routes.first().ok_or_else(|| {
+        eprintln!("[WorkoPilot] No routes configured for project");
+        "No routes configured".to_string()
+    })?;
     let project_path = &first_route.path;
+    
+    eprintln!("[WorkoPilot] Project path: {}", project_path);
 
     let escaped_prompt = initial_prompt.replace('\\', "\\\\").replace('"', "\\\"");
 
@@ -697,6 +707,8 @@ fn launch_in_workopilot_session(
         }
     }
 
+    eprintln!("[WorkoPilot] Creating new window, generating script...");
+    
     let loading_animation =
         generate_loading_animation_script(session_name, &tab_name, &escaped_prompt);
 
@@ -706,42 +718,74 @@ SESSION="{session_name}"
 TAB_NAME="{tab_name}"
 PROJECT_PATH="{project_path}"
 
+echo "[WorkoPilot Script] Starting..."
+echo "[WorkoPilot Script] Session: $SESSION, Tab: $TAB_NAME"
+echo "[WorkoPilot Script] Project path: $PROJECT_PATH"
+
 if tmux has-session -t "$SESSION" 2>/dev/null; then
+    echo "[WorkoPilot Script] Session exists, killing old window if any..."
     # Kill existing tab if it exists (might be in bad state)
     tmux kill-window -t "$SESSION:$TAB_NAME" 2>/dev/null
     tmux new-window -t "$SESSION" -n "$TAB_NAME" -c "$PROJECT_PATH"
 else
+    echo "[WorkoPilot Script] Creating new session..."
     tmux new-session -d -s "$SESSION" -n "$TAB_NAME" -c "$PROJECT_PATH"
 fi
 
 sleep 0.3
+echo "[WorkoPilot Script] Sending opencode command..."
 tmux send-keys -t "$SESSION:$TAB_NAME" "opencode" Enter
 
 {loading_animation}
 
 tmux select-window -t "$SESSION:$TAB_NAME"
+echo "[WorkoPilot Script] Attaching to session..."
 tmux attach-session -t "$SESSION"
 "#
     );
 
-    Command::new("alacritty")
+    eprintln!("[WorkoPilot] Spawning alacritty...");
+    
+    match Command::new("alacritty")
         .arg("-e")
         .arg("bash")
         .arg("-c")
         .arg(&script)
         .spawn()
-        .map_err(|e| format!("Failed to launch terminal: {}", e))?;
-
-    Ok(())
+    {
+        Ok(child) => {
+            eprintln!("[WorkoPilot] Alacritty spawned successfully, pid: {:?}", child.id());
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("[WorkoPilot] Failed to spawn alacritty: {}", e);
+            Err(format!("Failed to launch terminal: {}", e))
+        }
+    }
 }
 
 fn copy_all_skills(app_handle: &tauri::AppHandle, project_path: &str) -> Result<(), String> {
+    // Try resource_dir first (production), fallback to src-tauri/resources (dev)
     let resource_dir = app_handle
         .path()
         .resource_dir()
-        .map_err(|e: tauri::Error| e.to_string())?
-        .join("resources")
-        .join("opencode-skills");
+        .map(|p| p.join("resources").join("opencode-skills"))
+        .ok()
+        .filter(|p| p.exists())
+        .or_else(|| {
+            // Dev mode fallback: use src-tauri/resources directly
+            let dev_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("resources")
+                .join("opencode-skills");
+            if dev_path.exists() {
+                Some(dev_path)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| "Could not find skills resource directory".to_string())?;
+
+    eprintln!("[WorkoPilot] Using skills from: {:?}", resource_dir);
 
     let skills_base_dir = std::path::Path::new(project_path)
         .join(".opencode")
@@ -752,6 +796,7 @@ fn copy_all_skills(app_handle: &tauri::AppHandle, project_path: &str) -> Result<
         "workopilot-execute-all",
         "workopilot-execute-subtask",
         "workopilot-review",
+        "workopilot-quickfix",
     ];
 
     for skill_name in skill_names {
@@ -763,7 +808,7 @@ fn copy_all_skills(app_handle: &tauri::AppHandle, project_path: &str) -> Result<
 
         let skill_dest = skill_dest_dir.join("SKILL.md");
         std::fs::copy(&skill_source, &skill_dest)
-            .map_err(|e| format!("Failed to copy skill {}: {}", skill_name, e))?;
+            .map_err(|e| format!("Failed to copy skill {} from {:?}: {}", skill_name, skill_source, e))?;
     }
 
     Ok(())
@@ -899,18 +944,34 @@ pub fn launch_task_review(
     project_id: String,
     task_id: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
+    eprintln!("[WorkoPilot] launch_task_review called: project_id={}, task_id={}", project_id, task_id);
+    
+    let db = state.db.lock().map_err(|e| {
+        eprintln!("[WorkoPilot] Failed to lock db: {}", e);
+        e.to_string()
+    })?;
     let project = db
         .get_project_with_config(&project_id)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            eprintln!("[WorkoPilot] Failed to get project: {}", e);
+            e.to_string()
+        })?;
     drop(db);
 
-    copy_all_skills(&app_handle, &project.path)?;
+    eprintln!("[WorkoPilot] Project found: {}, path: {}", project.name, project.path);
+
+    if let Err(e) = copy_all_skills(&app_handle, &project.path) {
+        eprintln!("[WorkoPilot] Failed to copy skills: {}", e);
+        return Err(e);
+    }
+    eprintln!("[WorkoPilot] Skills copied successfully");
 
     let initial_prompt = format!(
         "Usar skill workopilot-review para revisar a task {}",
         task_id
     );
+    
+    eprintln!("[WorkoPilot] Launching session with prompt: {}", initial_prompt);
     launch_in_workopilot_session(&app_handle, &project, &initial_prompt, &task_id, false)
 }
 
@@ -932,4 +993,196 @@ pub fn enrich_calendar_tasks(
     }
 
     Ok(enriched)
+}
+
+#[tauri::command]
+pub fn start_task_execution(
+    state: State<AppState>,
+    task_id: String,
+    subtask_id: Option<String>,
+    tmux_session: Option<String>,
+    pid: Option<i32>,
+    total_steps: Option<i32>,
+) -> Result<TaskExecution, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.start_execution(
+        &task_id,
+        subtask_id.as_deref(),
+        tmux_session.as_deref(),
+        pid,
+        total_steps.unwrap_or(0),
+    )
+    .map_err(|e| format!("Failed to start execution: {}", e))
+}
+
+#[tauri::command]
+pub fn end_task_execution(
+    state: State<AppState>,
+    task_id: String,
+    status: String,
+    error_message: Option<String>,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.end_execution(&task_id, &status, error_message.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_task_execution_progress(
+    state: State<AppState>,
+    task_id: String,
+    current_step: Option<i32>,
+    total_steps: Option<i32>,
+    description: Option<String>,
+    waiting_for_input: Option<bool>,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.update_execution_progress(
+        &task_id,
+        current_step,
+        total_steps,
+        description.as_deref(),
+        waiting_for_input,
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_active_task_execution(
+    state: State<AppState>,
+    task_id: String,
+) -> Result<Option<TaskExecution>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_active_execution(&task_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_all_active_executions(state: State<AppState>) -> Result<Vec<TaskExecution>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_all_active_executions().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn cleanup_stale_task_executions(
+    state: State<AppState>,
+    timeout_minutes: Option<i32>,
+) -> Result<i32, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.cleanup_stale_executions(timeout_minutes.unwrap_or(5))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn focus_tmux_session(session_name: String) -> Result<(), String> {
+    use std::process::Command;
+
+    let script = format!(
+        r#"#!/usr/bin/env bash
+SESSION="{session_name}"
+
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+    tmux attach-session -t "$SESSION"
+else
+    echo "Session $SESSION not found"
+    sleep 2
+fi
+"#
+    );
+
+    Command::new("alacritty")
+        .arg("-e")
+        .arg("bash")
+        .arg("-c")
+        .arg(&script)
+        .spawn()
+        .map_err(|e| format!("Failed to focus terminal: {}", e))?;
+
+    Ok(())
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct QuickfixPayload {
+    pub task_id: String,
+    pub status: String,
+    pub prompt: Option<String>,
+    pub error: Option<String>,
+}
+
+#[tauri::command]
+pub async fn launch_quickfix_background(
+    app_handle: tauri::AppHandle,
+    state: State<'_, AppState>,
+    project_id: String,
+    task_id: String,
+    quickfix_prompt: String,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let project = db
+        .get_project_with_config(&project_id)
+        .map_err(|e| e.to_string())?;
+    drop(db);
+
+    copy_all_skills(&app_handle, &project.path)?;
+
+    let first_route = project.routes.first().ok_or("No routes configured")?;
+    let project_path = first_route.path.clone();
+
+    let full_prompt = format!(
+        "Usar skill workopilot-quickfix para ajustar a task {}. Ajuste solicitado: {}",
+        task_id, quickfix_prompt
+    );
+
+    let _ = app_handle.emit("quickfix-changed", QuickfixPayload {
+        task_id: task_id.clone(),
+        status: "running".to_string(),
+        prompt: Some(quickfix_prompt.clone()),
+        error: None,
+    });
+
+    let app_handle_clone = app_handle.clone();
+    let task_id_clone = task_id.clone();
+
+    std::thread::spawn(move || {
+        let result = Command::new("opencode")
+            .current_dir(&project_path)
+            .arg("--prompt")
+            .arg(&full_prompt)
+            .arg("--yes")
+            .output();
+
+        match result {
+            Ok(output) => {
+                if !output.status.success() {
+                    let error_msg = String::from_utf8_lossy(&output.stderr).to_string();
+                    eprintln!("[WorkoPilot] Quickfix failed: {}", error_msg);
+                    let _ = app_handle_clone.emit("quickfix-changed", QuickfixPayload {
+                        task_id: task_id_clone,
+                        status: "failed".to_string(),
+                        prompt: None,
+                        error: Some(error_msg),
+                    });
+                } else {
+                    eprintln!("[WorkoPilot] Quickfix completed successfully");
+                    let _ = app_handle_clone.emit("quickfix-changed", QuickfixPayload {
+                        task_id: task_id_clone,
+                        status: "completed".to_string(),
+                        prompt: None,
+                        error: None,
+                    });
+                }
+            }
+            Err(e) => {
+                let error_msg = e.to_string();
+                eprintln!("[WorkoPilot] Failed to run quickfix: {}", error_msg);
+                let _ = app_handle_clone.emit("quickfix-changed", QuickfixPayload {
+                    task_id: task_id_clone,
+                    status: "failed".to_string(),
+                    prompt: None,
+                    error: Some(error_msg),
+                });
+            }
+        }
+    });
+
+    Ok(())
 }

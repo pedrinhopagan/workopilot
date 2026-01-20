@@ -1,4 +1,5 @@
-import { createOpencodeClient, type OpencodeClient, type GlobalEvent, type Event } from '@opencode-ai/sdk';
+// Import from /client to avoid bundling server.js (uses node:child_process)
+import { createOpencodeClient, type OpencodeClient, type GlobalEvent, type Event } from '@opencode-ai/sdk/client';
 import { writable, type Writable } from 'svelte/store';
 
 export type OpenCodeEventType = 

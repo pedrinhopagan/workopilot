@@ -5,13 +5,15 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onDestroy } from 'svelte';
   import { selectedProjectId, projectsList } from '$lib/stores/selectedProject';
-  import type { Task, TaskFull, ProjectWithConfig, Subtask, TaskUpdatedPayload } from '$lib/types';
+  import type { Task, TaskFull, ProjectWithConfig, Subtask, TaskUpdatedPayload, TaskExecution } from '$lib/types';
   
   let tasks: Task[] = $state([]);
   let projectPath: string | null = $state(null);
   let deleteConfirmId: string | null = $state(null);
   let taskFullCache = $state<Map<string, TaskFull>>(new Map());
+  let activeExecutions = $state<Map<string, TaskExecution>>(new Map());
   let unlisten: UnlistenFn | null = null;
+  let unlistenExecution: UnlistenFn | null = null;
   
   let newTaskTitle = $state('');
   let newTaskPriority = $state(2);
@@ -30,14 +32,46 @@
       : tasks
   );
   
-  let pendingTasks = $derived(filteredTasks.filter(t => t.status !== 'done'));
+  let sortedPendingTasks = $derived(() => {
+    const pending = filteredTasks.filter(t => t.status !== 'done');
+    return pending.sort((a, b) => {
+      const aExecuting = activeExecutions.has(a.id);
+      const bExecuting = activeExecutions.has(b.id);
+      if (aExecuting && !bExecuting) return -1;
+      if (!aExecuting && bExecuting) return 1;
+      return 0;
+    });
+  });
+  
+  let pendingTasks = $derived(sortedPendingTasks());
   let doneTasks = $derived(filteredTasks.filter(t => t.status === 'done'));
+  
+  function isTaskExecuting(taskId: string): boolean {
+    return activeExecutions.has(taskId);
+  }
+  
+  function getTaskExecution(taskId: string): TaskExecution | undefined {
+    return activeExecutions.get(taskId);
+  }
   
   async function loadTasks() {
     try {
       tasks = await invoke('get_tasks');
     } catch (e) {
       console.error('Failed to load tasks:', e);
+    }
+  }
+  
+  async function loadActiveExecutions() {
+    try {
+      const executions: TaskExecution[] = await invoke('get_all_active_executions');
+      const newMap = new Map<string, TaskExecution>();
+      for (const exec of executions) {
+        newMap.set(exec.task_id, exec);
+      }
+      activeExecutions = newMap;
+    } catch (e) {
+      console.error('Failed to load active executions:', e);
     }
   }
   
@@ -120,7 +154,7 @@
       await invoke('launch_task_workflow', {
         projectId: task.project_id,
         taskId: task.id,
-        microtaskId: null
+        subtaskId: null
       });
     } catch (e) {
       console.error('Failed to launch task workflow:', e);
@@ -239,17 +273,14 @@
     unlisten = await listen<TaskUpdatedPayload>('task-updated', async (event) => {
       if (event.payload.source === 'ai') {
         console.log('[WorkoPilot] Task updated by AI, reloading and syncing...');
-        // Reload task from JSON
         const taskId = event.payload.task_id;
         const task = tasks.find(t => t.id === taskId);
         if (task?.project_id) {
           try {
             const project: ProjectWithConfig = await invoke('get_project_with_config', { projectId: task.project_id });
             const taskFull: TaskFull = await invoke('get_task_full', { projectPath: project.path, taskId });
-            // Sync to database
             await invoke('update_task_and_sync', { projectPath: project.path, task: taskFull });
             console.log('[WorkoPilot] Task synced to database');
-            // Update cache and reload list
             taskFullCache.set(taskId, taskFull);
             taskFullCache = new Map(taskFullCache);
             await loadTasks();
@@ -259,6 +290,11 @@
         }
       }
     });
+    
+    unlistenExecution = await listen('execution-changed', async () => {
+      console.log('[WorkoPilot] Execution state changed, reloading...');
+      await loadActiveExecutions();
+    });
   }
   
   onDestroy(() => {
@@ -266,10 +302,15 @@
       unlisten();
       unlisten = null;
     }
+    if (unlistenExecution) {
+      unlistenExecution();
+      unlistenExecution = null;
+    }
   });
   
   $effect(() => {
     loadTasks();
+    loadActiveExecutions();
     setupEventListener();
   });
   
@@ -324,19 +365,39 @@
       {#each pendingTasks as task}
         {@const taskSubtasks = getSubtasksForTask(task.id)}
         {@const doneSubtasks = taskSubtasks.filter(s => s.status === 'done').length}
+        {@const executing = isTaskExecuting(task.id)}
+        {@const execution = getTaskExecution(task.id)}
         
-        <div class="bg-[#232323] hover:bg-[#2a2a2a] transition-colors group">
+        <div class="bg-[#232323] hover:bg-[#2a2a2a] transition-colors group {executing ? 'ring-1 ring-[#909d63] border border-[#909d63]/50' : ''}">
           <div 
             onclick={() => editTask(task.id)}
             class="flex items-center gap-3 px-3 py-2 cursor-pointer"
           >
-            <button 
-              onclick={(e) => { e.stopPropagation(); toggleTask(task.id, task.status); }}
-              class="text-[#636363] hover:text-[#909d63] transition-colors"
-            >
-              [ ]
-            </button>
+            {#if executing}
+              <span class="flex items-center gap-1 text-[#909d63]" title="Executando...">
+                <svg class="animate-spin h-3.5 w-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+              </span>
+            {:else}
+              <button 
+                onclick={(e) => { e.stopPropagation(); toggleTask(task.id, task.status); }}
+                class="text-[#636363] hover:text-[#909d63] transition-colors"
+              >
+                [ ]
+              </button>
+            {/if}
             <span class="flex-1 text-[#d6d6d6] text-sm">{task.title}</span>
+            
+            {#if executing && execution}
+              <span class="text-xs text-[#909d63] font-medium px-2 py-0.5 bg-[#909d63]/10 rounded">
+                {execution.execution_type === 'subtask' ? 'Subtask' : 'Executando'}
+                {#if execution.total_steps > 0}
+                  [{execution.current_step}/{execution.total_steps}]
+                {/if}
+              </span>
+            {/if}
             
             {#if taskSubtasks.length > 0}
               <span class="text-xs text-[#636363]">{doneSubtasks}/{taskSubtasks.length}</span>
@@ -370,32 +431,47 @@
               </button>
             {/if}
             
-            <button
-              onclick={(e) => { e.stopPropagation(); codarTask(task); }}
-              class="px-3 py-1 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] transition-colors"
-            >
-              Codar &gt;
-            </button>
+            {#if !executing}
+              <button
+                onclick={(e) => { e.stopPropagation(); codarTask(task); }}
+                class="px-3 py-1 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] transition-colors cursor-pointer"
+              >
+                Codar &gt;
+              </button>
+            {/if}
           </div>
           
           {#if taskSubtasks.length > 0}
             <div class="pl-8 pr-3 pb-2 space-y-1">
               {#each taskSubtasks as subtask}
-                <div class="flex items-center gap-2 text-sm {subtask.status === 'done' ? 'opacity-50' : ''}">
-                  <button 
-                    onclick={() => toggleSubtaskInList(task.id, subtask.id)}
-                    class="text-xs {subtask.status === 'done' ? 'text-[#909d63]' : 'text-[#636363] hover:text-[#909d63]'}"
-                  >
-                    {subtask.status === 'done' ? '[x]' : '[ ]'}
-                  </button>
+                {@const isCurrentSubtask = executing && execution?.subtask_id === subtask.id}
+                <div class="flex items-center gap-2 text-sm {subtask.status === 'done' ? 'opacity-50' : ''} {isCurrentSubtask ? 'bg-[#909d63]/10 -mx-2 px-2 py-1 rounded' : ''}">
+                  {#if isCurrentSubtask}
+                    <span class="flex items-center gap-1 text-[#909d63]" title="Executando...">
+                      <svg class="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                    </span>
+                  {:else}
+                    <button 
+                      onclick={() => toggleSubtaskInList(task.id, subtask.id)}
+                      disabled={executing}
+                      class="text-xs {subtask.status === 'done' ? 'text-[#909d63]' : 'text-[#636363] hover:text-[#909d63]'} disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {subtask.status === 'done' ? '[x]' : '[ ]'}
+                    </button>
+                  {/if}
                   <span class="text-[#d6d6d6] {subtask.status === 'done' ? 'line-through' : ''}">{subtask.title}</span>
-                  <button
-                    onclick={(e) => { e.stopPropagation(); codarSubtaskInList(task, subtask.id); }}
-                    disabled={subtask.status === 'done'}
-                    class="ml-auto px-2 py-0.5 text-xs bg-[#3d3a34] text-[#d6d6d6] hover:bg-[#4a4a4a] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    Codar &gt;
-                  </button>
+                  {#if !executing}
+                    <button
+                      onclick={(e) => { e.stopPropagation(); codarSubtaskInList(task, subtask.id); }}
+                      disabled={subtask.status === 'done'}
+                      class="ml-auto px-2 py-0.5 text-xs bg-[#3d3a34] text-[#d6d6d6] hover:bg-[#4a4a4a] disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+                    >
+                      Codar &gt;
+                    </button>
+                  {/if}
                 </div>
               {/each}
             </div>

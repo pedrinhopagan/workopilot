@@ -90,6 +90,7 @@ impl Database {
         self.migrate_tasks_full_fields()?;
         self.migrate_subtasks_table()?;
         self.migrate_operation_logs_table()?;
+        self.migrate_task_executions_table()?;
 
         Ok(())
     }
@@ -282,6 +283,33 @@ impl Database {
             );
             CREATE INDEX IF NOT EXISTS idx_operation_logs_entity ON operation_logs(entity_type, entity_id);
             "
+        )?;
+        Ok(())
+    }
+
+    fn migrate_task_executions_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS task_executions (
+                id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                subtask_id TEXT REFERENCES subtasks(id) ON DELETE CASCADE,
+                execution_type TEXT NOT NULL DEFAULT 'full',
+                status TEXT NOT NULL DEFAULT 'running',
+                current_step INTEGER DEFAULT 0,
+                total_steps INTEGER DEFAULT 0,
+                current_step_description TEXT,
+                waiting_for_input INTEGER DEFAULT 0,
+                tmux_session TEXT,
+                pid INTEGER,
+                last_heartbeat TEXT DEFAULT CURRENT_TIMESTAMP,
+                error_message TEXT,
+                started_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                ended_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_task_executions_task_id ON task_executions(task_id);
+            CREATE INDEX IF NOT EXISTS idx_task_executions_status ON task_executions(status);
+            ",
         )?;
         Ok(())
     }
@@ -1046,6 +1074,206 @@ impl Database {
             ))
         })
     }
+
+    pub fn start_execution(
+        &self,
+        task_id: &str,
+        subtask_id: Option<&str>,
+        tmux_session: Option<&str>,
+        pid: Option<i32>,
+        total_steps: i32,
+    ) -> Result<TaskExecution> {
+        let existing = self.get_active_execution(task_id)?;
+        if existing.is_some() {
+            return Err(rusqlite::Error::QueryReturnedNoRows);
+        }
+
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        let execution_type = if subtask_id.is_some() {
+            "subtask"
+        } else {
+            "full"
+        };
+
+        self.conn.execute(
+            "INSERT INTO task_executions (id, task_id, subtask_id, execution_type, status, 
+             current_step, total_steps, waiting_for_input, tmux_session, pid, last_heartbeat, started_at)
+             VALUES (?1, ?2, ?3, ?4, 'running', 0, ?5, 0, ?6, ?7, ?8, ?8)",
+            params![id, task_id, subtask_id, execution_type, total_steps, tmux_session, pid, now],
+        )?;
+
+        Ok(TaskExecution {
+            id,
+            task_id: task_id.to_string(),
+            subtask_id: subtask_id.map(|s| s.to_string()),
+            execution_type: execution_type.to_string(),
+            status: "running".to_string(),
+            current_step: 0,
+            total_steps,
+            current_step_description: None,
+            waiting_for_input: false,
+            tmux_session: tmux_session.map(|s| s.to_string()),
+            pid,
+            last_heartbeat: now.clone(),
+            error_message: None,
+            started_at: now,
+            ended_at: None,
+        })
+    }
+
+    pub fn end_execution(
+        &self,
+        task_id: &str,
+        status: &str,
+        error_message: Option<&str>,
+    ) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "UPDATE task_executions SET status = ?1, ended_at = ?2, last_heartbeat = ?2, error_message = ?3
+             WHERE task_id = ?4 AND status = 'running'",
+            params![status, now, error_message, task_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn update_execution_progress(
+        &self,
+        task_id: &str,
+        current_step: Option<i32>,
+        total_steps: Option<i32>,
+        description: Option<&str>,
+        waiting_for_input: Option<bool>,
+    ) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let mut updates: Vec<String> = vec!["last_heartbeat = ?1".to_string()];
+        let mut param_count = 2;
+
+        if current_step.is_some() {
+            updates.push("current_step = ?2".to_string());
+            param_count = 3;
+        }
+        if total_steps.is_some() {
+            updates.push(format!("total_steps = ?{}", param_count));
+            param_count += 1;
+        }
+        if description.is_some() {
+            updates.push(format!("current_step_description = ?{}", param_count));
+            param_count += 1;
+        }
+        if waiting_for_input.is_some() {
+            updates.push(format!("waiting_for_input = ?{}", param_count));
+        }
+
+        let sql = format!(
+            "UPDATE task_executions SET {} WHERE task_id = ?{} AND status = 'running'",
+            updates.join(", "),
+            param_count
+        );
+
+        let mut params: Vec<&dyn rusqlite::ToSql> = vec![&now];
+        if let Some(ref step) = current_step {
+            params.push(step);
+        }
+        if let Some(ref total) = total_steps {
+            params.push(total);
+        }
+        if let Some(ref desc) = description {
+            params.push(desc);
+        }
+        let waiting_int = waiting_for_input.map(|w| if w { 1 } else { 0 });
+        if let Some(ref waiting) = waiting_int {
+            params.push(waiting);
+        }
+        params.push(&task_id);
+
+        self.conn
+            .execute(&sql, rusqlite::params_from_iter(params))?;
+        Ok(())
+    }
+
+    pub fn get_active_execution(&self, task_id: &str) -> Result<Option<TaskExecution>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, task_id, subtask_id, execution_type, status, current_step, total_steps,
+             current_step_description, waiting_for_input, tmux_session, pid, last_heartbeat,
+             error_message, started_at, ended_at
+             FROM task_executions WHERE task_id = ?1 AND status = 'running'",
+        )?;
+
+        let result = stmt.query_row([task_id], |row| {
+            Ok(TaskExecution {
+                id: row.get(0)?,
+                task_id: row.get(1)?,
+                subtask_id: row.get(2)?,
+                execution_type: row.get(3)?,
+                status: row.get(4)?,
+                current_step: row.get(5)?,
+                total_steps: row.get(6)?,
+                current_step_description: row.get(7)?,
+                waiting_for_input: row.get::<_, i32>(8)? == 1,
+                tmux_session: row.get(9)?,
+                pid: row.get(10)?,
+                last_heartbeat: row.get(11)?,
+                error_message: row.get(12)?,
+                started_at: row.get(13)?,
+                ended_at: row.get(14)?,
+            })
+        });
+
+        match result {
+            Ok(execution) => Ok(Some(execution)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn get_all_active_executions(&self) -> Result<Vec<TaskExecution>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, task_id, subtask_id, execution_type, status, current_step, total_steps,
+             current_step_description, waiting_for_input, tmux_session, pid, last_heartbeat,
+             error_message, started_at, ended_at
+             FROM task_executions WHERE status = 'running'",
+        )?;
+
+        let executions = stmt
+            .query_map([], |row| {
+                Ok(TaskExecution {
+                    id: row.get(0)?,
+                    task_id: row.get(1)?,
+                    subtask_id: row.get(2)?,
+                    execution_type: row.get(3)?,
+                    status: row.get(4)?,
+                    current_step: row.get(5)?,
+                    total_steps: row.get(6)?,
+                    current_step_description: row.get(7)?,
+                    waiting_for_input: row.get::<_, i32>(8)? == 1,
+                    tmux_session: row.get(9)?,
+                    pid: row.get(10)?,
+                    last_heartbeat: row.get(11)?,
+                    error_message: row.get(12)?,
+                    started_at: row.get(13)?,
+                    ended_at: row.get(14)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+
+        Ok(executions)
+    }
+
+    pub fn cleanup_stale_executions(&self, timeout_minutes: i32) -> Result<i32> {
+        let cutoff = chrono::Utc::now() - chrono::Duration::minutes(timeout_minutes as i64);
+        let cutoff_str = cutoff.to_rfc3339();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let count = self.conn.execute(
+            "UPDATE task_executions SET status = 'error', error_message = 'Execution timed out (no heartbeat)', ended_at = ?1
+             WHERE status = 'running' AND last_heartbeat < ?2",
+            params![now, cutoff_str],
+        )?;
+
+        Ok(count as i32)
+    }
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -1137,6 +1365,25 @@ pub struct SessionLog {
     pub tokens_total: i32,
     pub files_modified: Vec<FileModified>,
     pub created_at: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct TaskExecution {
+    pub id: String,
+    pub task_id: String,
+    pub subtask_id: Option<String>,
+    pub execution_type: String,
+    pub status: String,
+    pub current_step: i32,
+    pub total_steps: i32,
+    pub current_step_description: Option<String>,
+    pub waiting_for_input: bool,
+    pub tmux_session: Option<String>,
+    pub pid: Option<i32>,
+    pub last_heartbeat: String,
+    pub error_message: Option<String>,
+    pub started_at: String,
+    pub ended_at: Option<String>,
 }
 
 // ============================================

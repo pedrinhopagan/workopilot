@@ -10,9 +10,10 @@
     onCodar: (id: string) => void;
     onUpdate: (id: string, field: keyof Subtask, value: any) => void;
     onReorder: (subtasks: Subtask[]) => void;
+    disabled?: boolean;
   }
   
-  let { subtasks, onAdd, onToggle, onRemove, onCodar, onUpdate, onReorder }: Props = $props();
+  let { subtasks, onAdd, onToggle, onRemove, onCodar, onUpdate, onReorder, disabled = false }: Props = $props();
   
   let newTitle = $state('');
   let expandedIds = $state<Set<string>>(new Set());
@@ -54,7 +55,7 @@
   let sortedSubtasks = $derived([...subtasks].sort((a, b) => a.order - b.order));
 </script>
 
-<section>
+<section class={disabled ? 'opacity-50 pointer-events-none' : ''}>
   <div class="flex items-center justify-between mb-2">
     <span class="text-xs text-[#828282] uppercase tracking-wide">Subtasks</span>
     {#if subtasks.length > 0}
@@ -71,7 +72,7 @@
           <div class="flex flex-col pt-2">
             <button
               onclick={() => moveUp(index)}
-              disabled={index === 0}
+              disabled={disabled || index === 0}
               class="text-[#636363] hover:text-[#909d63] disabled:text-[#3d3a34] disabled:cursor-not-allowed transition-colors p-0.5"
               title="Mover para cima"
             >
@@ -81,7 +82,7 @@
             </button>
             <button
               onclick={() => moveDown(index)}
-              disabled={index === sortedSubtasks.length - 1}
+              disabled={disabled || index === sortedSubtasks.length - 1}
               class="text-[#636363] hover:text-[#909d63] disabled:text-[#3d3a34] disabled:cursor-not-allowed transition-colors p-0.5"
               title="Mover para baixo"
             >
@@ -97,6 +98,7 @@
               {onRemove}
               {onCodar}
               {onUpdate}
+              {disabled}
               expanded={expandedIds.has(subtask.id)}
               onToggleExpand={toggleExpand}
             />
@@ -116,12 +118,13 @@
       type="text"
       bind:value={newTitle}
       onkeydown={(e) => e.key === 'Enter' && handleAdd()}
+      disabled={disabled}
       placeholder="Adicionar subtask..."
-      class="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a]"
+      class="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a] disabled:cursor-not-allowed"
     />
     <button
       onclick={handleAdd}
-      disabled={!newTitle.trim()}
+      disabled={disabled || !newTitle.trim()}
       class="px-3 py-1 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
     >
       Adicionar
