@@ -1,0 +1,149 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   WorkOpilot Theme - Terminal-like aesthetic
+   Baseado nas cores do Alacritty + tmux
+   ============================================================================ */
+
+@theme {
+  /* Custom breakpoints */
+  --breakpoint-xs: 720px;
+
+  /* Background - escuro como terminal */
+  --color-bg: #1c1c1c;
+  --color-bg-secondary: #232323;
+  --color-bg-elevated: #2c2c2c;
+  --color-bg-hover: #333333;
+
+  /* Foreground */
+  --color-fg: #d6d6d6;
+  --color-fg-muted: #828282;
+  --color-fg-subtle: #636363;
+
+  /* Primary - verde musgo (mantido do original) */
+  --color-primary: #909d63;
+  --color-primary-hover: #a0ad73;
+  --color-primary-muted: #6b7c5e;
+
+  /* Accent colors */
+  --color-yellow: #ebc17a;
+  --color-cyan: #86d3ce;
+  --color-blue: #7eaac7;
+  --color-magenta: #aa6292;
+
+  /* Status colors */
+  --color-error: #bc5653;
+  --color-warning: #c67b5c;
+  --color-success: #909d63;
+
+  /* Neutrals - terrosos */
+  --color-brown: #8b7355;
+  --color-sand: #b8a88a;
+
+  /* Borders */
+  --color-border: #3d3a34;
+  --color-border-subtle: #2d2a24;
+
+  /* Font */
+  --font-mono: "JetBrains Mono", "Fira Code", "Consolas", monospace;
+}
+
+/* ============================================================================
+   Base Styles
+   ============================================================================ */
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--font-mono);
+  background-color: #1c1c1c !important;
+  color: var(--color-fg);
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+select {
+  color: #d6d6d6 !important;
+  background-color: #232323 !important;
+}
+
+select option {
+  background-color: #232323 !important;
+  color: #d6d6d6 !important;
+}
+
+select:focus option:checked,
+select option:checked {
+  background-color: #909d63 !important;
+  color: #1c1c1c !important;
+}
+
+::selection {
+  background-color: #909d63 !important;
+  color: #1c1c1c !important;
+}
+
+input::selection,
+textarea::selection {
+  background-color: #909d63 !important;
+  color: #1c1c1c !important;
+}
+
+/* ============================================================================
+   Scrollbar - minimal style
+   ============================================================================ */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-fg-subtle);
+}
+
+/* ============================================================================
+   Selection
+   ============================================================================ */
+
+::selection {
+  background: var(--color-primary-muted);
+  color: var(--color-bg);
+}
+
+/* ============================================================================
+   Focus styles
+   ============================================================================ */
+
+:focus-visible {
+  outline: 1px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* ============================================================================
+   Form elements base
+   ============================================================================ */
+
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+  font-size: inherit;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-fg-subtle);
+}

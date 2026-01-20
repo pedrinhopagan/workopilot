@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "initialized": false,
+  "id": "d8f7cb6b-bf02-4dc1-b5ef-807de432f534",
+  "title": "Publicar no yay",
+  "status": "pending",
+  "priority": 2,
+  "category": "feature",
+  "complexity": null,
+  "context": {
+    "description": null,
+    "business_rules": [],
+    "technical_notes": null,
+    "acceptance_criteria": null
+  },
+  "microtasks": [],
+  "ai_metadata": {
+    "last_interaction": null,
+    "session_ids": [],
+    "tokens_used": 0
+  },
+  "timestamps": {
+    "created_at": "2026-01-20T02:10:30.431835823+00:00",
+    "started_at": null,
+    "completed_at": null
+  },
+  "modified_at": "2026-01-20T02:10:30.431835823+00:00",
+  "modified_by": "user"
+}

@@ -1,0 +1,79 @@
+<script lang="ts">
+  import TabBar from '$lib/components/TabBar.svelte';
+  import Select from '$lib/components/Select.svelte';
+  import { invoke } from "@tauri-apps/api/core";
+  import { page } from '$app/stores';
+  import { selectedProjectId, projectsList } from '$lib/stores/selectedProject';
+  import type { Project } from '$lib/types';
+  
+  let { children } = $props();
+  
+  let projects: Project[] = $state([]);
+  let isStarting = $state(false);
+  
+  let isEditingTask = $derived($page.url.pathname !== '/tasks');
+  
+  async function loadProjects() {
+    try {
+      projects = await invoke('get_projects');
+      projectsList.set(projects);
+    } catch (e) {
+      console.error('Failed to load projects:', e);
+    }
+  }
+  
+  function getProjectOptions() {
+    return [
+      { value: '', label: 'Todos' },
+      ...projects.map(p => ({ value: p.id, label: p.name }))
+    ];
+  }
+  
+  async function startWorkflow() {
+    const projId = $selectedProjectId;
+    if (!projId) return;
+    
+    isStarting = true;
+    try {
+      await invoke('launch_project_tmux', { projectId: projId });
+    } catch (e) {
+      console.error('Failed to start workflow:', e);
+    } finally {
+      isStarting = false;
+    }
+  }
+  
+  $effect(() => {
+    loadProjects();
+  });
+</script>
+
+<TabBar />
+
+<main class="flex-1 flex flex-col overflow-hidden">
+  <div class="flex items-center justify-between gap-4 p-3 border-b border-[#3d3a34] bg-[#232323]">
+    <div class="flex items-center gap-2">
+      <span class="text-xs text-[#828282]">Projeto:</span>
+      <Select
+        value={$selectedProjectId || ''}
+        options={getProjectOptions()}
+        onchange={(v) => selectedProjectId.set(v || null)}
+        class={isEditingTask ? 'opacity-50 pointer-events-none' : ''}
+      />
+    </div>
+    
+    <button 
+      onclick={startWorkflow}
+      disabled={!$selectedProjectId || isStarting || isEditingTask}
+      class="px-6 py-2 bg-[#909d63] text-[#1c1c1c] text-sm font-medium hover:bg-[#a0ad73] disabled:bg-[#3d3a34] disabled:text-[#636363] disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+    >
+      {#if isStarting}
+        Iniciando...
+      {:else}
+        Começar
+      {/if}
+    </button>
+  </div>
+  
+  {@render children()}
+</main>

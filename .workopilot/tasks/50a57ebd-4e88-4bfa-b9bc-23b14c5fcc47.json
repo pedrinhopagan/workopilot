@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "initialized": false,
+  "id": "50a57ebd-4e88-4bfa-b9bc-23b14c5fcc47",
+  "title": "Cosntruir Logs de tarefas automático",
+  "status": "pending",
+  "priority": 1,
+  "category": "feature",
+  "complexity": null,
+  "context": {
+    "description": null,
+    "business_rules": [],
+    "technical_notes": null,
+    "acceptance_criteria": null
+  },
+  "microtasks": [],
+  "ai_metadata": {
+    "last_interaction": null,
+    "session_ids": [],
+    "tokens_used": 0
+  },
+  "timestamps": {
+    "created_at": "2026-01-20T02:06:34.148464319+00:00",
+    "started_at": null,
+    "completed_at": null
+  },
+  "modified_at": "2026-01-20T02:06:34.148464319+00:00",
+  "modified_by": "user"
+}

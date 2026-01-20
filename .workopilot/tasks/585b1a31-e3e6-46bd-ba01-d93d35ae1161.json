@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "initialized": false,
+  "id": "585b1a31-e3e6-46bd-ba01-d93d35ae1161",
+  "title": "Criar a possibilidade de integrar o aplicativo com celular",
+  "status": "pending",
+  "priority": 3,
+  "category": "feature",
+  "complexity": null,
+  "context": {
+    "description": null,
+    "business_rules": [],
+    "technical_notes": null,
+    "acceptance_criteria": null
+  },
+  "microtasks": [],
+  "ai_metadata": {
+    "last_interaction": null,
+    "session_ids": [],
+    "tokens_used": 0
+  },
+  "timestamps": {
+    "created_at": "2026-01-20T02:11:05.888168257+00:00",
+    "started_at": null,
+    "completed_at": null
+  },
+  "modified_at": "2026-01-20T02:11:05.888168257+00:00",
+  "modified_by": "user"
+}

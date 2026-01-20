@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "initialized": false,
+  "id": "3ca0290e-91a2-4a06-a417-6c8a7ad341f5",
+  "title": "Fazer com que ao navegar de projetos para \"Tarefas\" Settar \"Todos\" como default",
+  "status": "pending",
+  "priority": 3,
+  "category": "bug",
+  "complexity": null,
+  "context": {
+    "description": null,
+    "business_rules": [],
+    "technical_notes": null,
+    "acceptance_criteria": null
+  },
+  "microtasks": [],
+  "ai_metadata": {
+    "last_interaction": null,
+    "session_ids": [],
+    "tokens_used": 0
+  },
+  "timestamps": {
+    "created_at": "2026-01-20T02:09:52.966304737+00:00",
+    "started_at": null,
+    "completed_at": null
+  },
+  "modified_at": "2026-01-20T02:09:52.966304737+00:00",
+  "modified_by": "user"
+}

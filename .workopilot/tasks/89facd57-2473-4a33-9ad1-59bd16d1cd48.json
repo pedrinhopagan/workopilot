@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "initialized": false,
+  "id": "89facd57-2473-4a33-9ad1-59bd16d1cd48",
+  "title": "Construir filtro para as tarefas na página de tarefas",
+  "status": "pending",
+  "priority": 3,
+  "category": "feature",
+  "complexity": null,
+  "context": {
+    "description": null,
+    "business_rules": [],
+    "technical_notes": null,
+    "acceptance_criteria": null
+  },
+  "microtasks": [],
+  "ai_metadata": {
+    "last_interaction": null,
+    "session_ids": [],
+    "tokens_used": 0
+  },
+  "timestamps": {
+    "created_at": "2026-01-20T02:09:29.427347113+00:00",
+    "started_at": null,
+    "completed_at": null
+  },
+  "modified_at": "2026-01-20T02:09:29.427347113+00:00",
+  "modified_by": "user"
+}
