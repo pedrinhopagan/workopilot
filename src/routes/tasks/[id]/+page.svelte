@@ -6,7 +6,7 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import Select from '$lib/components/Select.svelte';
   import MicrotaskList from '$lib/components/tasks/MicrotaskList.svelte';
-  import type { Task, TaskFull, ProjectWithConfig, Microtask, TaskUpdatedPayload } from '$lib/types';
+  import type { Task, TaskFull, ProjectWithConfig, Subtask, TaskUpdatedPayload } from '$lib/types';
   
   let taskId = $derived($page.params.id);
   let task: Task | null = $state(null);
@@ -177,52 +177,59 @@
     updateContext('acceptance_criteria', newList.length > 0 ? newList : null);
   }
   
-  function addMicrotask(title: string) {
+  function addSubtask(title: string) {
     if (!taskFull) return;
-    const newMicrotask: Microtask = {
+    const nextOrder = taskFull.subtasks.length > 0 
+      ? Math.max(...taskFull.subtasks.map(s => s.order)) + 1 
+      : 0;
+    const newSubtask: Subtask = {
       id: crypto.randomUUID(),
       title,
       status: 'pending',
+      order: nextOrder,
+      description: null,
+      acceptance_criteria: null,
+      technical_notes: null,
       prompt_context: null,
-      completed_at: null,
-      scheduled_date: null
+      created_at: new Date().toISOString(),
+      completed_at: null
     };
-    const newList = [...taskFull.microtasks, newMicrotask];
-    updateField('microtasks', newList);
+    const newList = [...taskFull.subtasks, newSubtask];
+    updateField('subtasks', newList);
   }
   
-  function toggleMicrotask(id: string) {
+  function toggleSubtask(id: string) {
     if (!taskFull) return;
-    const newList = taskFull.microtasks.map(m => {
-      if (m.id === id) {
-        const newStatus = m.status === 'done' ? 'pending' : 'done';
+    const newList = taskFull.subtasks.map((s: Subtask) => {
+      if (s.id === id) {
+        const newStatus = s.status === 'done' ? 'pending' : 'done';
         return {
-          ...m,
+          ...s,
           status: newStatus,
           completed_at: newStatus === 'done' ? new Date().toISOString() : null
         };
       }
-      return m;
+      return s;
     });
-    updateField('microtasks', newList);
+    updateField('subtasks', newList);
   }
   
-  function removeMicrotask(id: string) {
+  function removeSubtask(id: string) {
     if (!taskFull) return;
-    const newList = taskFull.microtasks.filter(m => m.id !== id);
-    updateField('microtasks', newList);
+    const newList = taskFull.subtasks.filter((s: Subtask) => s.id !== id);
+    updateField('subtasks', newList);
   }
   
-  async function codarMicrotask(id: string) {
+  async function codarSubtask(id: string) {
     if (!task?.project_id) return;
     try {
       await invoke('launch_task_workflow', {
         projectId: task.project_id,
         taskId: task.id,
-        microtaskId: id
+        subtaskId: id
       });
     } catch (e) {
-      console.error('Failed to launch microtask workflow:', e);
+      console.error('Failed to launch subtask workflow:', e);
     }
   }
   
@@ -492,11 +499,11 @@
     </section>
     
     <MicrotaskList
-      microtasks={taskFull.microtasks}
-      onAdd={addMicrotask}
-      onToggle={toggleMicrotask}
-      onRemove={removeMicrotask}
-      onCodar={codarMicrotask}
+      subtasks={taskFull.subtasks}
+      onAdd={addSubtask}
+      onToggle={toggleSubtask}
+      onRemove={removeSubtask}
+      onCodar={codarSubtask}
     />
     
     <section>

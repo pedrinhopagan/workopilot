@@ -1,16 +1,16 @@
 <script lang="ts">
-  import type { Microtask } from '$lib/types';
+  import type { Subtask } from '$lib/types';
   import MicrotaskItem from './MicrotaskItem.svelte';
   
   interface Props {
-    microtasks: Microtask[];
+    subtasks: Subtask[];
     onAdd: (title: string) => void;
     onToggle: (id: string) => void;
     onRemove: (id: string) => void;
     onCodar: (id: string) => void;
   }
   
-  let { microtasks, onAdd, onToggle, onRemove, onCodar }: Props = $props();
+  let { subtasks, onAdd, onToggle, onRemove, onCodar }: Props = $props();
   
   let newTitle = $state('');
   
@@ -20,25 +20,25 @@
     newTitle = '';
   }
   
-  let pendingCount = $derived(microtasks.filter(m => m.status !== 'done').length);
-  let doneCount = $derived(microtasks.filter(m => m.status === 'done').length);
+  let pendingCount = $derived(subtasks.filter(m => m.status !== 'done').length);
+  let doneCount = $derived(subtasks.filter(m => m.status === 'done').length);
 </script>
 
 <section>
   <div class="flex items-center justify-between mb-2">
-    <span class="text-xs text-[#828282] uppercase tracking-wide">Micro-tasks</span>
-    {#if microtasks.length > 0}
+    <span class="text-xs text-[#828282] uppercase tracking-wide">Subtasks</span>
+    {#if subtasks.length > 0}
       <span class="text-xs text-[#636363]">
-        {doneCount}/{microtasks.length} concluídas
+        {doneCount}/{subtasks.length} concluídas
       </span>
     {/if}
   </div>
   
-  {#if microtasks.length > 0}
+  {#if subtasks.length > 0}
     <div class="space-y-1 mb-3">
-      {#each microtasks as microtask (microtask.id)}
+      {#each subtasks as subtask (subtask.id)}
         <MicrotaskItem 
-          {microtask} 
+          {subtask} 
           {onToggle} 
           {onRemove} 
           {onCodar} 
@@ -47,7 +47,7 @@
     </div>
   {:else}
     <div class="text-sm text-[#636363] py-4 text-center border border-dashed border-[#3d3a34] bg-[#1c1c1c] mb-3">
-      Nenhuma micro-task ainda
+      Nenhuma subtask ainda
     </div>
   {/if}
   
@@ -57,7 +57,7 @@
       type="text"
       bind:value={newTitle}
       onkeydown={(e) => e.key === 'Enter' && handleAdd()}
-      placeholder="Adicionar micro-task..."
+      placeholder="Adicionar subtask..."
       class="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a]"
     />
     <button
