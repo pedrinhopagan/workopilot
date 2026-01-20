@@ -9,7 +9,6 @@
     "build": "tauri build",
     "build:web": "vite build",
     "preview": "vite preview",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "tauri": "tauri"
   },
   "license": "MIT",
@@ -17,18 +16,21 @@
     "@opencode-ai/sdk": "^1.1.27",
     "@tailwindcss/postcss": "^4.1.18",
     "@tailwindcss/vite": "^4.1.18",
+    "@tanstack/react-router": "^1",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-opener": "^2",
-    "tailwindcss": "^4.1.18"
+    "react": "^19",
+    "react-dom": "^19",
+    "tailwindcss": "^4.1.18",
+    "zustand": "^5"
   },
   "devDependencies": {
-    "@sveltejs/adapter-static": "^3.0.6",
-    "@sveltejs/kit": "^2.5.0",
-    "@sveltejs/vite-plugin-svelte": "^4.0.0",
+    "@tanstack/router-plugin": "^1",
     "@tauri-apps/cli": "^2",
-    "svelte": "^5.0.0",
-    "svelte-check": "^4.0.0",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4",
     "typescript": "~5.6.2",
     "vite": "^5.4.0"
   }

@@ -1,135 +1,67 @@
-// Centralized task status constants for consistent labels and colors across the app
+import type { TaskFull } from "../../types"
 
-import type { TaskFull, Subtask } from '$lib/types';
+export type TaskState = "pending" | "ready_to_execute" | "in_progress" | "awaiting_review" | "done"
 
-export const TASK_STATUS = {
-  PENDING: 'pending',
-  IN_PROGRESS: 'in_progress',
-  DONE: 'done',
-  AWAITING_REVIEW: 'awaiting_review',
-} as const;
+export const stateLabels: Record<TaskState, string> = {
+  pending: "Pendente",
+  ready_to_execute: "Pronta para executar",
+  in_progress: "Em execução",
+  awaiting_review: "Aguardando revisão",
+  done: "Concluída",
+}
 
-export type TaskStatus = typeof TASK_STATUS[keyof typeof TASK_STATUS];
+export const stateColors: Record<TaskState, string> = {
+  pending: "#e5c07b",
+  ready_to_execute: "#909d63",
+  in_progress: "#61afef",
+  awaiting_review: "#e5c07b",
+  done: "#909d63",
+}
 
-export const TASK_STATE = {
-  PENDING: 'pending',
-  READY_TO_EXECUTE: 'ready_to_execute',
-  IN_PROGRESS: 'in_progress',
-  AWAITING_REVIEW: 'awaiting_review',
-  DONE: 'done',
-} as const;
-
-export type TaskState = typeof TASK_STATE[keyof typeof TASK_STATE];
-
-export const STATE_LABELS: Record<TaskState, string> = {
-  [TASK_STATE.PENDING]: 'Pendente',
-  [TASK_STATE.READY_TO_EXECUTE]: 'Pronta para executar',
-  [TASK_STATE.IN_PROGRESS]: 'Em execucao',
-  [TASK_STATE.AWAITING_REVIEW]: 'Aguardando revisao',
-  [TASK_STATE.DONE]: 'Concluida',
-};
-
-export const STATE_COLORS: Record<TaskState, string> = {
-  [TASK_STATE.PENDING]: '#e5c07b',
-  [TASK_STATE.READY_TO_EXECUTE]: '#909d63',
-  [TASK_STATE.IN_PROGRESS]: '#61afef',
-  [TASK_STATE.AWAITING_REVIEW]: '#e5c07b',
-  [TASK_STATE.DONE]: '#909d63',
-};
-
-export const STATUS_LABELS: Record<string, string> = {
-  [TASK_STATUS.PENDING]: 'Pendente',
-  [TASK_STATUS.IN_PROGRESS]: 'Em progresso',
-  [TASK_STATUS.DONE]: 'Concluida',
-  [TASK_STATUS.AWAITING_REVIEW]: 'Aguardando revisao',
-};
-
-export const STATUS_COLORS: Record<string, string> = {
-  [TASK_STATUS.PENDING]: '#ebc17a',
-  [TASK_STATUS.IN_PROGRESS]: '#6b9ac4',
-  [TASK_STATUS.DONE]: '#909d63',
-  [TASK_STATUS.AWAITING_REVIEW]: '#e78a4e',
-};
-
-export function getTaskState(taskFull: TaskFull | null | undefined, fallbackStatus?: string): TaskState {
-  if (!taskFull) {
-    if (fallbackStatus === 'done') return TASK_STATE.DONE;
-    if (fallbackStatus === 'awaiting_review') return TASK_STATE.AWAITING_REVIEW;
-    if (fallbackStatus === 'in_progress') return TASK_STATE.IN_PROGRESS;
-    return TASK_STATE.PENDING;
-  }
-
-  if (taskFull.status === 'done') return TASK_STATE.DONE;
-
-  const hasPendingSubtasks = taskFull.subtasks.some((s: Subtask) => s.status === 'pending');
-  const hasInProgressSubtasks = taskFull.subtasks.some((s: Subtask) => s.status === 'in_progress');
-  const allSubtasksDone = taskFull.subtasks.length > 0 && taskFull.subtasks.every((s: Subtask) => s.status === 'done');
-
-  if (hasInProgressSubtasks) return TASK_STATE.IN_PROGRESS;
-  
-  if (allSubtasksDone) return TASK_STATE.AWAITING_REVIEW;
-
-  if (hasPendingSubtasks && taskFull.initialized) return TASK_STATE.READY_TO_EXECUTE;
-
-  if (taskFull.initialized && taskFull.subtasks.length === 0) return TASK_STATE.READY_TO_EXECUTE;
-
-  return TASK_STATE.PENDING;
+export function getTaskState(taskFull: TaskFull | null): TaskState {
+  if (!taskFull) return "pending"
+  if (taskFull.status === "done") return "done"
+  if (taskFull.status === "awaiting_review") return "awaiting_review"
+  const hasInProgress = taskFull.subtasks.some((s) => s.status === "in_progress")
+  if (hasInProgress) return "in_progress"
+  if (taskFull.initialized) return "ready_to_execute"
+  return "pending"
 }
 
 export function getStateLabel(state: TaskState): string {
-  return STATE_LABELS[state] || state;
+  return stateLabels[state]
 }
 
 export function getStateColor(state: TaskState): string {
-  return STATE_COLORS[state] || '#636363';
+  return stateColors[state]
 }
 
-export function getStatusLabel(status: string): string {
-  return STATUS_LABELS[status] || status;
+export function getComplexityLabel(complexity: string | null): string {
+  const map: Record<string, string> = {
+    S: "Simples",
+    M: "Média",
+    L: "Complexa",
+    XL: "Muito Complexa",
+  }
+  return complexity ? map[complexity] || complexity : "-"
 }
 
-export function getStatusColor(status: string): string {
-  return STATUS_COLORS[status] || '#636363';
+export function getComplexityColor(complexity: string | null): string {
+  const map: Record<string, string> = {
+    S: "text-[#909d63]",
+    M: "text-[#ebc17a]",
+    L: "text-[#bc5653]",
+    XL: "text-[#bc5653] font-bold",
+  }
+  return complexity ? map[complexity] || "text-[#636363]" : "text-[#636363]"
 }
 
-// Complexity constants
-export const COMPLEXITY = {
-  SIMPLE: 'simple',
-  MEDIUM: 'medium',
-  COMPLEX: 'complex',
-} as const;
-
-export type Complexity = typeof COMPLEXITY[keyof typeof COMPLEXITY];
-
-export const COMPLEXITY_LABELS: Record<string, string> = {
-  [COMPLEXITY.SIMPLE]: 'Simples',
-  [COMPLEXITY.MEDIUM]: 'Media',
-  [COMPLEXITY.COMPLEX]: 'Complexa',
-};
-
-export const COMPLEXITY_COLORS: Record<string, string> = {
-  [COMPLEXITY.SIMPLE]: '#8b7355',
-  [COMPLEXITY.MEDIUM]: '#6b9ac4',
-  [COMPLEXITY.COMPLEX]: '#bc5653',
-};
-
-export function getComplexityLabel(complexity: string | null | undefined): string {
-  if (!complexity) return '';
-  return COMPLEXITY_LABELS[complexity] || '';
-}
-
-export function getComplexityColor(complexity: string | null | undefined): string {
-  if (!complexity) return '#636363';
-  return COMPLEXITY_COLORS[complexity] || '#636363';
-}
-
-// Filter options for dropdowns
 export function getStatusFilterOptions() {
   return [
-    { value: '', label: 'Todos' },
-    { value: TASK_STATUS.PENDING, label: STATUS_LABELS[TASK_STATUS.PENDING] },
-    { value: TASK_STATUS.IN_PROGRESS, label: STATUS_LABELS[TASK_STATUS.IN_PROGRESS] },
-    { value: TASK_STATUS.DONE, label: STATUS_LABELS[TASK_STATUS.DONE] },
-    { value: TASK_STATUS.AWAITING_REVIEW, label: STATUS_LABELS[TASK_STATUS.AWAITING_REVIEW] },
-  ];
+    { value: "pending", label: "Pendente" },
+    { value: "ready_to_execute", label: "Pronta" },
+    { value: "in_progress", label: "Em Execução" },
+    { value: "awaiting_review", label: "Revisão" },
+    { value: "done", label: "Concluída" },
+  ]
 }
