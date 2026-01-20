@@ -30,6 +30,11 @@
     <span class="text-[#d6d6d6] truncate max-w-[60px]">{task.project_name}</span>
   {/if}
   <span style:color={priorityColor} class="font-medium">P{task.priority}</span>
+  {#if task.subtask_count > 0}
+    <span class="text-[10px] text-[#636363]">
+      +{task.subtask_count} subtasks
+    </span>
+  {/if}
 </div>
 
 <style>
