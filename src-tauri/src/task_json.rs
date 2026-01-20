@@ -11,14 +11,24 @@ pub struct TaskContext {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Microtask {
+pub struct Subtask {
     pub id: String,
     pub title: String,
     pub status: String,
-    pub prompt_context: Option<String>,
-    pub completed_at: Option<String>,
+    pub order: i32,
+
     #[serde(default)]
-    pub scheduled_date: Option<String>,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub acceptance_criteria: Option<Vec<String>>,
+    #[serde(default)]
+    pub technical_notes: Option<String>,
+    #[serde(default)]
+    pub prompt_context: Option<String>,
+
+    pub created_at: String,
+    #[serde(default)]
+    pub completed_at: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -26,6 +36,8 @@ pub struct AIMetadata {
     pub last_interaction: Option<String>,
     pub session_ids: Vec<String>,
     pub tokens_used: i64,
+    #[serde(default)]
+    pub structuring_complete: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -46,7 +58,7 @@ pub struct TaskFull {
     pub category: String,
     pub complexity: Option<String>,
     pub context: TaskContext,
-    pub microtasks: Vec<Microtask>,
+    pub subtasks: Vec<Subtask>,
     pub ai_metadata: AIMetadata,
     pub timestamps: TaskTimestamps,
     #[serde(default)]
@@ -59,7 +71,7 @@ impl TaskFull {
     pub fn new(id: String, title: String, priority: i32, category: String) -> Self {
         let now = chrono::Utc::now().to_rfc3339();
         TaskFull {
-            schema_version: 1,
+            schema_version: 2,
             initialized: false,
             id,
             title,
@@ -68,7 +80,7 @@ impl TaskFull {
             category,
             complexity: None,
             context: TaskContext::default(),
-            microtasks: vec![],
+            subtasks: vec![],
             ai_metadata: AIMetadata::default(),
             timestamps: TaskTimestamps {
                 created_at: now.clone(),
@@ -103,11 +115,28 @@ pub fn save_task_json(project_path: &str, task: &TaskFull) -> Result<(), String>
     fs::write(&path, json).map_err(|e| format!("Failed to write task JSON: {}", e))
 }
 
+pub fn migrate_v1_to_v2(task: &mut TaskFull) {
+    if task.schema_version >= 2 {
+        return;
+    }
+    task.schema_version = 2;
+    task.ai_metadata.structuring_complete = true;
+}
+
 pub fn load_task_json(project_path: &str, task_id: &str) -> Result<TaskFull, String> {
     let path = get_task_json_path(project_path, task_id);
     let content =
         fs::read_to_string(&path).map_err(|e| format!("Failed to read task JSON: {}", e))?;
-    serde_json::from_str(&content).map_err(|e| format!("Failed to parse task JSON: {}", e))
+
+    let mut task: TaskFull =
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse task JSON: {}", e))?;
+
+    if task.schema_version < 2 {
+        migrate_v1_to_v2(&mut task);
+        save_task_json(project_path, &task)?;
+    }
+
+    Ok(task)
 }
 
 pub fn delete_task_json(project_path: &str, task_id: &str) -> Result<(), String> {
