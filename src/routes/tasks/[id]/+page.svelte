@@ -271,16 +271,17 @@
     }
   }
   
-  let showReviewButton = $derived(
-    taskFull && 
-    taskFull.subtasks.length > 0 && 
-    (taskFull.status === 'awaiting_review' || taskFull.subtasks.every(s => s.status === 'done'))
-  );
+  function getShowReviewButton(): boolean {
+    if (!taskFull) return false;
+    return taskFull.subtasks.length > 0 && 
+      (taskFull.status === 'awaiting_review' || taskFull.subtasks.every((s: Subtask) => s.status === 'done'));
+  }
   
-  let reviewButtonHighlighted = $derived(
-    taskFull?.status === 'awaiting_review' || 
-    (taskFull?.subtasks.every(s => s.status === 'done') && taskFull?.subtasks.length > 0)
-  );
+  function getReviewButtonHighlighted(): boolean {
+    if (!taskFull) return false;
+    return taskFull.status === 'awaiting_review' || 
+      (taskFull.subtasks.every((s: Subtask) => s.status === 'done') && taskFull.subtasks.length > 0);
+  }
   
   async function reviewTask() {
     if (!task?.project_id) return;
@@ -377,10 +378,10 @@
       Codar &gt;
     </button>
     
-    {#if showReviewButton}
+    {#if getShowReviewButton()}
       <button
         onclick={reviewTask}
-        class="px-4 py-1.5 text-sm transition-colors {reviewButtonHighlighted ? 'bg-[#e5c07b] text-[#1c1c1c] hover:bg-[#f0d08b]' : 'bg-[#3d3a34] text-[#d6d6d6] hover:bg-[#4a4a4a]'}"
+        class="px-4 py-1.5 text-sm transition-colors {getReviewButtonHighlighted() ? 'bg-[#e5c07b] text-[#1c1c1c] hover:bg-[#f0d08b]' : 'bg-[#3d3a34] text-[#d6d6d6] hover:bg-[#4a4a4a]'}"
       >
         Revisar
       </button>
