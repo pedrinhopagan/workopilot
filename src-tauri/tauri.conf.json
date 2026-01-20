@@ -41,6 +41,6 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "resources": ["resources/opencode-skill/*"]
+    "resources": ["resources/opencode-skills/**/*"]
   }
 }

@@ -1,18 +1,14 @@
 mod commands;
 mod database;
-mod file_watcher;
 mod settings;
-mod task_json;
 mod tray;
 mod window;
 
 use database::Database;
-use file_watcher::FileWatcherManager;
 use std::sync::Mutex;
 
 pub struct AppState {
     pub db: Mutex<Database>,
-    pub file_watcher: Mutex<FileWatcherManager>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -29,10 +25,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .manage(AppState {
-            db: Mutex::new(db),
-            file_watcher: Mutex::new(FileWatcherManager::new()),
-        })
+        .manage(AppState { db: Mutex::new(db) })
         .invoke_handler(tauri::generate_handler![
             commands::get_projects,
             commands::get_project_with_config,
@@ -67,9 +60,10 @@ pub fn run() {
             commands::delete_task_full,
             commands::get_task_by_id,
             commands::launch_task_workflow,
+            commands::launch_task_structure,
+            commands::launch_task_execute_all,
+            commands::launch_task_execute_subtask,
             commands::launch_task_review,
-            commands::start_watching_project,
-            commands::stop_watching_project,
             commands::enrich_calendar_tasks,
             settings::get_shortcut,
             settings::set_shortcut,

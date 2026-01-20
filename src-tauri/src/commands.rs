@@ -1,7 +1,6 @@
 use crate::database::{
-    CalendarTask, Project, ProjectRoute, ProjectWithConfig, SessionLog, Task, TmuxConfig,
+    CalendarTask, Project, ProjectRoute, ProjectWithConfig, SessionLog, Task, TaskFull, TmuxConfig,
 };
-use crate::task_json::{delete_task_json, load_task_json, save_task_json, TaskFull};
 use crate::AppState;
 use std::process::Command;
 use tauri::{Manager, State};
@@ -430,60 +429,49 @@ pub fn get_ai_suggestion(tasks: Vec<Task>) -> Result<String, String> {
 pub fn create_task_with_json(
     state: State<AppState>,
     project_id: String,
-    project_path: String,
+    _project_path: String,
     title: String,
     priority: i32,
     category: String,
 ) -> Result<String, String> {
     let task_id = uuid::Uuid::new_v4().to_string();
-    let json_path = format!(".workopilot/tasks/{}.json", task_id);
-
-    let task_full = TaskFull::new(task_id.clone(), title.clone(), priority, category.clone());
-    save_task_json(&project_path, &task_full)?;
+    let task_full = TaskFull::new(task_id.clone(), title, priority, category);
 
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.add_task_with_json(
-        &task_id,
-        &project_id,
-        &title,
-        priority,
-        &category,
-        &json_path,
-    )
-    .map_err(|e| e.to_string())?;
+    db.create_task_full(&task_full, &project_id)
+        .map_err(|e| e.to_string())?;
 
     Ok(task_id)
 }
 
 #[tauri::command]
-pub fn get_task_full(project_path: String, task_id: String) -> Result<TaskFull, String> {
-    load_task_json(&project_path, &task_id)
+pub fn get_task_full(
+    state: State<AppState>,
+    _project_path: String,
+    task_id: String,
+) -> Result<TaskFull, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_task_full(&task_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn save_task_full(
     state: State<AppState>,
-    project_path: String,
+    _project_path: String,
     task: TaskFull,
 ) -> Result<(), String> {
-    if let Ok(watcher) = state.file_watcher.lock() {
-        watcher.mark_internal_write(&task.id);
-    }
-    save_task_json(&project_path, &task)
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.save_task_full(&task).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn update_task_and_sync(
     state: State<AppState>,
-    project_path: String,
+    _project_path: String,
     task: TaskFull,
 ) -> Result<(), String> {
-    if let Ok(watcher) = state.file_watcher.lock() {
-        watcher.mark_internal_write(&task.id);
-    }
-    save_task_json(&project_path, &task)?;
-
     let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.save_task_full(&task).map_err(|e| e.to_string())?;
     db.update_task(
         &task.id,
         &task.title,
@@ -497,11 +485,9 @@ pub fn update_task_and_sync(
 #[tauri::command]
 pub fn delete_task_full(
     state: State<AppState>,
-    project_path: String,
+    _project_path: String,
     task_id: String,
 ) -> Result<(), String> {
-    delete_task_json(&project_path, &task_id)?;
-
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.delete_task(&task_id).map_err(|e| e.to_string())
 }
@@ -512,50 +498,229 @@ pub fn get_task_by_id(state: State<AppState>, task_id: String) -> Result<Task, S
     db.get_task_by_id(&task_id).map_err(|e| e.to_string())
 }
 
+/// Generate the ASCII loading animation bash script
+fn generate_loading_animation_script(
+    session_name: &str,
+    tab_name: &str,
+    escaped_prompt: &str,
+) -> String {
+    format!(
+        r##"
+clear
+printf '\e[?25l'
+stty -echo 2>/dev/null
+
+GREEN="\e[38;5;143m"
+GREEN4="\e[38;5;65m"
+DIM="\e[38;5;238m"
+WHITE="\e[38;5;255m"
+R="\e[0m"
+B="\e[1m"
+
+COLS=$(tput cols)
+ROWS=$(tput lines)
+
+LOGO1="██╗    ██╗  ██████╗  ██████╗  ██╗  ██╗  ██████╗  ██████╗  ██╗ ██╗       ██████╗  ████████╗"
+LOGO2="██║    ██║ ██╔═══██╗ ██╔══██╗ ██║ ██╔╝ ██╔═══██╗ ██╔══██╗ ██║ ██║      ██╔═══██╗ ╚══██╔══╝"
+LOGO3="██║ █╗ ██║ ██║   ██║ ██████╔╝ █████╔╝  ██║   ██║ ██████╔╝ ██║ ██║      ██║   ██║    ██║   "
+LOGO4="██║███╗██║ ██║   ██║ ██╔══██╗ ██╔═██╗  ██║   ██║ ██╔═══╝  ██║ ██║      ██║   ██║    ██║   "
+LOGO5="╚███╔███╔╝ ╚██████╔╝ ██║  ██║ ██║  ██╗ ╚██████╔╝ ██║      ██║ ███████╗ ╚██████╔╝    ██║   "
+LOGO6=" ╚══╝╚══╝   ╚═════╝  ╚═╝  ╚═╝ ╚═╝  ╚═╝  ╚═════╝  ╚═╝      ╚═╝ ╚══════╝  ╚═════╝     ╚═╝   "
+
+CX=$(( (COLS - 88) / 2 ))
+CY=$(( (ROWS - 16) / 2 ))
+[ $CX -lt 1 ] && CX=1
+[ $CY -lt 1 ] && CY=1
+
+BAR_WIDTH=50
+BAR_Y=$((CY + 8))
+BAR_X=$(( (COLS - BAR_WIDTH - 2) / 2 ))
+MSG_Y=$((CY + 11))
+MSG_X=$(( (COLS - 22) / 2 ))
+
+draw_base() {{
+    clear
+    printf "\e[3;10H$GREEN4✦$R"
+    printf "\e[4;$((COLS-10))H$GREEN4✧$R"
+    printf "\e[3;$((COLS/2))H$GREEN4◆$R"
+    printf "\e[$((ROWS-3));15H$GREEN4✧$R"
+    printf "\e[$((ROWS-4));$((COLS-15))H$GREEN4✦$R"
+    printf "\e[$((ROWS-3));$((COLS/2-5))H$GREEN4◇$R"
+    printf "\e[$((CY-2));$((CX+20))H$GREEN4✦$R"
+    printf "\e[$((CY+8));$((CX-3))H$GREEN4◇$R"
+    printf "\e[$((CY+8));$((CX+90))H$GREEN4✧$R"
+    printf "\e[$CY;${{CX}}H$GREEN$B$LOGO1$R"
+    printf "\e[$((CY+1));${{CX}}H$GREEN$B$LOGO2$R"
+    printf "\e[$((CY+2));${{CX}}H$GREEN$B$LOGO3$R"
+    printf "\e[$((CY+3));${{CX}}H$GREEN$B$LOGO4$R"
+    printf "\e[$((CY+4));${{CX}}H$GREEN$B$LOGO5$R"
+    printf "\e[$((CY+5));${{CX}}H$GREEN$B$LOGO6$R"
+    printf "\e[$BAR_Y;${{BAR_X}}H$DIM[$R"
+    printf "\e[$BAR_Y;$((BAR_X + BAR_WIDTH + 1))H$DIM]$R"
+    printf "\e[$((ROWS-2));$((COLS/2-20))H$DIM⚡ Preparando seu ambiente de código ⚡$R"
+}}
+
+draw_progress() {{
+    local filled=$1
+    printf "\e[$BAR_Y;$((BAR_X + 1))H"
+    for j in $(seq 1 $BAR_WIDTH); do
+        if [ $j -le $filled ]; then
+            printf "$GREEN█$R"
+        else
+            printf "$DIM░$R"
+        fi
+    done
+    printf "\e[$MSG_Y;${{MSG_X}}H$WHITE Iniciando OpenCode...$R"
+}}
+
+draw_success() {{
+    printf "\e[$BAR_Y;$((BAR_X + 1))H"
+    for j in $(seq 1 $BAR_WIDTH); do
+        printf "$GREEN█$R"
+    done
+    printf "\e[$MSG_Y;${{MSG_X}}H$GREEN$B✓$R $WHITE$BOpenCode Pronto!$R   "
+}}
+
+draw_base
+
+NODE_READY=0
+PROGRESS=0
+
+for i in $(seq 1 90); do
+    PANE_CMD=$(tmux display-message -p -t "{session_name}:{tab_name}" '#{{pane_current_command}}' 2>/dev/null)
+    if [ "$PANE_CMD" = "node" ]; then
+        NODE_READY=1
+        while [ $PROGRESS -lt $BAR_WIDTH ]; do
+            PROGRESS=$((PROGRESS + 2))
+            [ $PROGRESS -gt $BAR_WIDTH ] && PROGRESS=$BAR_WIDTH
+            draw_progress $PROGRESS
+            sleep 0.03
+        done
+        break
+    fi
+    PROGRESS=$((i * BAR_WIDTH / 100))
+    [ $PROGRESS -gt $((BAR_WIDTH - 8)) ] && PROGRESS=$((BAR_WIDTH - 8))
+    draw_progress $PROGRESS
+    sleep 0.35
+done
+
+if [ $NODE_READY -eq 1 ]; then
+    draw_success
+    sleep 2.5
+    tmux send-keys -t "{session_name}:{tab_name}" "{escaped_prompt}" Enter
+fi
+
+printf '\e[?25h'
+stty echo 2>/dev/null
+"##
+    )
+}
+
 fn launch_in_workopilot_session(
     _app_handle: &tauri::AppHandle,
     project: &ProjectWithConfig,
     initial_prompt: &str,
     task_id: &str,
+    is_structuring: bool,
 ) -> Result<(), String> {
     let session_name = "workopilot";
 
-    // Tab name: "{project} - {task truncated}"
-    let task_short = if task_id.len() > 12 {
-        &task_id[..12]
+    let task_short = if task_id.len() > 8 {
+        &task_id[..8]
     } else {
         task_id
     };
-    let tab_name = format!("{} - {}...", &project.name, task_short);
+    let safe_name: String = project
+        .name
+        .chars()
+        .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+        .collect();
+    let tab_name = format!("{}-{}", safe_name, task_short);
 
     let first_route = project.routes.first().ok_or("No routes configured")?;
     let project_path = &first_route.path;
 
     let escaped_prompt = initial_prompt.replace('\\', "\\\\").replace('"', "\\\"");
 
+    if !is_structuring {
+        if let Ok(output) = Command::new("tmux")
+            .args(["has-session", "-t", session_name])
+            .output()
+        {
+            if output.status.success() {
+                if let Ok(windows_output) = Command::new("tmux")
+                    .args(["list-windows", "-t", session_name, "-F", "#{window_name}"])
+                    .output()
+                {
+                    let windows = String::from_utf8_lossy(&windows_output.stdout);
+                    if windows.lines().any(|w| w == tab_name) {
+                        if let Ok(pane_output) = Command::new("tmux")
+                            .args([
+                                "display-message",
+                                "-p",
+                                "-t",
+                                &format!("{}:{}", session_name, tab_name),
+                                "#{pane_current_command}",
+                            ])
+                            .output()
+                        {
+                            let pane_cmd = String::from_utf8_lossy(&pane_output.stdout)
+                                .trim()
+                                .to_string();
+                            if pane_cmd == "node" {
+                                Command::new("tmux")
+                                    .args([
+                                        "send-keys",
+                                        "-t",
+                                        &format!("{}:{}", session_name, tab_name),
+                                        &escaped_prompt,
+                                        "Enter",
+                                    ])
+                                    .spawn()
+                                    .map_err(|e| format!("Failed to send keys: {}", e))?;
+
+                                Command::new("tmux")
+                                    .args([
+                                        "select-window",
+                                        "-t",
+                                        &format!("{}:{}", session_name, tab_name),
+                                    ])
+                                    .spawn()
+                                    .map_err(|e| format!("Failed to select window: {}", e))?;
+
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let loading_animation =
+        generate_loading_animation_script(session_name, &tab_name, &escaped_prompt);
+
     let script = format!(
         r#"#!/usr/bin/env bash
 SESSION="{session_name}"
 TAB_NAME="{tab_name}"
 PROJECT_PATH="{project_path}"
-PROMPT="{escaped_prompt}"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
-    # Session exists, create new window
+    # Kill existing tab if it exists (might be in bad state)
+    tmux kill-window -t "$SESSION:$TAB_NAME" 2>/dev/null
     tmux new-window -t "$SESSION" -n "$TAB_NAME" -c "$PROJECT_PATH"
-    tmux send-keys -t "$SESSION:$TAB_NAME" "opencode" Enter
-    sleep 2
-    tmux send-keys -t "$SESSION:$TAB_NAME" "$PROMPT" Enter
-    tmux select-window -t "$SESSION:$TAB_NAME"
-    tmux attach-session -t "$SESSION"
 else
-    # Create new session
     tmux new-session -d -s "$SESSION" -n "$TAB_NAME" -c "$PROJECT_PATH"
-    tmux send-keys -t "$SESSION:$TAB_NAME" "opencode" Enter
-    sleep 2
-    tmux send-keys -t "$SESSION:$TAB_NAME" "$PROMPT" Enter
-    tmux attach-session -t "$SESSION"
 fi
+
+sleep 0.3
+tmux send-keys -t "$SESSION:$TAB_NAME" "opencode" Enter
+
+{loading_animation}
+
+tmux select-window -t "$SESSION:$TAB_NAME"
+tmux attach-session -t "$SESSION"
 "#
     );
 
@@ -565,30 +730,41 @@ fi
         .arg("-c")
         .arg(&script)
         .spawn()
-        .map_err(|e| format!("Failed to launch tmux: {}", e))?;
+        .map_err(|e| format!("Failed to launch terminal: {}", e))?;
 
     Ok(())
 }
 
-fn copy_skill_file(app_handle: &tauri::AppHandle, project_path: &str) -> Result<(), String> {
-    let skill_source = app_handle
+fn copy_all_skills(app_handle: &tauri::AppHandle, project_path: &str) -> Result<(), String> {
+    let resource_dir = app_handle
         .path()
         .resource_dir()
         .map_err(|e: tauri::Error| e.to_string())?
         .join("resources")
-        .join("opencode-skill")
-        .join("workopilot-task.md");
+        .join("opencode-skills");
 
-    let skill_dest_dir = std::path::Path::new(project_path)
+    let skills_base_dir = std::path::Path::new(project_path)
         .join(".opencode")
         .join("skills");
 
-    std::fs::create_dir_all(&skill_dest_dir)
-        .map_err(|e| format!("Failed to create skills directory: {}", e))?;
+    let skill_names = [
+        "workopilot-structure",
+        "workopilot-execute-all",
+        "workopilot-execute-subtask",
+        "workopilot-review",
+    ];
 
-    let skill_dest = skill_dest_dir.join("workopilot-task.md");
-    std::fs::copy(&skill_source, &skill_dest)
-        .map_err(|e| format!("Failed to copy skill: {}", e))?;
+    for skill_name in skill_names {
+        let skill_source = resource_dir.join(skill_name).join("SKILL.md");
+        let skill_dest_dir = skills_base_dir.join(skill_name);
+
+        std::fs::create_dir_all(&skill_dest_dir)
+            .map_err(|e| format!("Failed to create skill directory {}: {}", skill_name, e))?;
+
+        let skill_dest = skill_dest_dir.join("SKILL.md");
+        std::fs::copy(&skill_source, &skill_dest)
+            .map_err(|e| format!("Failed to copy skill {}: {}", skill_name, e))?;
+    }
 
     Ok(())
 }
@@ -606,32 +782,114 @@ pub fn launch_task_workflow(
         .get_project_with_config(&project_id)
         .map_err(|e| e.to_string())?;
 
-    // Copy skill file
-    copy_skill_file(&app_handle, &project.path)?;
+    copy_all_skills(&app_handle, &project.path)?;
 
-    let task_json_path = format!(".workopilot/tasks/{}.json", task_id);
+    let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
 
-    // Load task to check structuring_complete
-    let task_full = load_task_json(&project.path, &task_id)?;
-
-    let initial_prompt = if let Some(st_id) = subtask_id {
-        format!(
-            "Usar skill workopilot-task para executar a subtask {} da task em {}",
-            st_id, task_json_path
+    let (initial_prompt, is_structuring) = if let Some(st_id) = subtask_id {
+        (
+            format!(
+                "Usar skill workopilot-execute-subtask para executar a subtask {} da task {}",
+                st_id, task_id
+            ),
+            false,
         )
     } else if !task_full.ai_metadata.structuring_complete {
-        format!(
-            "Usar skill workopilot-task para estruturar a task em {}",
-            task_json_path
+        (
+            format!(
+                "Usar skill workopilot-structure para estruturar a task {}",
+                task_id
+            ),
+            true,
         )
     } else {
-        format!(
-            "Usar skill workopilot-task para a task em {}",
-            task_json_path
+        (
+            format!(
+                "Usar skill workopilot-execute-all para executar a task {}",
+                task_id
+            ),
+            false,
         )
     };
 
-    launch_in_workopilot_session(&app_handle, &project, &initial_prompt, &task_id)
+    drop(db);
+    launch_in_workopilot_session(
+        &app_handle,
+        &project,
+        &initial_prompt,
+        &task_id,
+        is_structuring,
+    )
+}
+
+#[tauri::command]
+pub fn launch_task_structure(
+    app_handle: tauri::AppHandle,
+    state: State<AppState>,
+    project_id: String,
+    task_id: String,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let project = db
+        .get_project_with_config(&project_id)
+        .map_err(|e| e.to_string())?;
+    drop(db);
+
+    copy_all_skills(&app_handle, &project.path)?;
+
+    let initial_prompt = format!(
+        "Usar skill workopilot-structure para estruturar a task {}",
+        task_id
+    );
+
+    launch_in_workopilot_session(&app_handle, &project, &initial_prompt, &task_id, true)
+}
+
+#[tauri::command]
+pub fn launch_task_execute_all(
+    app_handle: tauri::AppHandle,
+    state: State<AppState>,
+    project_id: String,
+    task_id: String,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let project = db
+        .get_project_with_config(&project_id)
+        .map_err(|e| e.to_string())?;
+    drop(db);
+
+    copy_all_skills(&app_handle, &project.path)?;
+
+    let initial_prompt = format!(
+        "Usar skill workopilot-execute-all para executar a task {}",
+        task_id
+    );
+
+    launch_in_workopilot_session(&app_handle, &project, &initial_prompt, &task_id, false)
+}
+
+#[tauri::command]
+pub fn launch_task_execute_subtask(
+    app_handle: tauri::AppHandle,
+    state: State<AppState>,
+    project_id: String,
+    task_id: String,
+    subtask_id: String,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let project = db
+        .get_project_with_config(&project_id)
+        .map_err(|e| e.to_string())?;
+    drop(db);
+
+    copy_all_skills(&app_handle, &project.path)?;
+
+    let initial_prompt = format!(
+        "Usar skill workopilot-execute-subtask para executar a subtask {} da task {}",
+        subtask_id, task_id
+    );
+
+    launch_in_workopilot_session(&app_handle, &project, &initial_prompt, &task_id, false)
 }
 
 #[tauri::command]
@@ -645,56 +903,30 @@ pub fn launch_task_review(
     let project = db
         .get_project_with_config(&project_id)
         .map_err(|e| e.to_string())?;
+    drop(db);
 
-    // Copy skill file
-    copy_skill_file(&app_handle, &project.path)?;
+    copy_all_skills(&app_handle, &project.path)?;
 
-    let task_json_path = format!(".workopilot/tasks/{}.json", task_id);
     let initial_prompt = format!(
-        "Usar skill workopilot-task para REVISAR a task em {}",
-        task_json_path
+        "Usar skill workopilot-review para revisar a task {}",
+        task_id
     );
-
-    // Launch in workopilot tmux session
-    launch_in_workopilot_session(&app_handle, &project, &initial_prompt, &task_id)
-}
-
-#[tauri::command]
-pub fn start_watching_project(
-    app_handle: tauri::AppHandle,
-    state: State<AppState>,
-    project_path: String,
-) -> Result<(), String> {
-    let mut watcher = state.file_watcher.lock().map_err(|e| e.to_string())?;
-    watcher.start_watching(project_path, app_handle)
-}
-
-#[tauri::command]
-pub fn stop_watching_project(state: State<AppState>, project_path: String) -> Result<(), String> {
-    let mut watcher = state.file_watcher.lock().map_err(|e| e.to_string())?;
-    watcher.stop_watching(&project_path);
-    Ok(())
+    launch_in_workopilot_session(&app_handle, &project, &initial_prompt, &task_id, false)
 }
 
 #[tauri::command]
 pub fn enrich_calendar_tasks(
+    state: State<AppState>,
     tasks: Vec<CalendarTask>,
-    project_paths: std::collections::HashMap<String, String>,
+    _project_paths: std::collections::HashMap<String, String>,
 ) -> Result<Vec<CalendarTask>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
     let mut enriched = vec![];
 
     for mut task in tasks {
-        if let Some(project_id) = &task.project_id {
-            if let Some(project_path) = project_paths.get(project_id) {
-                if let Ok(task_full) = load_task_json(project_path, &task.id) {
-                    task.subtask_count = task_full.subtasks.len() as i32;
-                    task.subtask_done_count = task_full
-                        .subtasks
-                        .iter()
-                        .filter(|s| s.status == "done")
-                        .count() as i32;
-                }
-            }
+        if let Ok((total, done)) = db.get_subtask_counts(&task.id) {
+            task.subtask_count = total;
+            task.subtask_done_count = done;
         }
         enriched.push(task);
     }

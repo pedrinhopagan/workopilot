@@ -3,6 +3,7 @@
   import Select from '$lib/components/Select.svelte';
   import { invoke } from "@tauri-apps/api/core";
   import { page } from '$app/stores';
+  import { onMount } from 'svelte';
   import { selectedProjectId, projectsList } from '$lib/stores/selectedProject';
   import type { Project } from '$lib/types';
   
@@ -12,6 +13,11 @@
   let isStarting = $state(false);
   
   let isEditingTask = $derived($page.url.pathname !== '/tasks');
+  
+  // Reset to "Todos" when entering Tasks page
+  onMount(() => {
+    selectedProjectId.set(null);
+  });
   
   async function loadProjects() {
     try {

@@ -76,6 +76,7 @@ export interface Subtask {
 
 export interface AIMetadata {
   last_interaction: string | null;
+  last_completed_action: string | null;
   session_ids: string[];
   tokens_used: number;
   structuring_complete: boolean;

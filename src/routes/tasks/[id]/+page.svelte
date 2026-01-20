@@ -7,6 +7,7 @@
   import Select from '$lib/components/Select.svelte';
   import SubtaskList from '$lib/components/tasks/SubtaskList.svelte';
   import type { Task, TaskFull, ProjectWithConfig, Subtask, TaskUpdatedPayload } from '$lib/types';
+  import { openCodeService, openCodeConnected } from '$lib/services/opencode';
   
   let taskId = $derived($page.params.id);
   let task: Task | null = $state(null);
@@ -22,8 +23,115 @@
   let conflictWarning = $state(false);
   let isSyncing = $state(false);
   let syncSuccess = $state(false);
+  let isLaunchingStructure = $state(false);
+  let isLaunchingExecuteAll = $state(false);
+  let isLaunchingExecuteSubtask = $state(false);
+  let isLaunchingReview = $state(false);
+  let showSubtaskSelector = $state(false);
   let unlisten: UnlistenFn | null = null;
+  let unsubscribeOpenCode: (() => void) | null = null;
   let lastKnownModifiedAt: string | null = null;
+  let isOpenCodeConnected = $state(false);
+  
+  openCodeConnected.subscribe(value => {
+    isOpenCodeConnected = value;
+  });
+  
+  function getTaskState(): 'pending' | 'ready_to_execute' | 'in_progress' | 'awaiting_review' | 'done' {
+    if (!taskFull) return 'pending';
+    
+    if (taskFull.status === 'done') return 'done';
+    if (taskFull.status === 'awaiting_review') return 'awaiting_review';
+    
+    const hasInProgress = taskFull.subtasks.some(s => s.status === 'in_progress');
+    if (hasInProgress) return 'in_progress';
+    
+    // Pronta para executar apenas se initialized for true (toggle na UI)
+    if (taskFull.initialized) return 'ready_to_execute';
+    
+    return 'pending';
+  }
+  
+  function getStateLabel(state: ReturnType<typeof getTaskState>): string {
+    const labels = {
+      'pending': 'Pendente',
+      'ready_to_execute': 'Pronta para executar',
+      'in_progress': 'Em execução',
+      'awaiting_review': 'Aguardando revisão',
+      'done': 'Concluída'
+    };
+    return labels[state];
+  }
+  
+  function getStateColor(state: ReturnType<typeof getTaskState>): string {
+    const colors = {
+      'pending': '#e5c07b',
+      'ready_to_execute': '#909d63',
+      'in_progress': '#61afef',
+      'awaiting_review': '#e5c07b',
+      'done': '#909d63'
+    };
+    return colors[state];
+  }
+  
+  function canStructure(): boolean {
+    if (!taskFull) return false;
+    const state = getTaskState();
+    // Estruturar disponível sempre, exceto quando pronta para executar
+    return state !== 'ready_to_execute';
+  }
+  
+  function canExecuteAll(): boolean {
+    if (!taskFull) return false;
+    const state = getTaskState();
+    // Executar apenas quando pronta para executar
+    return state === 'ready_to_execute';
+  }
+  
+  function canExecuteSubtask(): boolean {
+    if (!taskFull) return false;
+    const state = getTaskState();
+    // Executar subtask apenas quando pronta para executar E tem subtasks pendentes
+    return state === 'ready_to_execute' && taskFull.subtasks.some(s => s.status === 'pending');
+  }
+  
+  function canReview(): boolean {
+    if (!taskFull) return false;
+    const state = getTaskState();
+    // Revisar apenas quando pronta para executar
+    return state === 'ready_to_execute';
+  }
+  
+  function getPendingSubtasks(): Subtask[] {
+    if (!taskFull) return [];
+    return taskFull.subtasks.filter(s => s.status === 'pending').sort((a, b) => a.order - b.order);
+  }
+  
+  function getSuggestedAction(): 'structure' | 'execute_all' | 'execute_subtask' | 'review' | null {
+    if (!taskFull) return null;
+    
+    const state = getTaskState();
+    
+    if (state === 'pending') return 'structure';
+    if (state === 'awaiting_review') return 'review';
+    if (state === 'ready_to_execute') {
+      if (taskFull.subtasks.length === 0) return 'execute_all';
+      return taskFull.subtasks.some(s => s.status === 'pending') ? 'execute_subtask' : 'execute_all';
+    }
+    
+    return null;
+  }
+  
+  function getLastActionLabel(action: string | null): string | null {
+    if (!action) return null;
+    const labels: Record<string, string> = {
+      'structure': 'Estruturação',
+      'execute_all': 'Execução completa',
+      'execute_subtask': 'Execução de subtask',
+      'review': 'Revisão'
+    };
+    return labels[action] || action;
+  }
   
   const categories = ['feature', 'bug', 'refactor', 'test', 'docs'];
   const priorities = [
@@ -53,8 +161,6 @@
           showTechnicalNotes = !!taskFull?.context.technical_notes;
           showAcceptanceCriteria = !!taskFull?.context.acceptance_criteria?.length;
         }
-        
-        await invoke('start_watching_project', { projectPath });
       }
     } catch (e) {
       console.error('Failed to load task:', e);
@@ -112,12 +218,50 @@
   }
   
   async function setupEventListener() {
-    unlisten = await listen<TaskUpdatedPayload>('task-updated', (event) => {
+    unlisten = await listen<TaskUpdatedPayload>('task-updated', async (event) => {
       if (event.payload.task_id === taskId && event.payload.source === 'ai') {
-        console.log('[WorkoPilot] Task updated by AI, reloading...');
-        loadTask(true);
+        console.log('[WorkoPilot] Task updated by AI (Tauri event), reloading...');
+        await loadTask(true);
+        aiUpdatedRecently = true;
+        setTimeout(() => { aiUpdatedRecently = false; }, 5000);
       }
     });
+    
+    setupOpenCodeListener();
+  }
+  
+  function setupOpenCodeListener() {
+    unsubscribeOpenCode = openCodeService.onSessionIdle(async (sessionId, directory) => {
+      console.log('[WorkoPilot] OpenCode session idle:', sessionId, 'in', directory);
+      
+      if (projectPath && directory.includes(projectPath.split('/').pop() || '')) {
+        console.log('[WorkoPilot] Detected skill completion in project, reloading task...');
+        await loadTask(true);
+        aiUpdatedRecently = true;
+        setTimeout(() => { aiUpdatedRecently = false; }, 5000);
+      }
+    });
+    
+    const unsubscribeFileEdit = openCodeService.onFileChange(async (filePath, directory) => {
+      if (filePath.includes('.workopilot/') || filePath.includes('workopilot.db')) {
+        console.log('[WorkoPilot] Detected file change in workopilot data:', filePath);
+        await loadTask(true);
+      }
+    });
+    
+    const originalUnsubscribe = unsubscribeOpenCode;
+    unsubscribeOpenCode = () => {
+      originalUnsubscribe?.();
+      unsubscribeFileEdit();
+    };
+    
+    if (!openCodeService.connected) {
+      openCodeService.init().then(success => {
+        if (success) {
+          openCodeService.startListening();
+        }
+      });
+    }
   }
   
   async function cleanup() {
@@ -125,8 +269,9 @@
       unlisten();
       unlisten = null;
     }
-    if (projectPath) {
-      await invoke('stop_watching_project', { projectPath }).catch(() => {});
+    if (unsubscribeOpenCode) {
+      unsubscribeOpenCode();
+      unsubscribeOpenCode = null;
     }
   }
   
@@ -258,33 +403,56 @@
     }
   }
   
-  async function codarTask() {
-    if (!task?.project_id) return;
+  async function structureTask() {
+    if (!task?.project_id || isLaunchingStructure) return;
+    isLaunchingStructure = true;
     try {
-      await invoke('launch_task_workflow', {
+      await invoke('launch_task_structure', {
         projectId: task.project_id,
-        taskId: task.id,
-        subtaskId: null
+        taskId: task.id
       });
     } catch (e) {
-      console.error('Failed to launch task workflow:', e);
+      console.error('Failed to launch task structure:', e);
+    } finally {
+      setTimeout(() => { isLaunchingStructure = false; }, 3000);
     }
   }
   
-  function getShowReviewButton(): boolean {
-    if (!taskFull) return false;
-    return taskFull.subtasks.length > 0 && 
-      (taskFull.status === 'awaiting_review' || taskFull.subtasks.every((s: Subtask) => s.status === 'done'));
+  async function executeAll() {
+    if (!task?.project_id || isLaunchingExecuteAll) return;
+    isLaunchingExecuteAll = true;
+    try {
+      await invoke('launch_task_execute_all', {
+        projectId: task.project_id,
+        taskId: task.id
+      });
+    } catch (e) {
+      console.error('Failed to launch execute all:', e);
+    } finally {
+      setTimeout(() => { isLaunchingExecuteAll = false; }, 3000);
+    }
   }
   
-  function getReviewButtonHighlighted(): boolean {
-    if (!taskFull) return false;
-    return taskFull.status === 'awaiting_review' || 
-      (taskFull.subtasks.every((s: Subtask) => s.status === 'done') && taskFull.subtasks.length > 0);
+  async function executeSubtask(subtaskId: string) {
+    if (!task?.project_id || isLaunchingExecuteSubtask) return;
+    isLaunchingExecuteSubtask = true;
+    showSubtaskSelector = false;
+    try {
+      await invoke('launch_task_execute_subtask', {
+        projectId: task.project_id,
+        taskId: task.id,
+        subtaskId
+      });
+    } catch (e) {
+      console.error('Failed to launch execute subtask:', e);
+    } finally {
+      setTimeout(() => { isLaunchingExecuteSubtask = false; }, 3000);
+    }
   }
   
   async function reviewTask() {
-    if (!task?.project_id) return;
+    if (!task?.project_id || isLaunchingReview) return;
+    isLaunchingReview = true;
     try {
       await invoke('launch_task_review', {
         projectId: task.project_id,
@@ -292,6 +460,8 @@
       });
     } catch (e) {
       console.error('Failed to launch task review:', e);
+    } finally {
+      setTimeout(() => { isLaunchingReview = false; }, 3000);
     }
   }
   
@@ -371,22 +541,6 @@
       {/if}
     </button>
     
-    <button
-      onclick={codarTask}
-      class="px-4 py-1.5 text-sm bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] transition-colors"
-    >
-      Codar &gt;
-    </button>
-    
-    {#if getShowReviewButton()}
-      <button
-        onclick={reviewTask}
-        class="px-4 py-1.5 text-sm transition-colors {getReviewButtonHighlighted() ? 'bg-[#e5c07b] text-[#1c1c1c] hover:bg-[#f0d08b]' : 'bg-[#3d3a34] text-[#d6d6d6] hover:bg-[#4a4a4a]'}"
-      >
-        Revisar
-      </button>
-    {/if}
-    
     <Select
       value={taskFull.category}
       options={getCategoryOptions()}
@@ -411,6 +565,11 @@
         IA atualizou
       </span>
     {/if}
+    
+    <span 
+      class="w-2 h-2 rounded-full {isOpenCodeConnected ? 'bg-[#61afef]' : 'bg-[#636363]'}" 
+      title={isOpenCodeConnected ? 'OpenCode conectado - atualizações em tempo real' : 'OpenCode desconectado'}
+    ></span>
   </div>
   
   {#if conflictWarning}
@@ -426,6 +585,177 @@
       </button>
     </div>
   {/if}
+  
+  {@const taskState = getTaskState()}
+  {@const suggestedAction = getSuggestedAction()}
+  {@const lastAction = getLastActionLabel(taskFull.ai_metadata.last_completed_action)}
+  <div class="border-b border-[#3d3a34] bg-gradient-to-r from-[#1c1c1c] via-[#232323] to-[#1c1c1c]">
+    <div class="px-4 py-3 flex items-center gap-4 border-b border-[#2a2a2a]">
+      <div class="flex items-center gap-2">
+        <span 
+          class="w-2.5 h-2.5 rounded-full animate-pulse" 
+          style="background-color: {getStateColor(taskState)}; box-shadow: 0 0 8px {getStateColor(taskState)}40;"
+        ></span>
+        <span class="text-sm font-medium" style="color: {getStateColor(taskState)};">
+          {getStateLabel(taskState)}
+        </span>
+      </div>
+      
+      {#if lastAction}
+        <div class="flex items-center gap-1.5 text-xs text-[#636363]">
+          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/>
+          </svg>
+          <span>Última ação: <span class="text-[#909d63]">{lastAction}</span></span>
+        </div>
+      {/if}
+      
+      <div class="ml-auto flex items-center gap-1">
+        <span class="w-1.5 h-1.5 rounded-full transition-colors {taskState !== 'awaiting_structure' ? 'bg-[#909d63]' : 'bg-[#3d3a34]'}"></span>
+        <span class="w-4 h-px {taskState !== 'awaiting_structure' ? 'bg-[#909d63]' : 'bg-[#3d3a34]'}"></span>
+        <span class="w-1.5 h-1.5 rounded-full transition-colors {taskState === 'in_progress' || taskState === 'awaiting_review' || taskState === 'done' ? 'bg-[#909d63]' : 'bg-[#3d3a34]'}"></span>
+        <span class="w-4 h-px {taskState === 'awaiting_review' || taskState === 'done' ? 'bg-[#909d63]' : 'bg-[#3d3a34]'}"></span>
+        <span class="w-1.5 h-1.5 rounded-full transition-colors {taskState === 'done' ? 'bg-[#909d63]' : 'bg-[#3d3a34]'}"></span>
+      </div>
+    </div>
+    
+    <div class="px-4 py-4 flex items-stretch gap-3">
+      <button
+        onclick={structureTask}
+        disabled={!canStructure() || isLaunchingStructure}
+        class="action-btn flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200 
+          {suggestedAction === 'structure' 
+            ? 'border-[#e5c07b] bg-[#e5c07b]/10 text-[#e5c07b] shadow-lg shadow-[#e5c07b]/10' 
+            : canStructure() 
+              ? 'border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]' 
+              : 'border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed'}"
+      >
+        {#if isLaunchingStructure}
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+          </svg>
+        {:else}
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" x2="8" y1="13" y2="13"/>
+            <line x1="16" x2="8" y1="17" y2="17"/>
+            <line x1="10" x2="8" y1="9" y2="9"/>
+          </svg>
+        {/if}
+        <span class="text-sm font-medium">Estruturar</span>
+        {#if suggestedAction === 'structure'}
+          <span class="text-[10px] uppercase tracking-wider opacity-75">Sugerido</span>
+        {/if}
+      </button>
+      
+      <button
+        onclick={executeAll}
+        disabled={!canExecuteAll() || isLaunchingExecuteAll}
+        class="action-btn flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200
+          {suggestedAction === 'execute_all'
+            ? 'border-[#909d63] bg-[#909d63]/10 text-[#909d63] shadow-lg shadow-[#909d63]/10'
+            : canExecuteAll()
+              ? 'border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]'
+              : 'border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed'}"
+      >
+        {#if isLaunchingExecuteAll}
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+          </svg>
+        {:else}
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/>
+            <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/>
+            <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/>
+            <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/>
+          </svg>
+        {/if}
+        <span class="text-sm font-medium">Executar Tudo</span>
+        {#if suggestedAction === 'execute_all'}
+          <span class="text-[10px] uppercase tracking-wider opacity-75">Sugerido</span>
+        {/if}
+      </button>
+      
+      <div class="flex-1 relative">
+        <button
+          onclick={() => { if (canExecuteSubtask()) showSubtaskSelector = !showSubtaskSelector; }}
+          disabled={!canExecuteSubtask() || isLaunchingExecuteSubtask}
+          class="action-btn w-full h-full flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200
+            {suggestedAction === 'execute_subtask'
+              ? 'border-[#61afef] bg-[#61afef]/10 text-[#61afef] shadow-lg shadow-[#61afef]/10'
+              : canExecuteSubtask()
+                ? 'border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]'
+                : 'border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed'}"
+        >
+          {#if isLaunchingExecuteSubtask}
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin">
+              <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+            </svg>
+          {:else}
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/>
+              <circle cx="12" cy="12" r="6"/>
+              <circle cx="12" cy="12" r="2"/>
+            </svg>
+          {/if}
+          <span class="text-sm font-medium">Executar Subtask</span>
+          {#if suggestedAction === 'execute_subtask'}
+            <span class="text-[10px] uppercase tracking-wider opacity-75">Sugerido</span>
+          {:else if canExecuteSubtask()}
+            <span class="text-[10px] opacity-60">{getPendingSubtasks().length} pendente{getPendingSubtasks().length !== 1 ? 's' : ''}</span>
+          {/if}
+        </button>
+        
+        {#if showSubtaskSelector && canExecuteSubtask()}
+          <div class="absolute top-full left-0 right-0 mt-2 bg-[#232323] border border-[#3d3a34] rounded-lg shadow-xl z-50 overflow-hidden animate-slide-down">
+            <div class="px-3 py-2 border-b border-[#3d3a34] text-xs text-[#636363] uppercase tracking-wider">
+              Selecione uma subtask
+            </div>
+            <div class="max-h-48 overflow-y-auto">
+              {#each getPendingSubtasks() as subtask}
+                <button
+                  onclick={() => executeSubtask(subtask.id)}
+                  class="w-full px-3 py-2.5 text-left text-sm text-[#d6d6d6] hover:bg-[#2a2a2a] transition-colors flex items-center gap-2"
+                >
+                  <span class="w-5 h-5 flex items-center justify-center rounded bg-[#3d3a34] text-[10px] text-[#909d63]">
+                    {subtask.order + 1}
+                  </span>
+                  <span class="flex-1 truncate">{subtask.title}</span>
+                </button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+      </div>
+      
+      <button
+        onclick={reviewTask}
+        disabled={!canReview() || isLaunchingReview}
+        class="action-btn flex-1 flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200
+          {suggestedAction === 'review'
+            ? 'border-[#e5c07b] bg-[#e5c07b]/10 text-[#e5c07b] shadow-lg shadow-[#e5c07b]/10'
+            : canReview()
+              ? 'border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]'
+              : 'border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed'}"
+      >
+        {#if isLaunchingReview}
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="animate-spin">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+          </svg>
+        {:else}
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 11l3 3L22 4"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+          </svg>
+        {/if}
+        <span class="text-sm font-medium">Revisar</span>
+        {#if suggestedAction === 'review'}
+          <span class="text-[10px] uppercase tracking-wider opacity-75">Sugerido</span>
+        {/if}
+      </button>
+    </div>
+  </div>
   
   <div class="flex-1 overflow-y-auto p-4 space-y-6">
     <section>

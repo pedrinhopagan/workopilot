@@ -5,6 +5,9 @@
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { invoke } from '@tauri-apps/api/core';
   import { isDialogOpen } from '$lib/stores/dialogState';
+  import StructuringCompleteModal from '$lib/components/StructuringCompleteModal.svelte';
+  import { openCodeService } from '$lib/services/opencode';
+  import { startPolling, stopPolling, checkForStructuringChanges, checkAllInProgressTasks } from '$lib/services/structuringMonitor';
   import type { Snippet } from 'svelte';
   
   let { children }: { children: Snippet } = $props();
@@ -17,6 +20,19 @@
   onMount(() => {
     let unlisten: (() => void) | undefined;
     let hideTimeout: ReturnType<typeof setTimeout> | null = null;
+    let unsubscribeOpenCode: (() => void) | null = null;
+    
+    startPolling(5000);
+    
+    unsubscribeOpenCode = openCodeService.onSessionIdle(async () => {
+      await checkForStructuringChanges();
+    });
+    
+    const unsubscribeFileChange = openCodeService.onFileChange(async (filePath) => {
+      if (filePath.includes('workopilot.db')) {
+        await checkAllInProgressTasks();
+      }
+    });
     
     getCurrentWindow().onFocusChanged(({ payload: focused }) => {
       if (hideTimeout) {
@@ -40,6 +56,9 @@
     return () => {
       if (hideTimeout) clearTimeout(hideTimeout);
       unlisten?.();
+      unsubscribeOpenCode?.();
+      unsubscribeFileChange();
+      stopPolling();
     };
   });
   
@@ -66,3 +85,5 @@
 <div class="h-screen min-w-lg flex flex-col bg-[#1c1c1c] p-3">
   {@render children()}
 </div>
+
+<StructuringCompleteModal />

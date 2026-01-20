@@ -2,13 +2,16 @@
   import Select from '$lib/components/Select.svelte';
   import { invoke } from "@tauri-apps/api/core";
   import { goto } from '$app/navigation';
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { onDestroy } from 'svelte';
   import { selectedProjectId, projectsList } from '$lib/stores/selectedProject';
-  import type { Task, TaskFull, ProjectWithConfig, Subtask } from '$lib/types';
+  import type { Task, TaskFull, ProjectWithConfig, Subtask, TaskUpdatedPayload } from '$lib/types';
   
   let tasks: Task[] = $state([]);
   let projectPath: string | null = $state(null);
   let deleteConfirmId: string | null = $state(null);
   let taskFullCache = $state<Map<string, TaskFull>>(new Map());
+  let unlisten: UnlistenFn | null = null;
   
   let newTaskTitle = $state('');
   let newTaskPriority = $state(2);
@@ -232,8 +235,42 @@
     return priorities.map(p => ({ value: String(p.value), label: p.label }));
   }
   
+  async function setupEventListener() {
+    unlisten = await listen<TaskUpdatedPayload>('task-updated', async (event) => {
+      if (event.payload.source === 'ai') {
+        console.log('[WorkoPilot] Task updated by AI, reloading and syncing...');
+        // Reload task from JSON
+        const taskId = event.payload.task_id;
+        const task = tasks.find(t => t.id === taskId);
+        if (task?.project_id) {
+          try {
+            const project: ProjectWithConfig = await invoke('get_project_with_config', { projectId: task.project_id });
+            const taskFull: TaskFull = await invoke('get_task_full', { projectPath: project.path, taskId });
+            // Sync to database
+            await invoke('update_task_and_sync', { projectPath: project.path, task: taskFull });
+            console.log('[WorkoPilot] Task synced to database');
+            // Update cache and reload list
+            taskFullCache.set(taskId, taskFull);
+            taskFullCache = new Map(taskFullCache);
+            await loadTasks();
+          } catch (e) {
+            console.error('[WorkoPilot] Failed to sync task:', e);
+          }
+        }
+      }
+    });
+  }
+  
+  onDestroy(() => {
+    if (unlisten) {
+      unlisten();
+      unlisten = null;
+    }
+  });
+  
   $effect(() => {
     loadTasks();
+    setupEventListener();
   });
   
   $effect(() => {

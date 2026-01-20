@@ -1,4 +1,4 @@
-use rusqlite::{Connection, Result};
+use rusqlite::{params, Connection, Result};
 use std::path::PathBuf;
 
 pub struct Database {
@@ -87,6 +87,9 @@ impl Database {
         self.migrate_tmux_configured()?;
         self.migrate_tasks_json_path()?;
         self.migrate_tasks_scheduled_date()?;
+        self.migrate_tasks_full_fields()?;
+        self.migrate_subtasks_table()?;
+        self.migrate_operation_logs_table()?;
 
         Ok(())
     }
@@ -179,6 +182,107 @@ impl Database {
                 .execute("ALTER TABLE tasks ADD COLUMN scheduled_date TEXT", [])?;
         }
 
+        Ok(())
+    }
+
+    fn migrate_tasks_full_fields(&self) -> Result<()> {
+        let columns: Vec<String> = self
+            .conn
+            .prepare("PRAGMA table_info(tasks)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>>>()?;
+
+        let migrations = vec![
+            ("complexity", "ALTER TABLE tasks ADD COLUMN complexity TEXT"),
+            (
+                "initialized",
+                "ALTER TABLE tasks ADD COLUMN initialized INTEGER DEFAULT 0",
+            ),
+            (
+                "schema_version",
+                "ALTER TABLE tasks ADD COLUMN schema_version INTEGER DEFAULT 2",
+            ),
+            (
+                "context_description",
+                "ALTER TABLE tasks ADD COLUMN context_description TEXT",
+            ),
+            (
+                "context_business_rules",
+                "ALTER TABLE tasks ADD COLUMN context_business_rules TEXT",
+            ),
+            (
+                "context_technical_notes",
+                "ALTER TABLE tasks ADD COLUMN context_technical_notes TEXT",
+            ),
+            (
+                "context_acceptance_criteria",
+                "ALTER TABLE tasks ADD COLUMN context_acceptance_criteria TEXT",
+            ),
+            (
+                "ai_metadata",
+                "ALTER TABLE tasks ADD COLUMN ai_metadata TEXT",
+            ),
+            (
+                "timestamps_started_at",
+                "ALTER TABLE tasks ADD COLUMN timestamps_started_at TEXT",
+            ),
+            (
+                "modified_at",
+                "ALTER TABLE tasks ADD COLUMN modified_at TEXT",
+            ),
+            (
+                "modified_by",
+                "ALTER TABLE tasks ADD COLUMN modified_by TEXT",
+            ),
+        ];
+
+        for (column, sql) in migrations {
+            if !columns.contains(&column.to_string()) {
+                self.conn.execute(sql, [])?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn migrate_subtasks_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS subtasks (
+                id TEXT PRIMARY KEY,
+                task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+                title TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                \"order\" INTEGER DEFAULT 0,
+                description TEXT,
+                acceptance_criteria TEXT,
+                technical_notes TEXT,
+                prompt_context TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                completed_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_subtasks_task_id ON subtasks(task_id);
+            ",
+        )?;
+        Ok(())
+    }
+
+    fn migrate_operation_logs_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS operation_logs (
+                id TEXT PRIMARY KEY,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                old_data TEXT,
+                new_data TEXT,
+                source TEXT DEFAULT 'app',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_operation_logs_entity ON operation_logs(entity_type, entity_id);
+            "
+        )?;
         Ok(())
     }
 
@@ -701,6 +805,247 @@ impl Database {
         )?;
         Ok(())
     }
+
+    pub fn get_task_full(&self, task_id: &str) -> Result<TaskFull> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, project_id, title, description, priority, category, status, due_date, 
+                    scheduled_date, created_at, completed_at, complexity, initialized, schema_version,
+                    context_description, context_business_rules, context_technical_notes, 
+                    context_acceptance_criteria, ai_metadata, timestamps_started_at, 
+                    modified_at, modified_by
+             FROM tasks WHERE id = ?1"
+        )?;
+
+        let task = stmt.query_row([task_id], |row| {
+            let business_rules_json: Option<String> = row.get(15)?;
+            let acceptance_criteria_json: Option<String> = row.get(17)?;
+            let ai_metadata_json: Option<String> = row.get(18)?;
+
+            let business_rules: Vec<String> = business_rules_json
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
+
+            let acceptance_criteria: Option<Vec<String>> =
+                acceptance_criteria_json.and_then(|s| serde_json::from_str(&s).ok());
+
+            let ai_metadata: AIMetadata = ai_metadata_json
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
+
+            let created_at: String = row
+                .get::<_, Option<String>>(9)?
+                .unwrap_or_else(default_created_at);
+
+            Ok(TaskFull {
+                schema_version: row.get::<_, Option<i32>>(13)?.unwrap_or(2),
+                initialized: row.get::<_, Option<i32>>(12)?.unwrap_or(0) == 1,
+                id: row.get(0)?,
+                title: row.get(2)?,
+                status: row.get(6)?,
+                priority: row.get(4)?,
+                category: row.get(5)?,
+                complexity: row.get(11)?,
+                context: TaskContext {
+                    description: row.get(14)?,
+                    business_rules,
+                    technical_notes: row.get(16)?,
+                    acceptance_criteria,
+                },
+                subtasks: vec![],
+                ai_metadata,
+                timestamps: TaskTimestamps {
+                    created_at,
+                    started_at: row.get(19)?,
+                    completed_at: row.get(10)?,
+                },
+                modified_at: row.get(20)?,
+                modified_by: row.get(21)?,
+                project_id: row.get(1)?,
+                due_date: row.get(7)?,
+                scheduled_date: row.get(8)?,
+            })
+        })?;
+
+        let subtasks = self.get_subtasks_for_task(task_id)?;
+
+        Ok(TaskFull { subtasks, ..task })
+    }
+
+    fn get_subtasks_for_task(&self, task_id: &str) -> Result<Vec<Subtask>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, title, status, \"order\", description, acceptance_criteria, 
+                    technical_notes, prompt_context, created_at, completed_at
+             FROM subtasks WHERE task_id = ?1 ORDER BY \"order\" ASC",
+        )?;
+
+        let subtasks = stmt
+            .query_map([task_id], |row| {
+                let acceptance_criteria_json: Option<String> = row.get(5)?;
+                let acceptance_criteria: Option<Vec<String>> =
+                    acceptance_criteria_json.and_then(|s| serde_json::from_str(&s).ok());
+
+                Ok(Subtask {
+                    id: row.get(0)?,
+                    title: row.get(1)?,
+                    status: row.get(2)?,
+                    order: row.get(3)?,
+                    description: row.get(4)?,
+                    acceptance_criteria,
+                    technical_notes: row.get(6)?,
+                    prompt_context: row.get(7)?,
+                    created_at: row
+                        .get::<_, Option<String>>(8)?
+                        .unwrap_or_else(default_created_at),
+                    completed_at: row.get(9)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(subtasks)
+    }
+
+    pub fn save_task_full(&self, task: &TaskFull) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let business_rules_json = serde_json::to_string(&task.context.business_rules)
+            .unwrap_or_else(|_| "[]".to_string());
+        let acceptance_criteria_json = task
+            .context
+            .acceptance_criteria
+            .as_ref()
+            .map(|ac| serde_json::to_string(ac).unwrap_or_else(|_| "[]".to_string()));
+        let ai_metadata_json =
+            serde_json::to_string(&task.ai_metadata).unwrap_or_else(|_| "{}".to_string());
+
+        self.conn.execute(
+            "UPDATE tasks SET 
+                title = ?1, status = ?2, priority = ?3, category = ?4, complexity = ?5,
+                initialized = ?6, schema_version = ?7, context_description = ?8,
+                context_business_rules = ?9, context_technical_notes = ?10,
+                context_acceptance_criteria = ?11, ai_metadata = ?12,
+                timestamps_started_at = ?13, completed_at = ?14,
+                modified_at = ?15, modified_by = ?16
+             WHERE id = ?17",
+            params![
+                &task.title,
+                &task.status,
+                task.priority,
+                &task.category,
+                &task.complexity,
+                if task.initialized { 1 } else { 0 },
+                task.schema_version,
+                &task.context.description,
+                &business_rules_json,
+                &task.context.technical_notes,
+                &acceptance_criteria_json,
+                &ai_metadata_json,
+                &task.timestamps.started_at,
+                &task.timestamps.completed_at,
+                &now,
+                "app",
+                &task.id,
+            ],
+        )?;
+
+        self.sync_subtasks(&task.id, &task.subtasks)?;
+
+        Ok(())
+    }
+
+    fn sync_subtasks(&self, task_id: &str, subtasks: &[Subtask]) -> Result<()> {
+        self.conn
+            .execute("DELETE FROM subtasks WHERE task_id = ?1", [task_id])?;
+
+        for subtask in subtasks {
+            let acceptance_criteria_json = subtask
+                .acceptance_criteria
+                .as_ref()
+                .map(|ac| serde_json::to_string(ac).unwrap_or_else(|_| "[]".to_string()));
+
+            self.conn.execute(
+                "INSERT INTO subtasks (id, task_id, title, status, \"order\", description, 
+                                       acceptance_criteria, technical_notes, prompt_context, 
+                                       created_at, completed_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                (
+                    &subtask.id,
+                    task_id,
+                    &subtask.title,
+                    &subtask.status,
+                    subtask.order,
+                    &subtask.description,
+                    &acceptance_criteria_json,
+                    &subtask.technical_notes,
+                    &subtask.prompt_context,
+                    &subtask.created_at,
+                    &subtask.completed_at,
+                ),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    pub fn create_task_full(&self, task: &TaskFull, project_id: &str) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let business_rules_json = serde_json::to_string(&task.context.business_rules)
+            .unwrap_or_else(|_| "[]".to_string());
+        let acceptance_criteria_json = task
+            .context
+            .acceptance_criteria
+            .as_ref()
+            .map(|ac| serde_json::to_string(ac).unwrap_or_else(|_| "[]".to_string()));
+        let ai_metadata_json =
+            serde_json::to_string(&task.ai_metadata).unwrap_or_else(|_| "{}".to_string());
+
+        self.conn.execute(
+            "INSERT INTO tasks (id, project_id, title, status, priority, category, complexity,
+                               initialized, schema_version, context_description, context_business_rules,
+                               context_technical_notes, context_acceptance_criteria, ai_metadata,
+                               timestamps_started_at, completed_at, modified_at, modified_by, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+            params![
+                &task.id,
+                project_id,
+                &task.title,
+                &task.status,
+                task.priority,
+                &task.category,
+                &task.complexity,
+                if task.initialized { 1 } else { 0 },
+                task.schema_version,
+                &task.context.description,
+                &business_rules_json,
+                &task.context.technical_notes,
+                &acceptance_criteria_json,
+                &ai_metadata_json,
+                &task.timestamps.started_at,
+                &task.timestamps.completed_at,
+                &now,
+                "app",
+                &task.timestamps.created_at,
+            ],
+        )?;
+
+        self.sync_subtasks(&task.id, &task.subtasks)?;
+
+        Ok(())
+    }
+
+    pub fn get_subtask_counts(&self, task_id: &str) -> Result<(i32, i32)> {
+        let mut stmt = self.conn.prepare(
+            "SELECT COUNT(*), SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END) 
+             FROM subtasks WHERE task_id = ?1",
+        )?;
+
+        stmt.query_row([task_id], |row| {
+            Ok((
+                row.get::<_, i32>(0)?,
+                row.get::<_, Option<i32>>(1)?.unwrap_or(0),
+            ))
+        })
+    }
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -792,4 +1137,118 @@ pub struct SessionLog {
     pub tokens_total: i32,
     pub files_modified: Vec<FileModified>,
     pub created_at: String,
+}
+
+// ============================================
+// TaskFull related structs (SQLite-backed)
+// ============================================
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
+pub struct TaskContext {
+    pub description: Option<String>,
+    #[serde(default)]
+    pub business_rules: Vec<String>,
+    pub technical_notes: Option<String>,
+    pub acceptance_criteria: Option<Vec<String>>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct Subtask {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    #[serde(default)]
+    pub order: i32,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub acceptance_criteria: Option<Vec<String>>,
+    #[serde(default)]
+    pub technical_notes: Option<String>,
+    #[serde(default)]
+    pub prompt_context: Option<String>,
+    #[serde(default = "default_created_at")]
+    pub created_at: String,
+    #[serde(default)]
+    pub completed_at: Option<String>,
+}
+
+fn default_created_at() -> String {
+    chrono::Utc::now().to_rfc3339()
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
+pub struct AIMetadata {
+    pub last_interaction: Option<String>,
+    #[serde(default)]
+    pub last_completed_action: Option<String>,
+    #[serde(default)]
+    pub session_ids: Vec<String>,
+    #[serde(default)]
+    pub tokens_used: i64,
+    #[serde(default)]
+    pub structuring_complete: bool,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone, Default)]
+pub struct TaskTimestamps {
+    #[serde(default = "default_created_at")]
+    pub created_at: String,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct TaskFull {
+    pub schema_version: i32,
+    pub initialized: bool,
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    pub priority: i32,
+    pub category: String,
+    pub complexity: Option<String>,
+    pub context: TaskContext,
+    pub subtasks: Vec<Subtask>,
+    pub ai_metadata: AIMetadata,
+    pub timestamps: TaskTimestamps,
+    #[serde(default)]
+    pub modified_at: Option<String>,
+    #[serde(default)]
+    pub modified_by: Option<String>,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub due_date: Option<String>,
+    #[serde(default)]
+    pub scheduled_date: Option<String>,
+}
+
+impl TaskFull {
+    pub fn new(id: String, title: String, priority: i32, category: String) -> Self {
+        let now = chrono::Utc::now().to_rfc3339();
+        TaskFull {
+            schema_version: 2,
+            initialized: false,
+            id,
+            title,
+            status: "pending".to_string(),
+            priority,
+            category,
+            complexity: None,
+            context: TaskContext::default(),
+            subtasks: vec![],
+            ai_metadata: AIMetadata::default(),
+            timestamps: TaskTimestamps {
+                created_at: now.clone(),
+                started_at: None,
+                completed_at: None,
+            },
+            modified_at: Some(now),
+            modified_by: Some("user".to_string()),
+            project_id: None,
+            due_date: None,
+            scheduled_date: None,
+        }
+    }
 }
