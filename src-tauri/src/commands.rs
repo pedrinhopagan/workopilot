@@ -512,265 +512,52 @@ pub fn get_task_by_id(state: State<AppState>, task_id: String) -> Result<Task, S
     db.get_task_by_id(&task_id).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub fn launch_task_workflow(
-    app_handle: tauri::AppHandle,
-    state: State<AppState>,
-    project_id: String,
-    task_id: String,
-    microtask_id: Option<String>,
+fn launch_in_workopilot_session(
+    _app_handle: &tauri::AppHandle,
+    project: &ProjectWithConfig,
+    initial_prompt: &str,
+    task_id: &str,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let project = db
-        .get_project_with_config(&project_id)
-        .map_err(|e| e.to_string())?;
+    let session_name = "workopilot";
 
-    let skill_source = app_handle
-        .path()
-        .resource_dir()
-        .map_err(|e: tauri::Error| e.to_string())?
-        .join("resources")
-        .join("opencode-skill")
-        .join("workopilot-task.md");
-
-    let skill_dest_dir = std::path::Path::new(&project.path)
-        .join(".opencode")
-        .join("skills");
-
-    std::fs::create_dir_all(&skill_dest_dir)
-        .map_err(|e| format!("Failed to create skills directory: {}", e))?;
-
-    let skill_dest = skill_dest_dir.join("workopilot-task.md");
-    std::fs::copy(&skill_source, &skill_dest)
-        .map_err(|e| format!("Failed to copy skill: {}", e))?;
-
-    let task_json_path = format!(".workopilot/tasks/{}.json", task_id);
-
-    let initial_prompt = if let Some(mt_id) = microtask_id {
-        format!(
-            "Usar skill workopilot-task para executar a micro-task {} da task em {}",
-            mt_id, task_json_path
-        )
+    // Tab name: "{project} - {task truncated}"
+    let task_short = if task_id.len() > 12 {
+        &task_id[..12]
     } else {
-        format!(
-            "Usar skill workopilot-task para a task em {}",
-            task_json_path
-        )
+        task_id
     };
-
-    let session_name = &project.tmux_config.session_name;
-    let mut sorted_tabs = project.tmux_config.tabs.clone();
-    sorted_tabs.sort_by_key(|t| t.order);
+    let tab_name = format!("{} - {}...", &project.name, task_short);
 
     let first_route = project.routes.first().ok_or("No routes configured")?;
-
-    let opencode_tab = sorted_tabs
-        .iter()
-        .find(|t| t.startup_command.as_deref() == Some("opencode"))
-        .map(|t| t.name.clone());
+    let project_path = &first_route.path;
 
     let escaped_prompt = initial_prompt.replace('\\', "\\\\").replace('"', "\\\"");
 
-    let mut script = format!(
+    let script = format!(
         r#"#!/usr/bin/env bash
 SESSION="{session_name}"
+TAB_NAME="{tab_name}"
+PROJECT_PATH="{project_path}"
 PROMPT="{escaped_prompt}"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
+    # Session exists, create new window
+    tmux new-window -t "$SESSION" -n "$TAB_NAME" -c "$PROJECT_PATH"
+    tmux send-keys -t "$SESSION:$TAB_NAME" "opencode" Enter
+    sleep 2
+    tmux send-keys -t "$SESSION:$TAB_NAME" "$PROMPT" Enter
+    tmux select-window -t "$SESSION:$TAB_NAME"
+    tmux attach-session -t "$SESSION"
+else
+    # Create new session
+    tmux new-session -d -s "$SESSION" -n "$TAB_NAME" -c "$PROJECT_PATH"
+    tmux send-keys -t "$SESSION:$TAB_NAME" "opencode" Enter
+    sleep 2
+    tmux send-keys -t "$SESSION:$TAB_NAME" "$PROMPT" Enter
+    tmux attach-session -t "$SESSION"
+fi
 "#
     );
-
-    if let Some(ref oc_tab) = opencode_tab {
-        script.push_str(&format!(
-            r#"    tmux select-window -t "$SESSION:{oc_tab}"
-    sleep 0.3
-    tmux send-keys -t "$SESSION:{oc_tab}" "$PROMPT" Enter
-    tmux attach-session -t "$SESSION"
-    exit 0
-fi
-
-"#
-        ));
-    } else {
-        script.push_str(
-            r#"    tmux attach-session -t "$SESSION"
-    exit 0
-fi
-
-"#,
-        );
-    }
-
-    for (i, tab) in sorted_tabs.iter().enumerate() {
-        let route = project
-            .routes
-            .iter()
-            .find(|r| r.id == tab.route_id)
-            .unwrap_or(first_route);
-
-        let path = &route.path;
-        let tab_name = &tab.name;
-
-        if i == 0 {
-            script.push_str(&format!(
-                r#"tmux new-session -d -s "$SESSION" -n "{tab_name}" -c "{path}"
-"#
-            ));
-
-            if let Some(cmd) = &tab.startup_command {
-                if !cmd.is_empty() {
-                    script.push_str(&format!(
-                        r#"tmux send-keys -t "$SESSION:{tab_name}" "{cmd}" Enter
-"#
-                    ));
-                }
-            }
-        } else {
-            script.push_str(&format!(
-                r#"tmux new-window -t "$SESSION" -n "{tab_name}" -c "{path}"
-"#
-            ));
-
-            if let Some(cmd) = &tab.startup_command {
-                if !cmd.is_empty() {
-                    script.push_str(&format!(
-                        r#"tmux send-keys -t "$SESSION:{tab_name}" "{cmd}" Enter
-"#
-                    ));
-                }
-            }
-        }
-    }
-
-    if let Some(ref oc_tab) = opencode_tab {
-        script.push_str(&format!(
-            r#"
-clear
-printf '\e[?25l'
-stty -echo 2>/dev/null
-
-GREEN="\e[38;5;143m"
-GREEN3="\e[38;5;108m"
-GREEN4="\e[38;5;65m"
-DIM="\e[38;5;238m"
-WHITE="\e[38;5;255m"
-R="\e[0m"
-B="\e[1m"
-
-COLS=$(tput cols)
-ROWS=$(tput lines)
-
-LOGO1="██╗    ██╗  ██████╗  ██████╗  ██╗  ██╗  ██████╗  ██████╗  ██╗ ██╗       ██████╗  ████████╗"
-LOGO2="██║    ██║ ██╔═══██╗ ██╔══██╗ ██║ ██╔╝ ██╔═══██╗ ██╔══██╗ ██║ ██║      ██╔═══██╗ ╚══██╔══╝"
-LOGO3="██║ █╗ ██║ ██║   ██║ ██████╔╝ █████╔╝  ██║   ██║ ██████╔╝ ██║ ██║      ██║   ██║    ██║   "
-LOGO4="██║███╗██║ ██║   ██║ ██╔══██╗ ██╔═██╗  ██║   ██║ ██╔═══╝  ██║ ██║      ██║   ██║    ██║   "
-LOGO5="╚███╔███╔╝ ╚██████╔╝ ██║  ██║ ██║  ██╗ ╚██████╔╝ ██║      ██║ ███████╗ ╚██████╔╝    ██║   "
-LOGO6=" ╚══╝╚══╝   ╚═════╝  ╚═╝  ╚═╝ ╚═╝  ╚═╝  ╚═════╝  ╚═╝      ╚═╝ ╚══════╝  ╚═════╝     ╚═╝   "
-
-SPARKLES="✦ ✧ ◆ ◇ ✦ ✧ ◆ ◇ ✦ ✧"
-
-CX=$(( (COLS - 88) / 2 ))
-CY=$(( (ROWS - 16) / 2 ))
-[ $CX -lt 1 ] && CX=1
-[ $CY -lt 1 ] && CY=1
-
-BAR_WIDTH=50
-BAR_Y=$((CY + 8))
-BAR_X=$(( (COLS - BAR_WIDTH - 2) / 2 ))
-MSG_Y=$((CY + 11))
-MSG_X=$(( (COLS - 22) / 2 ))
-
-draw_base() {{
-    clear
-    
-    printf "\e[3;10H$GREEN4✦$R"
-    printf "\e[4;$((COLS-10))H$GREEN4✧$R"
-    printf "\e[3;$((COLS/2))H$GREEN4◆$R"
-    printf "\e[$((ROWS-3));15H$GREEN4✧$R"
-    printf "\e[$((ROWS-4));$((COLS-15))H$GREEN4✦$R"
-    printf "\e[$((ROWS-3));$((COLS/2-5))H$GREEN4◇$R"
-    printf "\e[$((CY-2));$((CX+20))H$GREEN4✦$R"
-    printf "\e[$((CY+8));$((CX-3))H$GREEN4◇$R"
-    printf "\e[$((CY+8));$((CX+90))H$GREEN4✧$R"
-    
-    printf "\e[$CY;${{CX}}H$GREEN$B$LOGO1$R"
-    printf "\e[$((CY+1));${{CX}}H$GREEN$B$LOGO2$R"
-    printf "\e[$((CY+2));${{CX}}H$GREEN$B$LOGO3$R"
-    printf "\e[$((CY+3));${{CX}}H$GREEN$B$LOGO4$R"
-    printf "\e[$((CY+4));${{CX}}H$GREEN$B$LOGO5$R"
-    printf "\e[$((CY+5));${{CX}}H$GREEN$B$LOGO6$R"
-    
-    printf "\e[$BAR_Y;${{BAR_X}}H$DIM[$R"
-    printf "\e[$BAR_Y;$((BAR_X + BAR_WIDTH + 1))H$DIM]$R"
-    
-    printf "\e[$((ROWS-2));$((COLS/2-20))H$DIM⚡ Preparando seu ambiente de código ⚡$R"
-}}
-
-draw_progress() {{
-    FILLED=$1
-    printf "\e[$BAR_Y;$((BAR_X + 1))H"
-    for j in $(seq 1 $BAR_WIDTH); do
-        if [ $j -le $FILLED ]; then
-            printf "$GREEN█$R"
-        else
-            printf "$DIM░$R"
-        fi
-    done
-    printf "\e[$MSG_Y;${{MSG_X}}H$WHITE Iniciando OpenCode...$R"
-}}
-
-draw_success() {{
-    printf "\e[$BAR_Y;$((BAR_X + 1))H"
-    for j in $(seq 1 $BAR_WIDTH); do
-        printf "$GREEN█$R"
-    done
-    printf "\e[$MSG_Y;${{MSG_X}}H$GREEN$B✓$R $WHITE$BOpenCode Pronto!$R   "
-}}
-
-draw_base
-
-NODE_READY=0
-PROGRESS=0
-for i in $(seq 1 60); do
-    PANE_CMD=$(tmux display-message -p -t "$SESSION:{oc_tab}" '#{{pane_current_command}}' 2>/dev/null)
-    if [ "$PANE_CMD" = "node" ]; then
-        NODE_READY=1
-        while [ $PROGRESS -lt $BAR_WIDTH ]; do
-            PROGRESS=$((PROGRESS + 3))
-            [ $PROGRESS -gt $BAR_WIDTH ] && PROGRESS=$BAR_WIDTH
-            draw_progress $PROGRESS
-            sleep 0.05
-        done
-        break
-    fi
-    PROGRESS=$((i * BAR_WIDTH / 70))
-    [ $PROGRESS -gt $((BAR_WIDTH - 5)) ] && PROGRESS=$((BAR_WIDTH - 5))
-    draw_progress $PROGRESS
-    sleep 0.5
-done
-
-if [ $NODE_READY -eq 1 ]; then
-    draw_success
-    sleep 1.5
-    tmux send-keys -t "$SESSION:{oc_tab}" "$PROMPT"
-    sleep 0.5
-fi
-
-printf '\e[?25h'
-stty echo 2>/dev/null
-"#
-        ));
-    }
-
-    if let Some(first_tab) = sorted_tabs.first() {
-        script.push_str(&format!(
-            r#"
-tmux select-window -t "$SESSION:{}"
-tmux attach-session -t "$SESSION"
-"#,
-            first_tab.name
-        ));
-    }
 
     Command::new("alacritty")
         .arg("-e")
@@ -781,6 +568,95 @@ tmux attach-session -t "$SESSION"
         .map_err(|e| format!("Failed to launch tmux: {}", e))?;
 
     Ok(())
+}
+
+fn copy_skill_file(app_handle: &tauri::AppHandle, project_path: &str) -> Result<(), String> {
+    let skill_source = app_handle
+        .path()
+        .resource_dir()
+        .map_err(|e: tauri::Error| e.to_string())?
+        .join("resources")
+        .join("opencode-skill")
+        .join("workopilot-task.md");
+
+    let skill_dest_dir = std::path::Path::new(project_path)
+        .join(".opencode")
+        .join("skills");
+
+    std::fs::create_dir_all(&skill_dest_dir)
+        .map_err(|e| format!("Failed to create skills directory: {}", e))?;
+
+    let skill_dest = skill_dest_dir.join("workopilot-task.md");
+    std::fs::copy(&skill_source, &skill_dest)
+        .map_err(|e| format!("Failed to copy skill: {}", e))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn launch_task_workflow(
+    app_handle: tauri::AppHandle,
+    state: State<AppState>,
+    project_id: String,
+    task_id: String,
+    subtask_id: Option<String>,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let project = db
+        .get_project_with_config(&project_id)
+        .map_err(|e| e.to_string())?;
+
+    // Copy skill file
+    copy_skill_file(&app_handle, &project.path)?;
+
+    let task_json_path = format!(".workopilot/tasks/{}.json", task_id);
+
+    // Load task to check structuring_complete
+    let task_full = load_task_json(&project.path, &task_id)?;
+
+    let initial_prompt = if let Some(st_id) = subtask_id {
+        format!(
+            "Usar skill workopilot-task para executar a subtask {} da task em {}",
+            st_id, task_json_path
+        )
+    } else if !task_full.ai_metadata.structuring_complete {
+        format!(
+            "Usar skill workopilot-task para estruturar a task em {}",
+            task_json_path
+        )
+    } else {
+        format!(
+            "Usar skill workopilot-task para a task em {}",
+            task_json_path
+        )
+    };
+
+    launch_in_workopilot_session(&app_handle, &project, &initial_prompt, &task_id)
+}
+
+#[tauri::command]
+pub fn launch_task_review(
+    app_handle: tauri::AppHandle,
+    state: State<AppState>,
+    project_id: String,
+    task_id: String,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let project = db
+        .get_project_with_config(&project_id)
+        .map_err(|e| e.to_string())?;
+
+    // Copy skill file
+    copy_skill_file(&app_handle, &project.path)?;
+
+    let task_json_path = format!(".workopilot/tasks/{}.json", task_id);
+    let initial_prompt = format!(
+        "Usar skill workopilot-task para REVISAR a task em {}",
+        task_json_path
+    );
+
+    // Launch in workopilot tmux session
+    launch_in_workopilot_session(&app_handle, &project, &initial_prompt, &task_id)
 }
 
 #[tauri::command]

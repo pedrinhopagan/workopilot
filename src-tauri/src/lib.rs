@@ -67,6 +67,7 @@ pub fn run() {
             commands::delete_task_full,
             commands::get_task_by_id,
             commands::launch_task_workflow,
+            commands::launch_task_review,
             commands::start_watching_project,
             commands::stop_watching_project,
             settings::get_shortcut,
