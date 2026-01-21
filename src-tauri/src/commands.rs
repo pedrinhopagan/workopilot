@@ -94,6 +94,16 @@ pub fn update_project_business_rules(
 }
 
 #[tauri::command]
+pub fn update_projects_order(
+    state: State<AppState>,
+    project_orders: Vec<(String, i32)>,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.update_projects_order(&project_orders)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn set_tmux_configured(
     state: State<AppState>,
     project_id: String,

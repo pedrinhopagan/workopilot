@@ -2,6 +2,7 @@ export interface Project {
   id: string;
   name: string;
   description?: string;
+  display_order: number;
   created_at: string;
 }
 

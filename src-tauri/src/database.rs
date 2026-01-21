@@ -94,6 +94,7 @@ impl Database {
         self.migrate_task_images_table()?;
         self.migrate_activity_logs_table()?;
         self.migrate_user_sessions_table()?;
+        self.migrate_projects_display_order()?;
 
         Ok(())
     }
@@ -370,10 +371,34 @@ impl Database {
         Ok(())
     }
 
+    fn migrate_projects_display_order(&self) -> Result<()> {
+        let columns: Vec<String> = self
+            .conn
+            .prepare("PRAGMA table_info(projects)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>>>()?;
+
+        if !columns.contains(&"display_order".to_string()) {
+            self.conn.execute(
+                "ALTER TABLE projects ADD COLUMN display_order INTEGER DEFAULT 0",
+                [],
+            )?;
+            // Initialize display_order based on existing order (by name)
+            self.conn.execute(
+                "UPDATE projects SET display_order = (
+                    SELECT COUNT(*) FROM projects p2 WHERE p2.name < projects.name
+                )",
+                [],
+            )?;
+        }
+
+        Ok(())
+    }
+
     pub fn get_projects(&self) -> Result<Vec<Project>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, name, path, description FROM projects ORDER BY name")?;
+            .prepare("SELECT id, name, path, description, display_order FROM projects ORDER BY display_order, name")?;
 
         let projects = stmt
             .query_map([], |row| {
@@ -382,6 +407,7 @@ impl Database {
                     name: row.get(1)?,
                     path: row.get(2)?,
                     description: row.get(3)?,
+                    display_order: row.get::<_, Option<i32>>(4)?.unwrap_or(0),
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -503,6 +529,16 @@ impl Database {
             "UPDATE projects SET business_rules = ?1 WHERE id = ?2",
             (rules, project_id),
         )?;
+        Ok(())
+    }
+
+    pub fn update_projects_order(&self, project_orders: &[(String, i32)]) -> Result<()> {
+        for (project_id, order) in project_orders {
+            self.conn.execute(
+                "UPDATE projects SET display_order = ?1 WHERE id = ?2",
+                (order, project_id),
+            )?;
+        }
         Ok(())
     }
 
@@ -1624,6 +1660,7 @@ pub struct Project {
     pub name: String,
     pub path: String,
     pub description: Option<String>,
+    pub display_order: i32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]

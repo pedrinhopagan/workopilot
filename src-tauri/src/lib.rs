@@ -44,6 +44,7 @@ pub fn run() {
             commands::update_project_routes,
             commands::update_project_tmux_config,
             commands::update_project_business_rules,
+            commands::update_projects_order,
             commands::set_tmux_configured,
             commands::delete_project,
             commands::launch_project_tmux,
