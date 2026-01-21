@@ -9,7 +9,8 @@
     "build": "tauri build",
     "build:web": "vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "release": "./scripts/publish-aur.sh"
   },
   "license": "MIT",
   "dependencies": {
