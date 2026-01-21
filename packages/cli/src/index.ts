@@ -4,6 +4,7 @@ import { getDb, closeDb, getDbPathInfo } from "./db";
 import { runMigrations } from "./migrations";
 import { migrateJsonToSqlite } from "./json-migration";
 import { logOperation } from "./logger";
+import { logTaskStatusChanged, logSubtaskStatusChanged, getActivityLogs, getUserSessions } from "./activityLogger";
 import type { TaskFull, Subtask, AIMetadata, TaskContext, TaskTerminal } from "./types";
 
 const program = new Command();
@@ -231,7 +232,8 @@ program
 program
   .command("update-task <taskId>")
   .description("Update a task field")
-  .option("--status <status>", "Set status (pending, in_progress, done)")
+  .option("--status <status>", "Set status (pending, active, done)")
+  .option("--substatus <substatus>", "Set substatus (structuring, executing, awaiting_user, awaiting_review, null)")
   .option("--title <title>", "Set title")
   .option("--complexity <complexity>", "Set complexity (simple, medium, complex)")
   .option("--description <description>", "Set context description")
@@ -242,6 +244,7 @@ program
       taskId: string,
       options: {
         status?: string;
+        substatus?: string;
         title?: string;
         complexity?: string;
         description?: string;
@@ -270,6 +273,27 @@ program
           updates.status = options.status;
           if (options.status === "done") {
             updates.completed_at = now;
+          }
+          // When status changes to active, also set timestamps_started_at
+          if (options.status === "active" && !oldTask.timestamps_started_at) {
+            updates.timestamps_started_at = now;
+          }
+        }
+        // Handle substatus - allow "null" string to clear it
+        if (options.substatus !== undefined) {
+          if (options.substatus === "null" || options.substatus === "") {
+            updates.substatus = null;
+          } else {
+            const validSubstatuses = ["structuring", "executing", "awaiting_user", "awaiting_review"];
+            if (!validSubstatuses.includes(options.substatus)) {
+              console.error(
+                JSON.stringify({
+                  error: `Invalid substatus: ${options.substatus}. Valid values: ${validSubstatuses.join(", ")}, null`,
+                })
+              );
+              process.exit(1);
+            }
+            updates.substatus = options.substatus;
           }
         }
         if (options.title) updates.title = options.title;
@@ -312,6 +336,16 @@ program
           .executeTakeFirst();
 
         await logOperation(db, "task", taskId, "update", oldTask, newTask);
+
+        if (options.status && oldTask.status !== options.status) {
+          await logTaskStatusChanged(
+            db,
+            taskId,
+            oldTask.status,
+            options.status,
+            oldTask.project_id
+          );
+        }
 
         console.log(
           JSON.stringify({ success: true, taskId, updated: updates }, null, 2)
@@ -466,6 +500,23 @@ program
           oldSubtask,
           newSubtask
         );
+
+        if (options.status && oldSubtask.status !== options.status) {
+          const task = await db
+            .selectFrom("tasks")
+            .select(["id", "project_id"])
+            .where("id", "=", oldSubtask.task_id)
+            .executeTakeFirst();
+
+          await logSubtaskStatusChanged(
+            db,
+            subtaskId,
+            oldSubtask.task_id,
+            oldSubtask.status,
+            options.status,
+            task?.project_id
+          );
+        }
 
         console.log(
           JSON.stringify(
@@ -1294,6 +1345,65 @@ program
       }
     }
   );
+
+program
+  .command("get-activity-logs")
+  .description("Get activity logs")
+  .option("-e, --event-type <type>", "Filter by event type")
+  .option("-t, --entity-type <type>", "Filter by entity type")
+  .option("-p, --project <projectId>", "Filter by project ID")
+  .option("-l, --limit <limit>", "Limit results", "50")
+  .action(
+    async (options: {
+      eventType?: string;
+      entityType?: string;
+      project?: string;
+      limit: string;
+    }) => {
+      try {
+        const db = getDb();
+        const logs = await getActivityLogs(db, {
+          eventType: options.eventType,
+          entityType: options.entityType,
+          projectId: options.project,
+          limit: parseInt(options.limit, 10),
+        });
+
+        console.log(JSON.stringify(logs, null, 2));
+        await closeDb();
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            error: "Failed to get activity logs",
+            message: error instanceof Error ? error.message : String(error),
+          })
+        );
+        process.exit(1);
+      }
+    }
+  );
+
+program
+  .command("get-user-sessions")
+  .description("Get user sessions")
+  .option("-l, --limit <limit>", "Limit results", "50")
+  .action(async (options: { limit: string }) => {
+    try {
+      const db = getDb();
+      const sessions = await getUserSessions(db, parseInt(options.limit, 10));
+
+      console.log(JSON.stringify(sessions, null, 2));
+      await closeDb();
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          error: "Failed to get user sessions",
+          message: error instanceof Error ? error.message : String(error),
+        })
+      );
+      process.exit(1);
+    }
+  });
 
 program
   .command("check-needs-new <taskId>")

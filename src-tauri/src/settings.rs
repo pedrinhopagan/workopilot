@@ -3,8 +3,21 @@ use crate::AppState;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
-const SHORTCUT_KEY: &str = "toggle_shortcut";
-const DEFAULT_SHORTCUT: &str = "Alt+P";
+fn get_shortcut_key() -> &'static str {
+    if std::env::var("WORKOPILOT_DEV").is_ok() {
+        "toggle_shortcut_dev"
+    } else {
+        "toggle_shortcut"
+    }
+}
+
+fn get_default_shortcut() -> &'static str {
+    if std::env::var("WORKOPILOT_DEV").is_ok() {
+        "Alt+O"
+    } else {
+        "Alt+P"
+    }
+}
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct ShortcutConfig {
@@ -15,10 +28,16 @@ pub struct ShortcutConfig {
 
 impl Default for ShortcutConfig {
     fn default() -> Self {
+        let default = get_default_shortcut();
+        let key = if std::env::var("WORKOPILOT_DEV").is_ok() {
+            "O"
+        } else {
+            "P"
+        };
         Self {
             modifier: "Alt".to_string(),
-            key: "P".to_string(),
-            display: DEFAULT_SHORTCUT.to_string(),
+            key: key.to_string(),
+            display: default.to_string(),
         }
     }
 }
@@ -111,7 +130,7 @@ pub fn get_saved_shortcut(app: &AppHandle) -> ShortcutConfig {
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
 
-    match db.get_setting(SHORTCUT_KEY) {
+    match db.get_setting(get_shortcut_key()) {
         Ok(Some(value)) => ShortcutConfig::from_string(&value).unwrap_or_default(),
         _ => ShortcutConfig::default(),
     }
@@ -121,7 +140,7 @@ pub fn save_shortcut(app: &AppHandle, config: &ShortcutConfig) -> Result<(), Str
     let state = app.state::<AppState>();
     let db = state.db.lock().unwrap();
 
-    db.set_setting(SHORTCUT_KEY, &config.display)
+    db.set_setting(get_shortcut_key(), &config.display)
         .map_err(|e| e.to_string())
 }
 

@@ -11,6 +11,8 @@ import {
   getComplexityLabel,
   getComplexityColor,
   getStatusFilterOptions,
+  isTaskUserActionRequired,
+  getTaskStatusColor,
 } from "../../lib/constants/taskStatus";
 
 const categories = ["feature", "bug", "refactor", "test", "docs"];
@@ -62,12 +64,31 @@ function TasksPage() {
 
   const pendingTasks = useMemo(() => {
     const pending = filteredTasks.filter((t) => t.status !== "done");
-    // Sort executing tasks to top
+    // Sort: active tasks first (non-pending), then by execution status, then by priority
     return pending.sort((a, b) => {
+      // Active tasks (non-pending) come first
+      const aActive = a.status === "active";
+      const bActive = b.status === "active";
+      if (aActive && !bActive) return -1;
+      if (!aActive && bActive) return 1;
+      
+      // Then sort by execution status
       const aExecuting = activeExecutions.has(a.id);
       const bExecuting = activeExecutions.has(b.id);
       if (aExecuting && !bExecuting) return -1;
       if (!aExecuting && bExecuting) return 1;
+      
+      // Then by substatus priority (awaiting_review > awaiting_user > executing > structuring)
+      const substatusOrder: Record<string, number> = {
+        awaiting_review: 1,
+        awaiting_user: 2,
+        executing: 3,
+        structuring: 4,
+      };
+      const aSubOrder = a.substatus ? substatusOrder[a.substatus] || 5 : 5;
+      const bSubOrder = b.substatus ? substatusOrder[b.substatus] || 5 : 5;
+      if (aSubOrder !== bSubOrder) return aSubOrder - bSubOrder;
+      
       return 0;
     });
   }, [filteredTasks, activeExecutions]);
@@ -388,9 +409,20 @@ function TasksPage() {
               const taskFull = taskFullCache.get(task.id);
               const taskState = getTaskState(taskFull || null);
               const complexity = taskFull?.complexity;
+              
+              const isActive = task.status !== "pending";
+              const needsUserAction = isTaskUserActionRequired(taskFull || null);
+              const statusColor = getTaskStatusColor(taskFull || null);
 
               return (
-                <div key={task.id} className={`bg-[#232323] hover:bg-[#2a2a2a] transition-colors group ${isExecuting ? "ring-1 ring-[#909d63]" : ""}`}>
+                <div 
+                  key={task.id} 
+                  className={`bg-[#232323] hover:bg-[#2a2a2a] transition-colors group ${isActive ? "border-l-4" : ""} ${needsUserAction ? "ring-1" : ""} ${isExecuting ? "ring-1 ring-[#909d63]" : ""}`}
+                  style={{ 
+                    ...(isActive ? { borderLeftColor: statusColor } : {}),
+                    ...(needsUserAction && !isExecuting ? { boxShadow: `0 0 0 1px ${statusColor}` } : {})
+                  }}
+                >
                   <div onClick={() => editTask(task.id)} className="flex items-center gap-3 px-3 py-2 cursor-pointer">
                     {isExecuting ? (
                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#909d63" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">

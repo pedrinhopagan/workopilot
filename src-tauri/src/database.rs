@@ -92,6 +92,10 @@ impl Database {
         self.migrate_operation_logs_table()?;
         self.migrate_task_executions_table()?;
         self.migrate_task_images_table()?;
+        self.migrate_activity_logs_table()?;
+        self.migrate_user_sessions_table()?;
+        self.migrate_projects_display_order()?;
+        self.migrate_tasks_substatus()?;
 
         Ok(())
     }
@@ -332,10 +336,85 @@ impl Database {
         Ok(())
     }
 
+    fn migrate_activity_logs_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS activity_logs (
+                id TEXT PRIMARY KEY,
+                event_type TEXT NOT NULL,
+                entity_type TEXT,
+                entity_id TEXT,
+                project_id TEXT REFERENCES projects(id),
+                metadata TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_event_type ON activity_logs(event_type);
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON activity_logs(entity_type, entity_id);
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_project_id ON activity_logs(project_id);
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);
+            ",
+        )?;
+        Ok(())
+    }
+
+    fn migrate_user_sessions_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id TEXT PRIMARY KEY,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                duration_seconds INTEGER,
+                app_version TEXT
+            );
+            ",
+        )?;
+        Ok(())
+    }
+
+    fn migrate_projects_display_order(&self) -> Result<()> {
+        let columns: Vec<String> = self
+            .conn
+            .prepare("PRAGMA table_info(projects)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>>>()?;
+
+        if !columns.contains(&"display_order".to_string()) {
+            self.conn.execute(
+                "ALTER TABLE projects ADD COLUMN display_order INTEGER DEFAULT 0",
+                [],
+            )?;
+            // Initialize display_order based on existing order (by name)
+            self.conn.execute(
+                "UPDATE projects SET display_order = (
+                    SELECT COUNT(*) FROM projects p2 WHERE p2.name < projects.name
+                )",
+                [],
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn migrate_tasks_substatus(&self) -> Result<()> {
+        let columns: Vec<String> = self
+            .conn
+            .prepare("PRAGMA table_info(tasks)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>>>()?;
+
+        if !columns.contains(&"substatus".to_string()) {
+            self.conn
+                .execute("ALTER TABLE tasks ADD COLUMN substatus TEXT", [])?;
+        }
+
+        Ok(())
+    }
+
     pub fn get_projects(&self) -> Result<Vec<Project>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, name, path, description FROM projects ORDER BY name")?;
+            .prepare("SELECT id, name, path, description, display_order FROM projects ORDER BY display_order, name")?;
 
         let projects = stmt
             .query_map([], |row| {
@@ -344,6 +423,7 @@ impl Database {
                     name: row.get(1)?,
                     path: row.get(2)?,
                     description: row.get(3)?,
+                    display_order: row.get::<_, Option<i32>>(4)?.unwrap_or(0),
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -468,6 +548,16 @@ impl Database {
         Ok(())
     }
 
+    pub fn update_projects_order(&self, project_orders: &[(String, i32)]) -> Result<()> {
+        for (project_id, order) in project_orders {
+            self.conn.execute(
+                "UPDATE projects SET display_order = ?1 WHERE id = ?2",
+                (order, project_id),
+            )?;
+        }
+        Ok(())
+    }
+
     pub fn set_tmux_configured(&self, project_id: &str, configured: bool) -> Result<()> {
         self.conn.execute(
             "UPDATE projects SET tmux_configured = ?1 WHERE id = ?2",
@@ -486,7 +576,7 @@ impl Database {
 
     pub fn get_tasks(&self) -> Result<Vec<Task>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, project_id, title, description, priority, category, status, due_date, json_path, created_at, scheduled_date
+            "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, json_path, created_at, scheduled_date
              FROM tasks 
              ORDER BY priority ASC, created_at DESC"
         )?;
@@ -501,10 +591,11 @@ impl Database {
                     priority: row.get(4)?,
                     category: row.get(5)?,
                     status: row.get(6)?,
-                    due_date: row.get(7)?,
-                    json_path: row.get(8)?,
-                    created_at: row.get(9)?,
-                    scheduled_date: row.get(10)?,
+                    substatus: row.get(7)?,
+                    due_date: row.get(8)?,
+                    json_path: row.get(9)?,
+                    created_at: row.get(10)?,
+                    scheduled_date: row.get(11)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -514,7 +605,7 @@ impl Database {
 
     pub fn get_urgent_tasks(&self, project_id: &str, limit: i32) -> Result<Vec<Task>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, project_id, title, description, priority, category, status, due_date, json_path, created_at, scheduled_date
+            "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, json_path, created_at, scheduled_date
              FROM tasks 
              WHERE project_id = ?1 AND status = 'pending'
              ORDER BY 
@@ -535,10 +626,51 @@ impl Database {
                     priority: row.get(4)?,
                     category: row.get(5)?,
                     status: row.get(6)?,
-                    due_date: row.get(7)?,
-                    json_path: row.get(8)?,
-                    created_at: row.get(9)?,
-                    scheduled_date: row.get(10)?,
+                    substatus: row.get(7)?,
+                    due_date: row.get(8)?,
+                    json_path: row.get(9)?,
+                    created_at: row.get(10)?,
+                    scheduled_date: row.get(11)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(tasks)
+    }
+
+    pub fn get_active_tasks(&self, project_id: &str, limit: i32) -> Result<Vec<Task>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, json_path, created_at, scheduled_date
+             FROM tasks 
+             WHERE project_id = ?1 AND status = 'active'
+             ORDER BY 
+                CASE substatus
+                    WHEN 'awaiting_review' THEN 1
+                    WHEN 'awaiting_user' THEN 2
+                    WHEN 'executing' THEN 3
+                    WHEN 'structuring' THEN 4
+                    ELSE 5
+                END,
+                priority ASC,
+                created_at ASC
+             LIMIT ?2"
+        )?;
+
+        let tasks = stmt
+            .query_map([project_id, &limit.to_string()], |row| {
+                Ok(Task {
+                    id: row.get(0)?,
+                    project_id: row.get(1)?,
+                    title: row.get(2)?,
+                    description: row.get(3)?,
+                    priority: row.get(4)?,
+                    category: row.get(5)?,
+                    status: row.get(6)?,
+                    substatus: row.get(7)?,
+                    due_date: row.get(8)?,
+                    json_path: row.get(9)?,
+                    created_at: row.get(10)?,
+                    scheduled_date: row.get(11)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -606,7 +738,7 @@ impl Database {
 
     pub fn get_task_by_id(&self, task_id: &str) -> Result<Task> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, project_id, title, description, priority, category, status, due_date, json_path, created_at, scheduled_date
+            "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, json_path, created_at, scheduled_date
              FROM tasks WHERE id = ?1"
         )?;
 
@@ -619,10 +751,11 @@ impl Database {
                 priority: row.get(4)?,
                 category: row.get(5)?,
                 status: row.get(6)?,
-                due_date: row.get(7)?,
-                json_path: row.get(8)?,
-                created_at: row.get(9)?,
-                scheduled_date: row.get(10)?,
+                substatus: row.get(7)?,
+                due_date: row.get(8)?,
+                json_path: row.get(9)?,
+                created_at: row.get(10)?,
+                scheduled_date: row.get(11)?,
             })
         })
     }
@@ -637,6 +770,31 @@ impl Database {
         self.conn.execute(
             "UPDATE tasks SET status = ?1, completed_at = ?2 WHERE id = ?3",
             (status, completed_at, task_id),
+        )?;
+        Ok(())
+    }
+
+    pub fn update_task_status_and_substatus(
+        &self,
+        task_id: &str,
+        status: &str,
+        substatus: Option<&str>,
+    ) -> Result<()> {
+        let completed_at = if status == "done" {
+            Some(chrono::Utc::now().to_rfc3339())
+        } else {
+            None
+        };
+
+        let started_at = if status == "active" {
+            Some(chrono::Utc::now().to_rfc3339())
+        } else {
+            None
+        };
+
+        self.conn.execute(
+            "UPDATE tasks SET status = ?1, substatus = ?2, completed_at = ?3, timestamps_started_at = COALESCE(timestamps_started_at, ?4) WHERE id = ?5",
+            (status, substatus, completed_at, started_at, task_id),
         )?;
         Ok(())
     }
@@ -720,7 +878,7 @@ impl Database {
         category: Option<&str>,
         priority: Option<i32>,
     ) -> Result<Vec<Task>> {
-        let mut query = "SELECT id, project_id, title, description, priority, category, status, due_date, json_path, created_at, scheduled_date
+        let mut query = "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, json_path, created_at, scheduled_date
              FROM tasks
              WHERE scheduled_date IS NULL AND status != 'done'".to_string();
 
@@ -764,10 +922,11 @@ impl Database {
                     priority: row.get(4)?,
                     category: row.get(5)?,
                     status: row.get(6)?,
-                    due_date: row.get(7)?,
-                    json_path: row.get(8)?,
-                    created_at: row.get(9)?,
-                    scheduled_date: row.get(10)?,
+                    substatus: row.get(7)?,
+                    due_date: row.get(8)?,
+                    json_path: row.get(9)?,
+                    created_at: row.get(10)?,
+                    scheduled_date: row.get(11)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -776,7 +935,7 @@ impl Database {
     }
 
     pub fn get_tasks_for_date(&self, date: &str) -> Result<Vec<Task>> {
-        let query = "SELECT id, project_id, title, description, priority, category, status, due_date, json_path, created_at, scheduled_date
+        let query = "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, json_path, created_at, scheduled_date
              FROM tasks
              WHERE scheduled_date = ?1
              ORDER BY priority ASC, created_at ASC";
@@ -793,10 +952,11 @@ impl Database {
                     priority: row.get(4)?,
                     category: row.get(5)?,
                     status: row.get(6)?,
-                    due_date: row.get(7)?,
-                    json_path: row.get(8)?,
-                    created_at: row.get(9)?,
-                    scheduled_date: row.get(10)?,
+                    substatus: row.get(7)?,
+                    due_date: row.get(8)?,
+                    json_path: row.get(9)?,
+                    created_at: row.get(10)?,
+                    scheduled_date: row.get(11)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -854,7 +1014,7 @@ impl Database {
 
     pub fn get_task_full(&self, task_id: &str) -> Result<TaskFull> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, project_id, title, description, priority, category, status, due_date, 
+            "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, 
                     scheduled_date, created_at, completed_at, complexity, initialized, schema_version,
                     context_description, context_business_rules, context_technical_notes, 
                     context_acceptance_criteria, ai_metadata, timestamps_started_at, 
@@ -863,9 +1023,9 @@ impl Database {
         )?;
 
         let task = stmt.query_row([task_id], |row| {
-            let business_rules_json: Option<String> = row.get(15)?;
-            let acceptance_criteria_json: Option<String> = row.get(17)?;
-            let ai_metadata_json: Option<String> = row.get(18)?;
+            let business_rules_json: Option<String> = row.get(16)?;
+            let acceptance_criteria_json: Option<String> = row.get(18)?;
+            let ai_metadata_json: Option<String> = row.get(19)?;
 
             let business_rules: Vec<String> = business_rules_json
                 .and_then(|s| serde_json::from_str(&s).ok())
@@ -879,36 +1039,37 @@ impl Database {
                 .unwrap_or_default();
 
             let created_at: String = row
-                .get::<_, Option<String>>(9)?
+                .get::<_, Option<String>>(10)?
                 .unwrap_or_else(default_created_at);
 
             Ok(TaskFull {
-                schema_version: row.get::<_, Option<i32>>(13)?.unwrap_or(2),
-                initialized: row.get::<_, Option<i32>>(12)?.unwrap_or(0) == 1,
+                schema_version: row.get::<_, Option<i32>>(14)?.unwrap_or(2),
+                initialized: row.get::<_, Option<i32>>(13)?.unwrap_or(0) == 1,
                 id: row.get(0)?,
                 title: row.get(2)?,
                 status: row.get(6)?,
+                substatus: row.get(7)?,
                 priority: row.get(4)?,
                 category: row.get(5)?,
-                complexity: row.get(11)?,
+                complexity: row.get(12)?,
                 context: TaskContext {
-                    description: row.get(14)?,
+                    description: row.get(15)?,
                     business_rules,
-                    technical_notes: row.get(16)?,
+                    technical_notes: row.get(17)?,
                     acceptance_criteria,
                 },
                 subtasks: vec![],
                 ai_metadata,
                 timestamps: TaskTimestamps {
                     created_at,
-                    started_at: row.get(19)?,
-                    completed_at: row.get(10)?,
+                    started_at: row.get(20)?,
+                    completed_at: row.get(11)?,
                 },
-                modified_at: row.get(20)?,
-                modified_by: row.get(21)?,
+                modified_at: row.get(21)?,
+                modified_by: row.get(22)?,
                 project_id: row.get(1)?,
-                due_date: row.get(7)?,
-                scheduled_date: row.get(8)?,
+                due_date: row.get(8)?,
+                scheduled_date: row.get(9)?,
             })
         })?;
 
@@ -965,16 +1126,17 @@ impl Database {
 
         self.conn.execute(
             "UPDATE tasks SET 
-                title = ?1, status = ?2, priority = ?3, category = ?4, complexity = ?5,
-                initialized = ?6, schema_version = ?7, context_description = ?8,
-                context_business_rules = ?9, context_technical_notes = ?10,
-                context_acceptance_criteria = ?11, ai_metadata = ?12,
-                timestamps_started_at = ?13, completed_at = ?14,
-                modified_at = ?15, modified_by = ?16
-             WHERE id = ?17",
+                title = ?1, status = ?2, substatus = ?3, priority = ?4, category = ?5, complexity = ?6,
+                initialized = ?7, schema_version = ?8, context_description = ?9,
+                context_business_rules = ?10, context_technical_notes = ?11,
+                context_acceptance_criteria = ?12, ai_metadata = ?13,
+                timestamps_started_at = ?14, completed_at = ?15,
+                modified_at = ?16, modified_by = ?17
+             WHERE id = ?18",
             params![
                 &task.title,
                 &task.status,
+                &task.substatus,
                 task.priority,
                 &task.category,
                 &task.complexity,
@@ -1046,16 +1208,17 @@ impl Database {
             serde_json::to_string(&task.ai_metadata).unwrap_or_else(|_| "{}".to_string());
 
         self.conn.execute(
-            "INSERT INTO tasks (id, project_id, title, status, priority, category, complexity,
+            "INSERT INTO tasks (id, project_id, title, status, substatus, priority, category, complexity,
                                initialized, schema_version, context_description, context_business_rules,
                                context_technical_notes, context_acceptance_criteria, ai_metadata,
                                timestamps_started_at, completed_at, modified_at, modified_by, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
             params![
                 &task.id,
                 project_id,
                 &task.title,
                 &task.status,
+                &task.substatus,
                 task.priority,
                 &task.category,
                 &task.complexity,
@@ -1360,6 +1523,337 @@ impl Database {
             .execute("DELETE FROM task_images WHERE id = ?1", [image_id])?;
         Ok(())
     }
+
+    // ============================================
+    // Activity Logs CRUD
+    // ============================================
+
+    pub fn insert_activity_log(
+        &self,
+        event_type: &str,
+        entity_type: Option<&str>,
+        entity_id: Option<&str>,
+        project_id: Option<&str>,
+        metadata: Option<&str>,
+    ) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        self.conn.execute(
+            "INSERT INTO activity_logs (id, event_type, entity_type, entity_id, project_id, metadata) 
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, event_type, entity_type, entity_id, project_id, metadata],
+        )?;
+        Ok(id)
+    }
+
+    pub fn get_activity_logs(
+        &self,
+        event_type: Option<&str>,
+        entity_type: Option<&str>,
+        project_id: Option<&str>,
+        limit: Option<i32>,
+    ) -> Result<Vec<ActivityLog>> {
+        let mut query =
+            "SELECT id, event_type, entity_type, entity_id, project_id, metadata, created_at 
+                         FROM activity_logs WHERE 1=1"
+                .to_string();
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![];
+
+        if event_type.is_some() {
+            query.push_str(&format!(" AND event_type = ?{}", params_vec.len() + 1));
+            params_vec.push(Box::new(event_type.unwrap().to_string()));
+        }
+        if entity_type.is_some() {
+            query.push_str(&format!(" AND entity_type = ?{}", params_vec.len() + 1));
+            params_vec.push(Box::new(entity_type.unwrap().to_string()));
+        }
+        if project_id.is_some() {
+            query.push_str(&format!(" AND project_id = ?{}", params_vec.len() + 1));
+            params_vec.push(Box::new(project_id.unwrap().to_string()));
+        }
+
+        query.push_str(" ORDER BY created_at DESC");
+
+        if let Some(lim) = limit {
+            query.push_str(&format!(" LIMIT {}", lim));
+        }
+
+        let params_ref: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&query)?;
+
+        let logs = stmt
+            .query_map(rusqlite::params_from_iter(params_ref), |row| {
+                Ok(ActivityLog {
+                    id: row.get(0)?,
+                    event_type: row.get(1)?,
+                    entity_type: row.get(2)?,
+                    entity_id: row.get(3)?,
+                    project_id: row.get(4)?,
+                    metadata: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(logs)
+    }
+
+    pub fn search_activity_logs(
+        &self,
+        query: Option<&str>,
+        event_types: Option<Vec<String>>,
+        project_id: Option<&str>,
+        from_date: Option<&str>,
+        to_date: Option<&str>,
+        cursor: Option<&str>,
+        limit: i32,
+    ) -> Result<ActivityLogSearchResult> {
+        let mut sql = String::from(
+            "SELECT al.id, al.event_type, al.entity_type, al.entity_id, al.project_id, 
+                    al.metadata, al.created_at, p.name as project_name
+             FROM activity_logs al
+             LEFT JOIN projects p ON al.project_id = p.id
+             WHERE 1=1",
+        );
+
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![];
+
+        if let Some(q) = query {
+            if !q.is_empty() {
+                sql.push_str(&format!(
+                    " AND (al.event_type LIKE ?{0} OR p.name LIKE ?{0} OR al.metadata LIKE ?{0})",
+                    params_vec.len() + 1
+                ));
+                params_vec.push(Box::new(format!("%{}%", q)));
+            }
+        }
+
+        if let Some(types) = &event_types {
+            if !types.is_empty() {
+                let placeholders: Vec<String> = types
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("?{}", params_vec.len() + i + 1))
+                    .collect();
+                sql.push_str(&format!(
+                    " AND al.event_type IN ({})",
+                    placeholders.join(",")
+                ));
+                for t in types {
+                    params_vec.push(Box::new(t.clone()));
+                }
+            }
+        }
+
+        if let Some(pid) = project_id {
+            sql.push_str(&format!(" AND al.project_id = ?{}", params_vec.len() + 1));
+            params_vec.push(Box::new(pid.to_string()));
+        }
+
+        if let Some(from) = from_date {
+            sql.push_str(&format!(" AND al.created_at >= ?{}", params_vec.len() + 1));
+            params_vec.push(Box::new(from.to_string()));
+        }
+
+        if let Some(to) = to_date {
+            sql.push_str(&format!(" AND al.created_at <= ?{}", params_vec.len() + 1));
+            let to_end = format!("{}T23:59:59", to);
+            params_vec.push(Box::new(to_end));
+        }
+
+        if let Some(c) = cursor {
+            sql.push_str(&format!(" AND al.created_at < ?{}", params_vec.len() + 1));
+            params_vec.push(Box::new(c.to_string()));
+        }
+
+        sql.push_str(" ORDER BY al.created_at DESC");
+        sql.push_str(&format!(" LIMIT {}", limit + 1));
+
+        let params_ref: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&sql)?;
+
+        let mut logs: Vec<ActivityLogWithContext> = stmt
+            .query_map(rusqlite::params_from_iter(params_ref), |row| {
+                Ok(ActivityLogWithContext {
+                    id: row.get(0)?,
+                    event_type: row.get(1)?,
+                    entity_type: row.get(2)?,
+                    entity_id: row.get(3)?,
+                    project_id: row.get(4)?,
+                    metadata: row.get(5)?,
+                    created_at: row.get(6)?,
+                    project_name: row.get(7)?,
+                    task_title: None,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+
+        let has_more = logs.len() > limit as usize;
+        if has_more {
+            logs.pop();
+        }
+
+        let next_cursor = if has_more {
+            logs.last().map(|l| l.created_at.clone())
+        } else {
+            None
+        };
+
+        let total: i32 = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM activity_logs", [], |row| row.get(0))?;
+
+        Ok(ActivityLogSearchResult {
+            logs,
+            total,
+            next_cursor,
+            has_more,
+        })
+    }
+
+    // ============================================
+    // User Sessions CRUD
+    // ============================================
+
+    pub fn start_user_session(&self, app_version: Option<&str>) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "INSERT INTO user_sessions (id, started_at, app_version) VALUES (?1, ?2, ?3)",
+            params![id, now, app_version],
+        )?;
+        Ok(id)
+    }
+
+    pub fn end_user_session(&self, session_id: &str) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let started_at: String = self.conn.query_row(
+            "SELECT started_at FROM user_sessions WHERE id = ?1",
+            [session_id],
+            |row| row.get(0),
+        )?;
+
+        let start_time = chrono::DateTime::parse_from_rfc3339(&started_at)
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let end_time = chrono::Utc::now();
+        let duration_seconds =
+            (end_time - start_time.with_timezone(&chrono::Utc)).num_seconds() as i32;
+
+        self.conn.execute(
+            "UPDATE user_sessions SET ended_at = ?1, duration_seconds = ?2 WHERE id = ?3",
+            params![now, duration_seconds, session_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_current_user_session(&self) -> Result<Option<UserSession>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, started_at, ended_at, duration_seconds, app_version 
+             FROM user_sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1",
+        )?;
+
+        let result = stmt.query_row([], |row| {
+            Ok(UserSession {
+                id: row.get(0)?,
+                started_at: row.get(1)?,
+                ended_at: row.get(2)?,
+                duration_seconds: row.get(3)?,
+                app_version: row.get(4)?,
+            })
+        });
+
+        match result {
+            Ok(session) => Ok(Some(session)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn get_user_sessions(&self, limit: Option<i32>) -> Result<Vec<UserSession>> {
+        let query = format!(
+            "SELECT id, started_at, ended_at, duration_seconds, app_version 
+             FROM user_sessions ORDER BY started_at DESC LIMIT {}",
+            limit.unwrap_or(50)
+        );
+
+        let mut stmt = self.conn.prepare(&query)?;
+
+        let sessions = stmt
+            .query_map([], |row| {
+                Ok(UserSession {
+                    id: row.get(0)?,
+                    started_at: row.get(1)?,
+                    ended_at: row.get(2)?,
+                    duration_seconds: row.get(3)?,
+                    app_version: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(sessions)
+    }
+
+    pub fn increment_daily_tokens(&self, tokens: i64) -> Result<()> {
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+        self.conn.execute(
+            "INSERT INTO daily_stats (date, tokens_used) VALUES (?1, ?2)
+             ON CONFLICT(date) DO UPDATE SET tokens_used = tokens_used + ?2",
+            params![today, tokens],
+        )?;
+        Ok(())
+    }
+
+    pub fn add_task_tokens(&self, task_id: &str, tokens: i64, session_id: &str) -> Result<()> {
+        let current_metadata: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT ai_metadata FROM tasks WHERE id = ?1",
+                [task_id],
+                |row| row.get(0),
+            )
+            .ok();
+
+        let mut metadata: AIMetadata = current_metadata
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+
+        metadata.tokens_used += tokens;
+        metadata.last_interaction = Some(chrono::Utc::now().to_rfc3339());
+
+        if !metadata.session_ids.contains(&session_id.to_string()) {
+            metadata.session_ids.push(session_id.to_string());
+        }
+
+        let metadata_json = serde_json::to_string(&metadata).unwrap_or_else(|_| "{}".to_string());
+
+        self.conn.execute(
+            "UPDATE tasks SET ai_metadata = ?1, modified_at = ?2 WHERE id = ?3",
+            params![metadata_json, chrono::Utc::now().to_rfc3339(), task_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_daily_stats(&self, date: &str) -> Result<Option<DailyStats>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT date, tokens_used, tokens_goal, tasks_completed FROM daily_stats WHERE date = ?1"
+        )?;
+
+        let result = stmt.query_row([date], |row| {
+            Ok(DailyStats {
+                date: row.get(0)?,
+                tokens_used: row.get(1)?,
+                tokens_goal: row.get(2)?,
+                tasks_completed: row.get(3)?,
+            })
+        });
+
+        match result {
+            Ok(stats) => Ok(Some(stats)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -1368,6 +1862,7 @@ pub struct Project {
     pub name: String,
     pub path: String,
     pub description: Option<String>,
+    pub display_order: i32,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -1415,6 +1910,7 @@ pub struct Task {
     pub priority: i32,
     pub category: String,
     pub status: String,
+    pub substatus: Option<String>,
     pub due_date: Option<String>,
     pub json_path: Option<String>,
     pub created_at: Option<String>,
@@ -1470,6 +1966,55 @@ pub struct TaskExecution {
     pub error_message: Option<String>,
     pub started_at: String,
     pub ended_at: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct ActivityLog {
+    pub id: String,
+    pub event_type: String,
+    pub entity_type: Option<String>,
+    pub entity_id: Option<String>,
+    pub project_id: Option<String>,
+    pub metadata: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct ActivityLogWithContext {
+    pub id: String,
+    pub event_type: String,
+    pub entity_type: Option<String>,
+    pub entity_id: Option<String>,
+    pub project_id: Option<String>,
+    pub metadata: Option<String>,
+    pub created_at: String,
+    pub project_name: Option<String>,
+    pub task_title: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct ActivityLogSearchResult {
+    pub logs: Vec<ActivityLogWithContext>,
+    pub total: i32,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct UserSession {
+    pub id: String,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub duration_seconds: Option<i32>,
+    pub app_version: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct DailyStats {
+    pub date: String,
+    pub tokens_used: i64,
+    pub tokens_goal: i64,
+    pub tasks_completed: i32,
 }
 
 // ============================================
@@ -1538,6 +2083,8 @@ pub struct TaskFull {
     pub id: String,
     pub title: String,
     pub status: String,
+    #[serde(default)]
+    pub substatus: Option<String>,
     pub priority: i32,
     pub category: String,
     pub complexity: Option<String>,
@@ -1566,6 +2113,7 @@ impl TaskFull {
             id,
             title,
             status: "pending".to_string(),
+            substatus: None,
             priority,
             category,
             complexity: None,

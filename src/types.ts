@@ -2,6 +2,7 @@ export interface Project {
   id: string;
   name: string;
   description?: string;
+  display_order: number;
   created_at: string;
 }
 
@@ -37,6 +38,9 @@ export interface ProjectWithConfig {
   created_at: string;
 }
 
+export type TaskStatus = "pending" | "active" | "done";
+export type TaskSubstatus = "structuring" | "executing" | "awaiting_user" | "awaiting_review" | null;
+
 export interface Task {
   id: string;
   project_id: string | null;
@@ -45,6 +49,7 @@ export interface Task {
   priority: number;
   category: string;
   status: string;
+  substatus: string | null;
   due_date: string | null;
   json_path: string | null;
   created_at: string | null;
@@ -91,6 +96,7 @@ export interface TaskFull {
   id: string;
   title: string;
   status: string;
+  substatus: string | null;
   priority: number;
   category: string;
   complexity: string | null;
@@ -130,6 +136,7 @@ export interface CalendarTask {
   priority: number;
   category: string;
   status: string;
+  substatus: string | null;
   scheduled_date: string;
   due_date: string | null;
   is_overdue: boolean;
@@ -170,10 +177,28 @@ export interface TaskImageMetadata {
 }
 
 export interface TaskImage {
-  id: string;
-  task_id: string;
-  data: string;
-  mime_type: string;
-  file_name: string;
-  created_at: string | null;
+	id: string;
+	task_id: string;
+	data: string;
+	mime_type: string;
+	file_name: string;
+	created_at: string | null;
+}
+
+export interface ActivityLog {
+	id: string;
+	event_type: string;
+	entity_type: string | null;
+	entity_id: string | null;
+	project_id: string | null;
+	metadata: string | null;
+	created_at: string;
+}
+
+export interface UserSession {
+	id: string;
+	started_at: string;
+	ended_at: string | null;
+	duration_seconds: number | null;
+	app_version: string | null;
 }

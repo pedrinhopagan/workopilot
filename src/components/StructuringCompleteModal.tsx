@@ -1,5 +1,14 @@
 import { useEffect, useState, useCallback } from "react"
 import { useNavigate } from "@tanstack/react-router"
+import {
+  Check,
+  X,
+  Loader2,
+  Rocket,
+  Target,
+  Eye,
+  Sparkles,
+} from "lucide-react"
 import { safeInvoke } from "../services/tauri"
 import { useStructuringNotificationStore } from "../stores/structuringNotification"
 import { useDialogStateStore } from "../stores/dialogState"
@@ -143,19 +152,7 @@ function ModalHeader({
     <div className="px-5 py-4 border-b border-[#3d3a34] bg-gradient-to-r from-[#909d63]/10 via-transparent to-transparent">
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-full bg-[#909d63]/20 flex items-center justify-center">
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#909d63"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M20 6 9 17l-5-5" />
-          </svg>
+          <Check size={20} color="#909d63" />
         </div>
         <div>
           <h3 className="text-[#d6d6d6] text-base font-medium">
@@ -170,20 +167,7 @@ function ModalHeader({
           className="ml-auto text-[#636363] hover:text-[#d6d6d6] transition-colors p-1"
           aria-label="Fechar"
         >
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="M18 6 6 18" />
-            <path d="m6 6 12 12" />
-          </svg>
+          <X size={18} />
         </button>
       </div>
     </div>
@@ -228,7 +212,7 @@ function ModalActions({
           hoverBorderColor="hover:border-[#909d63]"
           hoverBgColor="hover:bg-[#909d63]/10"
           hoverTextColor="group-hover:text-[#909d63]"
-          icon={<RocketIcon />}
+          icon={<Rocket size={24} />}
           label="Executar Tudo"
         />
         <ActionButton
@@ -239,7 +223,7 @@ function ModalActions({
           hoverBorderColor="hover:border-[#61afef]"
           hoverBgColor="hover:bg-[#61afef]/10"
           hoverTextColor="group-hover:text-[#61afef]"
-          icon={<TargetIcon />}
+          icon={<Target size={24} />}
           label="Executar Subtask"
         />
         <ActionButton
@@ -250,7 +234,7 @@ function ModalActions({
           hoverBorderColor="hover:border-[#e5c07b]"
           hoverBgColor="hover:bg-[#e5c07b]/10"
           hoverTextColor="group-hover:text-[#e5c07b]"
-          icon={<EyeIcon />}
+          icon={<Eye size={24} />}
           label="Revisar"
         />
         <ActionButton
@@ -261,7 +245,7 @@ function ModalActions({
           hoverBorderColor="hover:border-[#636363]"
           hoverBgColor="hover:bg-[#2a2a2a]"
           hoverTextColor="group-hover:text-[#d6d6d6]"
-          icon={<SparklesIcon />}
+          icon={<Sparkles size={24} />}
           label="Editar Manualmente"
         />
       </div>
@@ -297,20 +281,7 @@ function ActionButton({
       className={`flex flex-col items-center gap-2 p-4 rounded-lg border border-[#3d3a34] bg-[#232323] ${hoverBorderColor} ${hoverBgColor} transition-all group disabled:opacity-50 disabled:cursor-not-allowed`}
     >
       {isLoading ? (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="24"
-          height="24"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke={loadingColor}
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="animate-spin"
-        >
-          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-        </svg>
+        <Loader2 size={24} color={loadingColor} className="animate-spin" />
       ) : (
         <span className={`text-[#636363] ${hoverTextColor} transition-colors`}>
           {icon}
@@ -322,87 +293,5 @@ function ActionButton({
         {label}
       </span>
     </button>
-  )
-}
-
-function RocketIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
-      <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
-      <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
-      <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
-    </svg>
-  )
-}
-
-function TargetIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <circle cx="12" cy="12" r="6" />
-      <circle cx="12" cy="12" r="2" />
-    </svg>
-  )
-}
-
-function EyeIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
-      <circle cx="12" cy="12" r="3" />
-    </svg>
-  )
-}
-
-function SparklesIcon() {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-      <path d="M5 3v4" />
-      <path d="M19 17v4" />
-      <path d="M3 5h4" />
-      <path d="M17 19h4" />
-    </svg>
   )
 }

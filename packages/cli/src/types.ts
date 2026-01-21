@@ -14,6 +14,8 @@ export interface Database {
   operation_logs: OperationLogsTable;
   task_executions: TaskExecutionsTable;
   task_terminals: TaskTerminalsTable;
+  activity_logs: ActivityLogsTable;
+  user_sessions: UserSessionsTable;
 }
 
 // ============================================
@@ -40,24 +42,24 @@ export interface TasksTable {
   priority: number;
   category: string;
   status: string;
+  substatus: string | null;
   estimated_minutes: number | null;
   due_date: string | null;
   json_path: string | null;
   scheduled_date: string | null;
   created_at: Generated<string>;
   completed_at: string | null;
-  // New fields for full task data (to be migrated)
   complexity: string | null;
-  initialized: number | null; // 0 or 1
+  initialized: number | null;
   schema_version: number | null;
   context_description: string | null;
-  context_business_rules: string | null; // JSON array
+  context_business_rules: string | null;
   context_technical_notes: string | null;
-  context_acceptance_criteria: string | null; // JSON array
-  ai_metadata: string | null; // JSON object
+  context_acceptance_criteria: string | null;
+  ai_metadata: string | null;
   timestamps_started_at: string | null;
   modified_at: string | null;
-  modified_by: string | null; // "user" | "ai"
+  modified_by: string | null;
 }
 
 export interface SubtasksTable {
@@ -134,9 +136,27 @@ export interface TaskTerminalsTable {
   id: string;
   task_id: string;
   tmux_session: string;
-  last_subtask_id: string | null; // For /new detection when switching subtasks
+  last_subtask_id: string | null;
   created_at: Generated<string>;
   updated_at: string;
+}
+
+export interface ActivityLogsTable {
+  id: string;
+  event_type: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  project_id: string | null;
+  metadata: string | null;
+  created_at: Generated<string>;
+}
+
+export interface UserSessionsTable {
+  id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  app_version: string | null;
 }
 
 // ============================================
@@ -277,4 +297,22 @@ export interface TaskTerminal {
   last_subtask_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ActivityLog {
+  id: string;
+  event_type: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  project_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface UserSession {
+  id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  app_version: string | null;
 }

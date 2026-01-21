@@ -1,6 +1,6 @@
 use crate::database::{
-    CalendarTask, Project, ProjectRoute, ProjectWithConfig, SessionLog, Task, TaskExecution,
-    TaskFull, TaskImage, TaskImageMetadata, TmuxConfig,
+    ActivityLog, ActivityLogSearchResult, CalendarTask, Project, ProjectRoute, ProjectWithConfig, 
+    SessionLog, Task, TaskExecution, TaskFull, TaskImage, TaskImageMetadata, TmuxConfig, UserSession,
 };
 use crate::AppState;
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -90,6 +90,16 @@ pub fn update_project_business_rules(
 ) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.update_project_business_rules(&project_id, &rules)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_projects_order(
+    state: State<AppState>,
+    project_orders: Vec<(String, i32)>,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.update_projects_order(&project_orders)
         .map_err(|e| e.to_string())
 }
 
@@ -287,6 +297,17 @@ pub fn get_urgent_tasks(
 }
 
 #[tauri::command]
+pub fn get_active_tasks(
+    state: State<AppState>,
+    project_id: String,
+    limit: i32,
+) -> Result<Vec<Task>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_active_tasks(&project_id, limit)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn get_setting(state: State<AppState>, key: String) -> Result<Option<String>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.get_setting(&key).map_err(|e| e.to_string())
@@ -319,6 +340,18 @@ pub fn update_task_status(
 ) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.update_task_status(&task_id, &status)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_task_status_and_substatus(
+    state: State<AppState>,
+    task_id: String,
+    status: String,
+    substatus: Option<String>,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.update_task_status_and_substatus(&task_id, &status, substatus.as_deref())
         .map_err(|e| e.to_string())
 }
 
@@ -879,6 +912,9 @@ pub fn launch_task_structure(
     let project = db
         .get_project_with_config(&project_id)
         .map_err(|e| e.to_string())?;
+    
+    db.update_task_status_and_substatus(&task_id, "active", Some("structuring"))
+        .map_err(|e| e.to_string())?;
     drop(db);
 
     copy_all_skills(&app_handle, &project.path)?;
@@ -901,6 +937,9 @@ pub fn launch_task_execute_all(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let project = db
         .get_project_with_config(&project_id)
+        .map_err(|e| e.to_string())?;
+    
+    db.update_task_status_and_substatus(&task_id, "active", Some("executing"))
         .map_err(|e| e.to_string())?;
     drop(db);
 
@@ -925,6 +964,9 @@ pub fn launch_task_execute_subtask(
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let project = db
         .get_project_with_config(&project_id)
+        .map_err(|e| e.to_string())?;
+    
+    db.update_task_status_and_substatus(&task_id, "active", Some("executing"))
         .map_err(|e| e.to_string())?;
     drop(db);
 
@@ -1074,7 +1116,7 @@ pub fn cleanup_stale_task_executions(
 }
 
 #[tauri::command]
-pub fn focus_tmux_session(session_name: String) -> Result<(), String> {
+pub fn focus_tmux_session(app_handle: tauri::AppHandle, session_name: String) -> Result<(), String> {
     use std::process::Command;
 
     let script = format!(
@@ -1097,6 +1139,8 @@ fi
         .arg(&script)
         .spawn()
         .map_err(|e| format!("Failed to focus terminal: {}", e))?;
+
+    crate::window::hide(&app_handle);
 
     Ok(())
 }
@@ -1241,4 +1285,55 @@ pub fn get_task_image(state: State<AppState>, image_id: String) -> Result<TaskIm
 pub fn delete_task_image(state: State<AppState>, image_id: String) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.delete_task_image(&image_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_activity_logs(
+    state: State<AppState>,
+    event_type: Option<String>,
+    entity_type: Option<String>,
+    project_id: Option<String>,
+    limit: Option<i32>,
+) -> Result<Vec<ActivityLog>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_activity_logs(
+        event_type.as_deref(),
+        entity_type.as_deref(),
+        project_id.as_deref(),
+        limit,
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn search_activity_logs(
+    state: State<AppState>,
+    query: Option<String>,
+    event_types: Option<Vec<String>>,
+    project_id: Option<String>,
+    from_date: Option<String>,
+    to_date: Option<String>,
+    cursor: Option<String>,
+    limit: Option<i32>,
+) -> Result<ActivityLogSearchResult, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.search_activity_logs(
+        query.as_deref(),
+        event_types,
+        project_id.as_deref(),
+        from_date.as_deref(),
+        to_date.as_deref(),
+        cursor.as_deref(),
+        limit.unwrap_or(30),
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_user_sessions(
+    state: State<AppState>,
+    limit: Option<i32>,
+) -> Result<Vec<UserSession>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_user_sessions(limit).map_err(|e| e.to_string())
 }

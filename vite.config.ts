@@ -7,6 +7,7 @@ const host = process.env.TAURI_DEV_HOST;
 
 export default defineConfig({
   plugins: [tanstackRouter(), react(), tailwindcss()],
+  publicDir: "static",
   resolve: {
     alias: {
       "@": "/src",

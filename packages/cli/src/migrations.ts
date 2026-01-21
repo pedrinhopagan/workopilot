@@ -195,6 +195,67 @@ async function createTaskTerminalsTable(db: Kysely<Database>): Promise<Migration
   };
 }
 
+async function createActivityLogsTable(db: Kysely<Database>): Promise<MigrationResult> {
+  const exists = await tableExists(db, "activity_logs");
+  if (exists) {
+    return {
+      name: "create_activity_logs_table",
+      success: true,
+      message: "Table already exists",
+    };
+  }
+
+  await sql`
+    CREATE TABLE activity_logs (
+      id TEXT PRIMARY KEY,
+      event_type TEXT NOT NULL,
+      entity_type TEXT,
+      entity_id TEXT,
+      project_id TEXT REFERENCES projects(id),
+      metadata TEXT,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `.execute(db);
+
+  await sql`CREATE INDEX idx_activity_logs_event_type ON activity_logs(event_type)`.execute(db);
+  await sql`CREATE INDEX idx_activity_logs_entity ON activity_logs(entity_type, entity_id)`.execute(db);
+  await sql`CREATE INDEX idx_activity_logs_project_id ON activity_logs(project_id)`.execute(db);
+  await sql`CREATE INDEX idx_activity_logs_created_at ON activity_logs(created_at)`.execute(db);
+
+  return {
+    name: "create_activity_logs_table",
+    success: true,
+    message: "Table created with indexes",
+  };
+}
+
+async function createUserSessionsTable(db: Kysely<Database>): Promise<MigrationResult> {
+  const exists = await tableExists(db, "user_sessions");
+  if (exists) {
+    return {
+      name: "create_user_sessions_table",
+      success: true,
+      message: "Table already exists",
+    };
+  }
+
+  await sql`
+    CREATE TABLE user_sessions (
+      id TEXT PRIMARY KEY,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      duration_seconds INTEGER,
+      app_version TEXT
+    )
+  `.execute(db);
+
+  return {
+    name: "create_user_sessions_table",
+    success: true,
+    message: "Table created",
+  };
+}
+
 export async function runMigrations(db: Kysely<Database>): Promise<MigrationResult[]> {
   const results: MigrationResult[] = [];
 
@@ -204,6 +265,8 @@ export async function runMigrations(db: Kysely<Database>): Promise<MigrationResu
     results.push(await createOperationLogsTable(db));
     results.push(await createTaskExecutionsTable(db));
     results.push(await createTaskTerminalsTable(db));
+    results.push(await createActivityLogsTable(db));
+    results.push(await createUserSessionsTable(db));
   } catch (error) {
     results.push({
       name: "migration_error",
