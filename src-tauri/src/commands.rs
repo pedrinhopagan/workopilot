@@ -798,9 +798,9 @@ tmux attach-session -t "$SESSION"
     }
 }
 
-fn copy_all_skills(app_handle: &tauri::AppHandle, project_path: &str) -> Result<(), String> {
+fn get_skills_resource_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
     // Try resource_dir first (production), fallback to src-tauri/resources (dev)
-    let resource_dir = app_handle
+    app_handle
         .path()
         .resource_dir()
         .map(|p| p.join("resources").join("opencode-skills"))
@@ -817,13 +817,26 @@ fn copy_all_skills(app_handle: &tauri::AppHandle, project_path: &str) -> Result<
                 None
             }
         })
-        .ok_or_else(|| "Could not find skills resource directory".to_string())?;
+        .ok_or_else(|| "Could not find skills resource directory".to_string())
+}
 
-    eprintln!("[WorkoPilot] Using skills from: {:?}", resource_dir);
+fn get_opencode_skills_dir() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME")
+        .map_err(|_| "Could not determine HOME directory".to_string())?;
+    Ok(std::path::Path::new(&home)
+        .join(".config")
+        .join("opencode")
+        .join("skills"))
+}
 
-    let skills_base_dir = std::path::Path::new(project_path)
-        .join(".opencode")
-        .join("skills");
+/// Syncs WorkoPilot skills to ~/.config/opencode/skills/
+/// This is the single source of truth - skills are stored in WorkoPilot bundle
+/// and synced to OpenCode's personal skills directory
+fn sync_skills_to_opencode(app_handle: &tauri::AppHandle) -> Result<u32, String> {
+    let resource_dir = get_skills_resource_dir(app_handle)?;
+    let skills_base_dir = get_opencode_skills_dir()?;
+
+    eprintln!("[WorkoPilot] Syncing skills from: {:?} to {:?}", resource_dir, skills_base_dir);
 
     let skill_names = [
         "workopilot-structure",
@@ -832,6 +845,8 @@ fn copy_all_skills(app_handle: &tauri::AppHandle, project_path: &str) -> Result<
         "workopilot-review",
         "workopilot-quickfix",
     ];
+
+    let mut synced_count = 0u32;
 
     for skill_name in skill_names {
         let skill_source = resource_dir.join(skill_name).join("SKILL.md");
@@ -843,9 +858,17 @@ fn copy_all_skills(app_handle: &tauri::AppHandle, project_path: &str) -> Result<
         let skill_dest = skill_dest_dir.join("SKILL.md");
         std::fs::copy(&skill_source, &skill_dest)
             .map_err(|e| format!("Failed to copy skill {} from {:?}: {}", skill_name, skill_source, e))?;
+        
+        synced_count += 1;
     }
 
-    Ok(())
+    eprintln!("[WorkoPilot] Synced {} skills to OpenCode", synced_count);
+    Ok(synced_count)
+}
+
+#[tauri::command]
+pub fn sync_skills(app_handle: tauri::AppHandle) -> Result<u32, String> {
+    sync_skills_to_opencode(&app_handle)
 }
 
 #[tauri::command]
@@ -860,8 +883,6 @@ pub fn launch_task_workflow(
     let project = db
         .get_project_with_config(&project_id)
         .map_err(|e| e.to_string())?;
-
-    copy_all_skills(&app_handle, &project.path)?;
 
     let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
 
@@ -922,8 +943,6 @@ pub fn launch_task_structure(
         .map_err(|e| e.to_string())?;
     drop(db);
 
-    copy_all_skills(&app_handle, &project.path)?;
-
     let initial_prompt = format!(
         "Estruturar: {}, utilize a skill workopilot-structure para estruturar a task de id: {}",
         task_full.title, task_id
@@ -948,8 +967,6 @@ pub fn launch_task_execute_all(
     db.update_task_status_and_substatus(&task_id, "active", Some("executing"))
         .map_err(|e| e.to_string())?;
     drop(db);
-
-    copy_all_skills(&app_handle, &project.path)?;
 
     let initial_prompt = format!(
         "Executar: {}, utilize a skill workopilot-execute-all para executar a task de id: {}",
@@ -980,8 +997,6 @@ pub fn launch_task_execute_subtask(
     db.update_task_status_and_substatus(&task_id, "active", Some("executing"))
         .map_err(|e| e.to_string())?;
     drop(db);
-
-    copy_all_skills(&app_handle, &project.path)?;
 
     let initial_prompt = format!(
         "Executar subtask: {} (task: {}), utilize a skill workopilot-execute-subtask para executar a subtask {} da task {}",
@@ -1014,12 +1029,6 @@ pub fn launch_task_review(
     drop(db);
 
     eprintln!("[WorkoPilot] Project found: {}, path: {}", project.name, project.path);
-
-    if let Err(e) = copy_all_skills(&app_handle, &project.path) {
-        eprintln!("[WorkoPilot] Failed to copy skills: {}", e);
-        return Err(e);
-    }
-    eprintln!("[WorkoPilot] Skills copied successfully");
 
     let initial_prompt = format!(
         "Revisar: {}, utilize a skill workopilot-review para revisar a task de id: {}",
@@ -1179,8 +1188,6 @@ pub async fn launch_quickfix_background(
         .map_err(|e| e.to_string())?;
     let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
     drop(db);
-
-    copy_all_skills(&app_handle, &project.path)?;
 
     let first_route = project.routes.first().ok_or("No routes configured")?;
     let project_path = first_route.path.clone();

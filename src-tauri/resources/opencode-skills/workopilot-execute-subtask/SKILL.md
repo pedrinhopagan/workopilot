@@ -37,7 +37,7 @@ cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.t
 cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-subtask {subtaskId} --status done
 
 # Atualizar status da task pai (quando todas subtasks done)
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status awaiting_review
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --substatus awaiting_review
 ```
 
 **IMPORTANTE**: A CLI grava diretamente no SQLite. O WorkoPilot detecta mudancas automaticamente.
@@ -103,8 +103,10 @@ cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.t
 
 Se todas estiverem done:
 ```bash
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status awaiting_review
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --substatus awaiting_review
 ```
+
+**NOTA**: Use `--substatus awaiting_review` para limpar o status "Executando" e mudar para "Aguardando revisao".
 
 ---
 
@@ -114,6 +116,7 @@ cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.t
 |---------|-----------|
 | `get-task {id}` | Retorna JSON completo da task com subtasks |
 | `update-task {id} --status {status}` | Atualiza status da task |
+| `update-task {id} --substatus {substatus}` | Atualiza substatus (executing, awaiting_review, awaiting_user, null) |
 | `update-subtask {id} --status {status}` | Atualiza status da subtask (pending, in_progress, done) |
 | `update-subtask {id} --title {title}` | Atualiza titulo da subtask |
 | `update-subtask {id} --description {desc}` | Atualiza descricao da subtask |

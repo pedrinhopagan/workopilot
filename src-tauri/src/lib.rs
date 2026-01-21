@@ -93,6 +93,7 @@ pub fn run() {
             commands::get_activity_logs,
             commands::search_activity_logs,
             commands::get_user_sessions,
+            commands::sync_skills,
             settings::get_shortcut,
             settings::set_shortcut,
             window::hide_window,
@@ -107,6 +108,11 @@ pub fn run() {
                 if let Err(e) = state.activity_logger.log_user_session_start(&db, Some(&app_version)) {
                     eprintln!("[WORKOPILOT] Failed to log user session start: {}", e);
                 }
+            }
+            
+            match commands::sync_skills(app.handle().clone()) {
+                Ok(count) => eprintln!("[WORKOPILOT] Synced {} skills to OpenCode on startup", count),
+                Err(e) => eprintln!("[WORKOPILOT] Failed to sync skills on startup: {}", e),
             }
             
             if std::env::var("WORKOPILOT_DEV").is_ok() {

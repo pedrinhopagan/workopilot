@@ -32,8 +32,8 @@ Use os comandos da CLI WorkoPilot para ler e atualizar dados:
 # Ler task completa (inclui subtasks)
 cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts get-task {taskId}
 
-# Aprovar task (marcar como done)
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status done
+# Aprovar task (marcar como done e limpar substatus)
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status done --substatus null
 ```
 
 **IMPORTANTE**: A CLI grava diretamente no SQLite. O WorkoPilot detecta mudancas automaticamente.
@@ -114,8 +114,10 @@ Pergunte ao usuario: "A revisao foi positiva. Deseja marcar a task como concluid
 
 Se sim:
 ```bash
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status done
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status done --substatus null
 ```
+
+**NOTA**: Use `--substatus null` para limpar qualquer substatus anterior (como "awaiting_review").
 
 **Se REPROVADO:**
 Informe os problemas encontrados e pergunte como proceder:
@@ -129,8 +131,9 @@ Informe os problemas encontrados e pergunte como proceder:
 | Comando | Descricao |
 |---------|-----------|
 | `get-task {id}` | Retorna JSON completo da task com subtasks |
-| `update-task {id} --status done` | Marca task como concluida |
+| `update-task {id} --status done --substatus null` | Marca task como concluida e limpa substatus |
 | `update-task {id} --status in_progress` | Volta task para em progresso |
+| `update-task {id} --substatus {substatus}` | Atualiza substatus (executing, awaiting_review, awaiting_user, null) |
 | `get-logs --entity-id {id}` | Ver historico de operacoes |
 
 ---

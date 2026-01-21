@@ -90,10 +90,12 @@ cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.t
 
 ### 6. Finalizar estruturacao
 ```bash
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --structuring-complete true --initialized true
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --structuring-complete true --initialized true --substatus null
 ```
 
-**IMPORTANTE**: O flag `--initialized true` marca a task como "pronta para executar" no WorkoPilot.
+**IMPORTANTE**: 
+- O flag `--initialized true` marca a task como "pronta para executar" no WorkoPilot.
+- O flag `--substatus null` limpa o status "Estruturando" para que a UI atualize corretamente.
 
 ---
 
@@ -108,6 +110,7 @@ cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.t
 | `update-task {id} --complexity {level}` | Atualiza complexidade (simple, medium, complex) |
 | `update-task {id} --structuring-complete true` | Marca estruturacao como completa |
 | `update-task {id} --initialized true` | Marca task como pronta para executar |
+| `update-task {id} --substatus null` | Limpa o substatus (ex: "structuring") |
 | `create-subtask {taskId} --title {t} [--description {d}] [--order {n}]` | Cria nova subtask |
 | `list-tasks [--project {id}] [--status {s}]` | Lista tasks |
 
@@ -155,5 +158,6 @@ Antes de encerrar, verifique:
 - [ ] Criei subtasks via CLI (se necessario)?
 - [ ] Setei `--structuring-complete true`?
 - [ ] Setei `--initialized true` para marcar como pronta para executar?
+- [ ] Setei `--substatus null` para limpar o status "Estruturando"?
 
 **A CLI GRAVA DIRETAMENTE NO SQLITE - NAO USE ARQUIVOS JSON!**

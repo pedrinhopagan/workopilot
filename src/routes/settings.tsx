@@ -15,6 +15,8 @@ function SettingsPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [isSyncingSkills, setIsSyncingSkills] = useState(false);
+  const [skillsMessage, setSkillsMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const loadShortcut = useCallback(async () => {
     try {
@@ -51,6 +53,20 @@ function SettingsPage() {
     ? { modifier: currentShortcut.modifier, key: currentShortcut.key }
     : null;
 
+  async function handleSyncSkills() {
+    setIsSyncingSkills(true);
+    setSkillsMessage(null);
+    try {
+      const count = await safeInvoke<number>("sync_skills");
+      setSkillsMessage({ type: "success", text: `${count} skills sincronizadas com sucesso!` });
+      setTimeout(() => setSkillsMessage(null), 3000);
+    } catch (e) {
+      setSkillsMessage({ type: "error", text: String(e) });
+    } finally {
+      setIsSyncingSkills(false);
+    }
+  }
+
   return (
     <>
       <TabBar />
@@ -79,6 +95,30 @@ function SettingsPage() {
 
               {error && <div className="text-sm text-[#bc5653]">{error}</div>}
               {success && <div className="text-sm text-[#909d63]">{success}</div>}
+            </div>
+          </div>
+
+          <div className="bg-[#232323] border border-[#3d3a34] p-4 mt-4">
+            <h2 className="text-sm text-[#828282] uppercase tracking-wide mb-4">Skills do OpenCode</h2>
+            <p className="text-xs text-[#636363] mb-4">
+              Sincroniza as skills do WorkoPilot para o OpenCode. As skills sao atualizadas automaticamente ao iniciar a aplicacao.
+            </p>
+
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={handleSyncSkills}
+                disabled={isSyncingSkills}
+                className="px-3 py-1.5 text-sm bg-[#3d3a34] hover:bg-[#4d4a44] disabled:opacity-50 disabled:cursor-not-allowed text-[#d6d6d6] transition-colors"
+              >
+                {isSyncingSkills ? "Sincronizando..." : "Sincronizar Skills"}
+              </button>
+
+              {skillsMessage && (
+                <div className={`text-sm ${skillsMessage.type === "success" ? "text-[#909d63]" : "text-[#bc5653]"}`}>
+                  {skillsMessage.text}
+                </div>
+              )}
             </div>
           </div>
         </div>
