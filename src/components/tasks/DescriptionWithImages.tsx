@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { safeInvoke } from "../../services/tauri"
+import { ImageThumbnail } from "./ImageThumbnail"
 
 interface TaskImageMetadata {
   id: string
@@ -160,9 +161,7 @@ export function DescriptionWithImages({
 
   const handleDelete = useCallback((imageId: string) => {
     if (disabled) return
-    if (confirm("Remover esta imagem?")) {
-      onImageDelete(imageId)
-    }
+    onImageDelete(imageId)
   }, [disabled, onImageDelete])
 
   // Sync local state when external description changes (e.g., AI update)
@@ -235,48 +234,17 @@ export function DescriptionWithImages({
 
       {images.length > 0 && (
         <div className="flex items-center gap-2 flex-wrap mt-1">
-          {images.map((image) => {
-            const imageState = loadedImages.get(image.id)
-            return (
-              <div key={image.id} className="relative group">
-                <button
-                  className="w-10 h-10 bg-[#232323] border border-[#3d3a34] cursor-pointer overflow-hidden flex items-center justify-center transition-all hover:border-[#909d63] hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60"
-                  onClick={() => onImageView(image.id)}
-                  disabled={disabled || imageState?.loading || !!imageState?.error}
-                  title={image.file_name}
-                >
-                  {imageState?.loading || !imageState ? (
-                    <div className="flex items-center justify-center w-full h-full text-[#636363]">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
-                        <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                      </svg>
-                    </div>
-                  ) : imageState?.error ? (
-                    <div className="flex items-center justify-center w-full h-full text-[#bc5653]">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="m15 9-6 6"/><path d="m9 9 6 6"/>
-                      </svg>
-                    </div>
-                  ) : (
-                    <img src={imageState.data} alt={image.file_name} className="w-full h-full object-cover" />
-                  )}
-                </button>
-
-                {!disabled && (
-                  <button
-                    className="absolute -top-1 -right-1 w-4 h-4 bg-[rgba(28,28,28,0.95)] border border-[#3d3a34] rounded-full text-[#bc5653] flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity hover:bg-[#bc5653] hover:text-[#1c1c1c] hover:border-[#bc5653]"
-                    onClick={() => handleDelete(image.id)}
-                    title="Remover imagem"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
-                    </svg>
-                  </button>
-                )}
-              </div>
-            )
-          })}
+          {images.map((image) => (
+            <ImageThumbnail
+              key={image.id}
+              imageId={image.id}
+              fileName={image.file_name}
+              imageState={loadedImages.get(image.id)}
+              disabled={disabled}
+              onView={onImageView}
+              onDelete={handleDelete}
+            />
+          ))}
 
           <span className="text-xs text-[#636363] ml-1">{images.length}/{maxImages}</span>
         </div>
