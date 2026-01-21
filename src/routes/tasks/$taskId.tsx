@@ -13,8 +13,10 @@ import {
 } from "lucide-react"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Select } from "../../components/Select"
+import { SelectImageKDE } from "../../components/SelectImageKDE"
 import { DescriptionWithImages } from "../../components/tasks/DescriptionWithImages"
 import { ImageModal } from "../../components/tasks/ImageModal"
+import { ImageThumbnail } from "../../components/tasks/ImageThumbnail"
 import { StatusSelect } from "../../components/tasks/StatusSelect"
 import { SubtaskList } from "../../components/tasks/SubtaskList"
 import {
@@ -84,9 +86,12 @@ function TaskDetailPage() {
   const [isAdjusting, setIsAdjusting] = useState(false)
   const [adjustingPrompt, setAdjustingPrompt] = useState<string | null>(null)
   const [showBusinessRules, setShowBusinessRules] = useState(false)
+  const [showImages, setShowImages] = useState(false)
   const [taskImages, setTaskImages] = useState<TaskImageMetadata[]>([])
   const [viewingImageId, setViewingImageId] = useState<string | null>(null)
   const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null)
+  const [loadedImages, setLoadedImages] = useState<Map<string, { data: string; loading: boolean; error: string | null }>>(new Map())
+  const [isUploadingImage, setIsUploadingImage] = useState(false)
 
   const isExecuting = useMemo(() => {
     if (!activeExecution || activeExecution.status !== "running") return false
@@ -183,6 +188,12 @@ function TaskDetailPage() {
           setShowTechnicalNotes(!!fullTask?.context.technical_notes)
           setShowAcceptanceCriteria(!!fullTask?.context.acceptance_criteria?.length)
         }
+
+        const images = await safeInvoke<TaskImageMetadata[]>("get_task_images", { taskId })
+        setTaskImages(images)
+        if (!isReload) {
+          setShowImages(images.length > 0)
+        }
       }
     } catch (e) {
       console.error("Failed to load task:", e)
@@ -229,6 +240,71 @@ function TaskDetailPage() {
     setViewingImageId(null)
     setViewingImageUrl(null)
   }
+
+  const loadImage = useCallback(async (imageId: string) => {
+    const existing = loadedImages.get(imageId)
+    if (existing?.data || existing?.loading) return
+
+    setLoadedImages(prev => {
+      const next = new Map(prev)
+      next.set(imageId, { data: "", loading: true, error: null })
+      return next
+    })
+
+    try {
+      const result = await safeInvoke<{ data: string; mime_type: string }>("get_task_image", { imageId })
+      setLoadedImages(prev => {
+        const next = new Map(prev)
+        next.set(imageId, { 
+          data: `data:${result.mime_type};base64,${result.data}`, 
+          loading: false, 
+          error: null 
+        })
+        return next
+      })
+    } catch (err) {
+      setLoadedImages(prev => {
+        const next = new Map(prev)
+        next.set(imageId, { 
+          data: "", 
+          loading: false, 
+          error: err instanceof Error ? err.message : "Erro ao carregar" 
+        })
+        return next
+      })
+    }
+  }, [loadedImages])
+
+  async function handleSelectedImages(paths: string[]) {
+    if (isUploadingImage) return
+    
+    const maxImages = 5
+    const remainingSlots = maxImages - taskImages.length
+    if (remainingSlots <= 0 || paths.length === 0) return
+
+    setIsUploadingImage(true)
+    const pathsToUpload = paths.slice(0, remainingSlots)
+    
+    for (const filePath of pathsToUpload) {
+      try {
+        await safeInvoke("add_task_image_from_path", {
+          taskId,
+          filePath,
+        })
+      } catch (err) {
+        console.error("Failed to upload image:", err)
+      }
+    }
+    
+    await handleImageUpload()
+    setIsUploadingImage(false)
+  }
+
+  useEffect(() => {
+    taskImages.forEach((img) => {
+      loadImage(img.id)
+    })
+  }, [taskImages, loadImage])
 
   const saveTask = useCallback(async (updatedTask: TaskFull) => {
     if (!projectPath) return
@@ -640,7 +716,6 @@ function TaskDetailPage() {
           <StatusSelect
             value={taskState}
             onChange={updateStatus}
-            disabled={isBlocked}
           />
 
           {lastAction && (
@@ -953,6 +1028,69 @@ function TaskDetailPage() {
           onImageDelete={handleImageDelete}
           onImageView={handleImageView}
         />
+
+        <section>
+          <button
+            type="button"
+            onClick={() => setShowImages(!showImages)}
+            className="flex items-center gap-2 text-xs text-[#828282] uppercase tracking-wide mb-2 hover:text-[#d6d6d6] transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="transition-transform duration-200"
+              style={{ transform: `rotate(${showImages ? 90 : 0}deg)` }}
+            >
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+            Imagens ({taskImages.length}/5)
+          </button>
+          {showImages && (
+            <div className={`space-y-3 animate-slide-down ${isBlocked ? "opacity-50 pointer-events-none" : ""}`}>
+              <SelectImageKDE
+                onSelect={handleSelectedImages}
+                disabled={isBlocked || isUploadingImage || taskImages.length >= 5}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs bg-[#232323] hover:bg-[#2a2a2a] text-[#d6d6d6] border border-[#3d3a34] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isUploadingImage ? (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                  </svg>
+                ) : (
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+                    <circle cx="9" cy="9" r="2" />
+                    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
+                  </svg>
+                )}
+                Adicionar
+              </SelectImageKDE>
+
+              {taskImages.length > 0 && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {taskImages.map((image) => (
+                    <ImageThumbnail
+                      key={image.id}
+                      imageId={image.id}
+                      fileName={image.file_name}
+                      imageState={loadedImages.get(image.id)}
+                      disabled={isBlocked}
+                      onView={handleImageView}
+                      onDelete={handleImageDelete}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </section>
 
         <section>
           <button
