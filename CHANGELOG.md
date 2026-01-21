@@ -5,6 +5,30 @@ All notable changes to WorkoPilot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-01-21
+
+### Changes
+- chore: bump version to v0.2.0
+- feat: add AUR publish script with auto version bump and changelog
+- chore: cleanup - update build artifacts
+- chore: update build artifacts
+- feat(tasks): add substatus system and improve task UI
+- feat(logs): redesign UI with optimized SQLite-based pagination
+- feat(projects): add drag and drop reordering for sidebar projects
+- feat(settings): replace select dropdowns with modern hotkey recorder component
+- configs para deploy
+- feat(logs): UI - Pagina de Logs com Timeline
+- Setup logs + publishing AUR
+- port
+- resize textarea
+- port
+- react
+- Better edit task
+- Image input + fix task stats
+- UI/UX página de tarefas
+- Quickfix + better task tools UX
+- WorkOpilot launch
+
 ## [0.2.0] - 2026-01-21
 
 ### Added
