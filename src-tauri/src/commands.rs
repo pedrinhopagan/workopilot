@@ -1,6 +1,6 @@
 use crate::database::{
-    CalendarTask, Project, ProjectRoute, ProjectWithConfig, SessionLog, Task, TaskExecution,
-    TaskFull, TaskImage, TaskImageMetadata, TmuxConfig,
+    ActivityLog, CalendarTask, Project, ProjectRoute, ProjectWithConfig, SessionLog, Task, 
+    TaskExecution, TaskFull, TaskImage, TaskImageMetadata, TmuxConfig, UserSession,
 };
 use crate::AppState;
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -1241,4 +1241,31 @@ pub fn get_task_image(state: State<AppState>, image_id: String) -> Result<TaskIm
 pub fn delete_task_image(state: State<AppState>, image_id: String) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.delete_task_image(&image_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_activity_logs(
+    state: State<AppState>,
+    event_type: Option<String>,
+    entity_type: Option<String>,
+    project_id: Option<String>,
+    limit: Option<i32>,
+) -> Result<Vec<ActivityLog>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_activity_logs(
+        event_type.as_deref(),
+        entity_type.as_deref(),
+        project_id.as_deref(),
+        limit,
+    )
+    .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_user_sessions(
+    state: State<AppState>,
+    limit: Option<i32>,
+) -> Result<Vec<UserSession>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_user_sessions(limit).map_err(|e| e.to_string())
 }

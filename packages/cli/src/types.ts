@@ -14,6 +14,8 @@ export interface Database {
   operation_logs: OperationLogsTable;
   task_executions: TaskExecutionsTable;
   task_terminals: TaskTerminalsTable;
+  activity_logs: ActivityLogsTable;
+  user_sessions: UserSessionsTable;
 }
 
 // ============================================
@@ -134,9 +136,27 @@ export interface TaskTerminalsTable {
   id: string;
   task_id: string;
   tmux_session: string;
-  last_subtask_id: string | null; // For /new detection when switching subtasks
+  last_subtask_id: string | null;
   created_at: Generated<string>;
   updated_at: string;
+}
+
+export interface ActivityLogsTable {
+  id: string;
+  event_type: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  project_id: string | null;
+  metadata: string | null;
+  created_at: Generated<string>;
+}
+
+export interface UserSessionsTable {
+  id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  app_version: string | null;
 }
 
 // ============================================
@@ -277,4 +297,22 @@ export interface TaskTerminal {
   last_subtask_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface ActivityLog {
+  id: string;
+  event_type: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  project_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface UserSession {
+  id: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+  app_version: string | null;
 }

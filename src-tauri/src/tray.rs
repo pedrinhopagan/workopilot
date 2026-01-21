@@ -2,11 +2,12 @@ use tauri::{
     image::Image,
     menu::{Menu, MenuItem},
     tray::{TrayIcon, TrayIconBuilder},
-    App, RunEvent, WindowEvent,
+    App, Manager, RunEvent, WindowEvent,
 };
 
 use crate::settings;
 use crate::window;
+use crate::AppState;
 
 pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
     let icon = app.default_window_icon().cloned().unwrap_or_else(|| {
@@ -45,12 +46,24 @@ pub fn setup_tray(app: &App) -> Result<TrayIcon, Box<dyn std::error::Error>> {
 }
 
 pub fn handle_run_event(app_handle: &tauri::AppHandle, event: RunEvent) {
-    if let RunEvent::WindowEvent { label, event, .. } = event {
-        if label == "main" {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                api.prevent_close();
-                window::hide(app_handle);
+    match event {
+        RunEvent::WindowEvent { label, event, .. } => {
+            if label == "main" {
+                if let WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    window::hide(app_handle);
+                }
             }
         }
+        RunEvent::ExitRequested { .. } => {
+            let state = app_handle.state::<AppState>();
+            let db_guard = state.db.lock();
+            if let Ok(db) = db_guard {
+                if let Err(e) = state.activity_logger.log_user_session_end(&db) {
+                    eprintln!("[WORKOPILOT] Failed to log user session end: {}", e);
+                }
+            }
+        }
+        _ => {}
     }
 }

@@ -20,7 +20,7 @@ interface DescriptionWithImagesProps {
   images: TaskImageMetadata[]
   maxImages?: number
   disabled?: boolean
-  onDescriptionChange: (value: string) => void
+  onDescriptionSave: (value: string) => void
   onImageUpload: () => void
   onImageDelete: (imageId: string) => void
   onImageView: (imageId: string) => void
@@ -34,12 +34,13 @@ export function DescriptionWithImages({
   images,
   maxImages = 5,
   disabled = false,
-  onDescriptionChange,
+  onDescriptionSave,
   onImageUpload,
   onImageDelete,
   onImageView,
 }: DescriptionWithImagesProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [localDescription, setLocalDescription] = useState(description)
   const [isFocused, setIsFocused] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadFeedback, setUploadFeedback] = useState<"success" | "error" | null>(null)
@@ -164,6 +165,13 @@ export function DescriptionWithImages({
     }
   }, [disabled, onImageDelete])
 
+  // Sync local state when external description changes (e.g., AI update)
+  useEffect(() => {
+    if (!isFocused) {
+      setLocalDescription(description)
+    }
+  }, [description, isFocused])
+
   useEffect(() => {
     images.forEach((img) => {
       loadImage(img.id)
@@ -204,9 +212,14 @@ export function DescriptionWithImages({
       <div className={wrapperClassName}>
         <textarea
           ref={textareaRef}
-          value={description}
-          onChange={(e) => onDescriptionChange(e.target.value)}
-          onBlur={() => setIsFocused(false)}
+          value={localDescription}
+          onChange={(e) => setLocalDescription(e.target.value)}
+          onBlur={() => {
+            setIsFocused(false)
+            if (localDescription !== description) {
+              onDescriptionSave(localDescription)
+            }
+          }}
           onFocus={() => setIsFocused(true)}
           onPaste={handlePaste}
           disabled={disabled}

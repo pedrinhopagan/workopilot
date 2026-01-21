@@ -1,14 +1,19 @@
+mod activity_logger;
 mod commands;
 mod database;
 mod settings;
+mod token_tracker;
 mod tray;
 mod window;
 
+use activity_logger::ActivityLogger;
 use database::Database;
 use std::sync::Mutex;
+use tauri::Manager;
 
 pub struct AppState {
     pub db: Mutex<Database>,
+    pub activity_logger: ActivityLogger,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -20,12 +25,16 @@ pub fn run() {
     }
 
     let db = Database::new().expect("Failed to initialize database");
+    let activity_logger = ActivityLogger::new();
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        .manage(AppState { db: Mutex::new(db) })
+        .manage(AppState { 
+            db: Mutex::new(db),
+            activity_logger,
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_projects,
             commands::get_project_with_config,
@@ -77,6 +86,8 @@ pub fn run() {
             commands::get_task_images,
             commands::get_task_image,
             commands::delete_task_image,
+            commands::get_activity_logs,
+            commands::get_user_sessions,
             settings::get_shortcut,
             settings::set_shortcut,
             window::hide_window,
@@ -84,7 +95,23 @@ pub fn run() {
         .setup(|app| {
             settings::register_initial_shortcut(app.handle())?;
             tray::setup_tray(app)?;
-            eprintln!("[WORKOPILOT] Setup completo.");
+            
+            let state = app.state::<AppState>();
+            if let Ok(db) = state.db.lock() {
+                let app_version = app.package_info().version.to_string();
+                if let Err(e) = state.activity_logger.log_user_session_start(&db, Some(&app_version)) {
+                    eprintln!("[WORKOPILOT] Failed to log user session start: {}", e);
+                }
+            }
+            
+            if std::env::var("WORKOPILOT_DEV").is_ok() {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_title("WorkoPilot [DEV]");
+                }
+                eprintln!("[WORKOPILOT-DEV] Setup completo. Atalho: Alt+O");
+            } else {
+                eprintln!("[WORKOPILOT] Setup completo. Atalho: Alt+P");
+            }
             Ok(())
         })
         .build(tauri::generate_context!())

@@ -170,10 +170,28 @@ export interface TaskImageMetadata {
 }
 
 export interface TaskImage {
-  id: string;
-  task_id: string;
-  data: string;
-  mime_type: string;
-  file_name: string;
-  created_at: string | null;
+	id: string;
+	task_id: string;
+	data: string;
+	mime_type: string;
+	file_name: string;
+	created_at: string | null;
+}
+
+export interface ActivityLog {
+	id: string;
+	event_type: string;
+	entity_type: string | null;
+	entity_id: string | null;
+	project_id: string | null;
+	metadata: string | null;
+	created_at: string;
+}
+
+export interface UserSession {
+	id: string;
+	started_at: string;
+	ended_at: string | null;
+	duration_seconds: number | null;
+	app_version: string | null;
 }

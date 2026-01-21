@@ -1,26 +1,36 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router"
-import { useState, useEffect, useCallback, useMemo } from "react"
-import { safeInvoke, safeListen } from "../../services/tauri"
+import {
+  AlertTriangle,
+  Bot,
+  ChevronLeft,
+  FileCheck,
+  FileText,
+  Loader2,
+  Rocket,
+  Target,
+  X
+} from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Select } from "../../components/Select"
-import { SubtaskList } from "../../components/tasks/SubtaskList"
 import { DescriptionWithImages } from "../../components/tasks/DescriptionWithImages"
 import { ImageModal } from "../../components/tasks/ImageModal"
-import { openCodeService } from "../../services/opencode"
+import { SubtaskList } from "../../components/tasks/SubtaskList"
 import {
   getTaskState,
-  stateLabels,
   stateColors,
-  type TaskState,
+  stateLabels
 } from "../../lib/constants/taskStatus"
+import { openCodeService } from "../../services/opencode"
+import { safeInvoke, safeListen } from "../../services/tauri"
 import type {
-  Task,
-  TaskFull,
   ProjectWithConfig,
-  Subtask,
-  TaskUpdatedPayload,
-  TaskExecution,
   QuickfixPayload,
+  Subtask,
+  Task,
+  TaskExecution,
+  TaskFull,
   TaskImageMetadata,
+  TaskUpdatedPayload,
 } from "../../types"
 
 const categories = ["feature", "bug", "refactor", "test", "docs"]
@@ -54,10 +64,10 @@ function TaskDetailPage() {
   const [newCriteria, setNewCriteria] = useState("")
   const [showTechnicalNotes, setShowTechnicalNotes] = useState(false)
   const [showAcceptanceCriteria, setShowAcceptanceCriteria] = useState(false)
+  const [localTechnicalNotes, setLocalTechnicalNotes] = useState("")
   const [aiUpdatedRecently, setAiUpdatedRecently] = useState(false)
   const [conflictWarning, setConflictWarning] = useState(false)
-  const [isSyncing, setIsSyncing] = useState(false)
-  const [syncSuccess, setSyncSuccess] = useState(false)
+
   const [isLaunchingStructure, setIsLaunchingStructure] = useState(false)
   const [isLaunchingExecuteAll, setIsLaunchingExecuteAll] = useState(false)
   const [isLaunchingExecuteSubtask, setIsLaunchingExecuteSubtask] = useState(false)
@@ -150,6 +160,7 @@ function TaskDetailPage() {
           setTimeout(() => setAiUpdatedRecently(false), 5000)
         }
 
+        setLocalTechnicalNotes(fullTask?.context.technical_notes || "")
         if (!isReload) {
           setShowBusinessRules(!!fullTask?.context.business_rules?.length)
           setShowTechnicalNotes(!!fullTask?.context.technical_notes)
@@ -201,25 +212,6 @@ function TaskDetailPage() {
     setViewingImageId(null)
     setViewingImageUrl(null)
   }
-
-  const syncFromFile = useCallback(async () => {
-    if (!projectPath || !taskId) return
-    setIsSyncing(true)
-    try {
-      const freshTask = await safeInvoke<TaskFull>("get_task_full", { projectPath, taskId })
-      setTaskFull(freshTask)
-      setLastKnownModifiedAt(freshTask.modified_at || null)
-      setShowBusinessRules(!!freshTask.context.business_rules?.length)
-      setShowTechnicalNotes(!!freshTask.context.technical_notes)
-      setShowAcceptanceCriteria(!!freshTask.context.acceptance_criteria?.length)
-      setSyncSuccess(true)
-      setTimeout(() => setSyncSuccess(false), 2000)
-    } catch (e) {
-      console.error("Failed to sync from file:", e)
-    } finally {
-      setIsSyncing(false)
-    }
-  }, [projectPath, taskId])
 
   const saveTask = useCallback(async (updatedTask: TaskFull) => {
     if (!projectPath) return
@@ -516,9 +508,7 @@ function TaskDetailPage() {
     <>
       <div className="flex items-center gap-3 p-3 border-b border-[#3d3a34] bg-[#1c1c1c]">
         <button onClick={goBack} className="text-[#636363] hover:text-[#d6d6d6] transition-colors p-1" title="Voltar">
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m15 18-6-6 6-6" />
-          </svg>
+          <ChevronLeft size={18} />
         </button>
 
         <input
@@ -528,30 +518,6 @@ function TaskDetailPage() {
           onBlur={() => updateField("title", taskFull.title)}
           className="flex-1 bg-transparent text-[#d6d6d6] text-base font-medium focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors"
         />
-
-        <button
-          onClick={syncFromFile}
-          disabled={isSyncing}
-          className="p-1.5 text-[#636363] hover:text-[#909d63] hover:bg-[#2a2a2a] transition-colors rounded disabled:opacity-50"
-          title="Sincronizar do arquivo JSON"
-        >
-          {isSyncing ? (
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
-              <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-            </svg>
-          ) : syncSuccess ? (
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#909d63" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-          ) : (
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-              <path d="M3 3v5h5" />
-              <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-              <path d="M16 16h5v5" />
-            </svg>
-          )}
-        </button>
 
         <Select
           value={taskFull.category}
@@ -569,9 +535,7 @@ function TaskDetailPage() {
 
         {aiUpdatedRecently && (
           <span className="text-xs text-[#909d63] flex items-center gap-1 animate-pulse">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" />
-            </svg>
+            <Bot size={14} />
             IA atualizou
           </span>
         )}
@@ -584,14 +548,10 @@ function TaskDetailPage() {
 
       {conflictWarning && (
         <div className="px-4 py-2 bg-[#3d3a34] border-b border-[#4a4a4a] text-[#d6d6d6] text-sm flex items-center gap-2">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#e5c07b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" /><path d="M12 9v4" /><path d="M12 17h.01" />
-          </svg>
+          <AlertTriangle size={16} color="#e5c07b" />
           <span>A IA fez alteracoes nesta task. Suas edicoes podem sobrescrever as mudancas da IA.</span>
           <button onClick={() => setConflictWarning(false)} className="ml-auto text-[#636363] hover:text-[#d6d6d6]">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 6 6 18" /><path d="m6 6 12 12" />
-            </svg>
+            <X size={14} />
           </button>
         </div>
       )}
@@ -610,9 +570,7 @@ function TaskDetailPage() {
 
           {lastAction && (
             <div className="flex items-center gap-1.5 text-xs text-[#636363]">
-              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" />
-              </svg>
+              <Bot size={12} />
               <span>Última ação: <span className="text-[#909d63]">{lastAction}</span></span>
             </div>
           )}
@@ -639,17 +597,9 @@ function TaskDetailPage() {
             }`}
           >
             {isLaunchingStructure ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
-                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-              </svg>
+              <Loader2 size={24} className="animate-spin" />
             ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
-                <polyline points="14 2 14 8 20 8" />
-                <line x1="16" x2="8" y1="13" y2="13" />
-                <line x1="16" x2="8" y1="17" y2="17" />
-                <line x1="10" x2="8" y1="9" y2="9" />
-              </svg>
+              <FileText size={24} />
             )}
             <span className="text-sm font-medium">Estruturar</span>
             {suggestedAction === "structure" && <span className="text-[10px] uppercase tracking-wider opacity-75">Sugerido</span>}
@@ -667,16 +617,9 @@ function TaskDetailPage() {
             }`}
           >
             {isLaunchingExecuteAll ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
-                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-              </svg>
+              <Loader2 size={24} className="animate-spin" />
             ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z" />
-                <path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z" />
-                <path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0" />
-                <path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" />
-              </svg>
+              <Rocket size={24} />
             )}
             <span className="text-sm font-medium">Executar Tudo</span>
             {suggestedAction === "execute_all" && <span className="text-[10px] uppercase tracking-wider opacity-75">Sugerido</span>}
@@ -689,21 +632,15 @@ function TaskDetailPage() {
               className={`w-full h-full flex flex-col items-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
                 suggestedAction === "execute_subtask"
                   ? "border-[#61afef] bg-[#61afef]/10 text-[#61afef] shadow-lg shadow-[#61afef]/10"
-                  : canExecuteSubtask
-                    ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
-                    : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
+                : canExecuteSubtask
+                  ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
+                  : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
               }`}
             >
               {isLaunchingExecuteSubtask ? (
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                </svg>
+                <Loader2 size={24} className="animate-spin" />
               ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <circle cx="12" cy="12" r="10" />
-                  <circle cx="12" cy="12" r="6" />
-                  <circle cx="12" cy="12" r="2" />
-                </svg>
+                <Target size={24} />
               )}
               <span className="text-sm font-medium">Executar Subtask</span>
               {suggestedAction === "execute_subtask" ? (
@@ -748,14 +685,9 @@ function TaskDetailPage() {
             }`}
           >
             {isLaunchingReview ? (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
-                <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-              </svg>
+              <Loader2 size={24} className="animate-spin" />
             ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 11l3 3L22 4" />
-                <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
-              </svg>
+              <FileCheck size={24} />
             )}
             <span className="text-sm font-medium">Revisar</span>
             {suggestedAction === "review" && <span className="text-[10px] uppercase tracking-wider opacity-75">Sugerido</span>}
@@ -875,10 +807,7 @@ function TaskDetailPage() {
           images={taskImages}
           maxImages={5}
           disabled={isBlocked}
-          onDescriptionChange={(value) => {
-            setTaskFull({ ...taskFull, context: { ...taskFull.context, description: value || null } })
-            updateContext("description", value || null)
-          }}
+          onDescriptionSave={(value) => updateContext("description", value || null)}
           onImageUpload={handleImageUpload}
           onImageDelete={handleImageDelete}
           onImageView={handleImageView}
@@ -966,9 +895,13 @@ function TaskDetailPage() {
           {showTechnicalNotes && (
             <div className="animate-slide-down">
               <textarea
-                value={taskFull.context.technical_notes || ""}
-                onChange={(e) => setTaskFull({ ...taskFull, context: { ...taskFull.context, technical_notes: e.target.value || null } })}
-                onBlur={() => updateContext("technical_notes", taskFull.context.technical_notes || null)}
+                value={localTechnicalNotes}
+                onChange={(e) => setLocalTechnicalNotes(e.target.value)}
+                onBlur={() => {
+                  if (localTechnicalNotes !== (taskFull.context.technical_notes || "")) {
+                    updateContext("technical_notes", localTechnicalNotes || null)
+                  }
+                }}
                 placeholder="Stack, libs, padrões relevantes..."
                 rows={2}
                 disabled={isBlocked}

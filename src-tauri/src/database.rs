@@ -92,6 +92,8 @@ impl Database {
         self.migrate_operation_logs_table()?;
         self.migrate_task_executions_table()?;
         self.migrate_task_images_table()?;
+        self.migrate_activity_logs_table()?;
+        self.migrate_user_sessions_table()?;
 
         Ok(())
     }
@@ -327,6 +329,42 @@ impl Database {
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
             CREATE INDEX IF NOT EXISTS idx_task_images_task_id ON task_images(task_id);
+            ",
+        )?;
+        Ok(())
+    }
+
+    fn migrate_activity_logs_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS activity_logs (
+                id TEXT PRIMARY KEY,
+                event_type TEXT NOT NULL,
+                entity_type TEXT,
+                entity_id TEXT,
+                project_id TEXT REFERENCES projects(id),
+                metadata TEXT,
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_event_type ON activity_logs(event_type);
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON activity_logs(entity_type, entity_id);
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_project_id ON activity_logs(project_id);
+            CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);
+            ",
+        )?;
+        Ok(())
+    }
+
+    fn migrate_user_sessions_table(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                id TEXT PRIMARY KEY,
+                started_at TEXT NOT NULL,
+                ended_at TEXT,
+                duration_seconds INTEGER,
+                app_version TEXT
+            );
             ",
         )?;
         Ok(())
@@ -1360,6 +1398,224 @@ impl Database {
             .execute("DELETE FROM task_images WHERE id = ?1", [image_id])?;
         Ok(())
     }
+
+    // ============================================
+    // Activity Logs CRUD
+    // ============================================
+
+    pub fn insert_activity_log(
+        &self,
+        event_type: &str,
+        entity_type: Option<&str>,
+        entity_id: Option<&str>,
+        project_id: Option<&str>,
+        metadata: Option<&str>,
+    ) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        self.conn.execute(
+            "INSERT INTO activity_logs (id, event_type, entity_type, entity_id, project_id, metadata) 
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![id, event_type, entity_type, entity_id, project_id, metadata],
+        )?;
+        Ok(id)
+    }
+
+    pub fn get_activity_logs(
+        &self,
+        event_type: Option<&str>,
+        entity_type: Option<&str>,
+        project_id: Option<&str>,
+        limit: Option<i32>,
+    ) -> Result<Vec<ActivityLog>> {
+        let mut query =
+            "SELECT id, event_type, entity_type, entity_id, project_id, metadata, created_at 
+                         FROM activity_logs WHERE 1=1"
+                .to_string();
+        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![];
+
+        if event_type.is_some() {
+            query.push_str(&format!(" AND event_type = ?{}", params_vec.len() + 1));
+            params_vec.push(Box::new(event_type.unwrap().to_string()));
+        }
+        if entity_type.is_some() {
+            query.push_str(&format!(" AND entity_type = ?{}", params_vec.len() + 1));
+            params_vec.push(Box::new(entity_type.unwrap().to_string()));
+        }
+        if project_id.is_some() {
+            query.push_str(&format!(" AND project_id = ?{}", params_vec.len() + 1));
+            params_vec.push(Box::new(project_id.unwrap().to_string()));
+        }
+
+        query.push_str(" ORDER BY created_at DESC");
+
+        if let Some(lim) = limit {
+            query.push_str(&format!(" LIMIT {}", lim));
+        }
+
+        let params_ref: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = self.conn.prepare(&query)?;
+
+        let logs = stmt
+            .query_map(rusqlite::params_from_iter(params_ref), |row| {
+                Ok(ActivityLog {
+                    id: row.get(0)?,
+                    event_type: row.get(1)?,
+                    entity_type: row.get(2)?,
+                    entity_id: row.get(3)?,
+                    project_id: row.get(4)?,
+                    metadata: row.get(5)?,
+                    created_at: row.get(6)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(logs)
+    }
+
+    // ============================================
+    // User Sessions CRUD
+    // ============================================
+
+    pub fn start_user_session(&self, app_version: Option<&str>) -> Result<String> {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+        self.conn.execute(
+            "INSERT INTO user_sessions (id, started_at, app_version) VALUES (?1, ?2, ?3)",
+            params![id, now, app_version],
+        )?;
+        Ok(id)
+    }
+
+    pub fn end_user_session(&self, session_id: &str) -> Result<()> {
+        let now = chrono::Utc::now().to_rfc3339();
+
+        let started_at: String = self.conn.query_row(
+            "SELECT started_at FROM user_sessions WHERE id = ?1",
+            [session_id],
+            |row| row.get(0),
+        )?;
+
+        let start_time = chrono::DateTime::parse_from_rfc3339(&started_at)
+            .map_err(|_| rusqlite::Error::InvalidQuery)?;
+        let end_time = chrono::Utc::now();
+        let duration_seconds =
+            (end_time - start_time.with_timezone(&chrono::Utc)).num_seconds() as i32;
+
+        self.conn.execute(
+            "UPDATE user_sessions SET ended_at = ?1, duration_seconds = ?2 WHERE id = ?3",
+            params![now, duration_seconds, session_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_current_user_session(&self) -> Result<Option<UserSession>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, started_at, ended_at, duration_seconds, app_version 
+             FROM user_sessions WHERE ended_at IS NULL ORDER BY started_at DESC LIMIT 1",
+        )?;
+
+        let result = stmt.query_row([], |row| {
+            Ok(UserSession {
+                id: row.get(0)?,
+                started_at: row.get(1)?,
+                ended_at: row.get(2)?,
+                duration_seconds: row.get(3)?,
+                app_version: row.get(4)?,
+            })
+        });
+
+        match result {
+            Ok(session) => Ok(Some(session)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    pub fn get_user_sessions(&self, limit: Option<i32>) -> Result<Vec<UserSession>> {
+        let query = format!(
+            "SELECT id, started_at, ended_at, duration_seconds, app_version 
+             FROM user_sessions ORDER BY started_at DESC LIMIT {}",
+            limit.unwrap_or(50)
+        );
+
+        let mut stmt = self.conn.prepare(&query)?;
+
+        let sessions = stmt
+            .query_map([], |row| {
+                Ok(UserSession {
+                    id: row.get(0)?,
+                    started_at: row.get(1)?,
+                    ended_at: row.get(2)?,
+                    duration_seconds: row.get(3)?,
+                    app_version: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(sessions)
+    }
+
+    pub fn increment_daily_tokens(&self, tokens: i64) -> Result<()> {
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+
+        self.conn.execute(
+            "INSERT INTO daily_stats (date, tokens_used) VALUES (?1, ?2)
+             ON CONFLICT(date) DO UPDATE SET tokens_used = tokens_used + ?2",
+            params![today, tokens],
+        )?;
+        Ok(())
+    }
+
+    pub fn add_task_tokens(&self, task_id: &str, tokens: i64, session_id: &str) -> Result<()> {
+        let current_metadata: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT ai_metadata FROM tasks WHERE id = ?1",
+                [task_id],
+                |row| row.get(0),
+            )
+            .ok();
+
+        let mut metadata: AIMetadata = current_metadata
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default();
+
+        metadata.tokens_used += tokens;
+        metadata.last_interaction = Some(chrono::Utc::now().to_rfc3339());
+
+        if !metadata.session_ids.contains(&session_id.to_string()) {
+            metadata.session_ids.push(session_id.to_string());
+        }
+
+        let metadata_json = serde_json::to_string(&metadata).unwrap_or_else(|_| "{}".to_string());
+
+        self.conn.execute(
+            "UPDATE tasks SET ai_metadata = ?1, modified_at = ?2 WHERE id = ?3",
+            params![metadata_json, chrono::Utc::now().to_rfc3339(), task_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_daily_stats(&self, date: &str) -> Result<Option<DailyStats>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT date, tokens_used, tokens_goal, tasks_completed FROM daily_stats WHERE date = ?1"
+        )?;
+
+        let result = stmt.query_row([date], |row| {
+            Ok(DailyStats {
+                date: row.get(0)?,
+                tokens_used: row.get(1)?,
+                tokens_goal: row.get(2)?,
+                tasks_completed: row.get(3)?,
+            })
+        });
+
+        match result {
+            Ok(stats) => Ok(Some(stats)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -1470,6 +1726,34 @@ pub struct TaskExecution {
     pub error_message: Option<String>,
     pub started_at: String,
     pub ended_at: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct ActivityLog {
+    pub id: String,
+    pub event_type: String,
+    pub entity_type: Option<String>,
+    pub entity_id: Option<String>,
+    pub project_id: Option<String>,
+    pub metadata: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct UserSession {
+    pub id: String,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub duration_seconds: Option<i32>,
+    pub app_version: Option<String>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+pub struct DailyStats {
+    pub date: String,
+    pub tokens_used: i64,
+    pub tokens_goal: i64,
+    pub tasks_completed: i32,
 }
 
 // ============================================
