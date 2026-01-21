@@ -15,11 +15,11 @@ import { useCallback, useEffect, useMemo, useState } from "react"
 import { Select } from "../../components/Select"
 import { DescriptionWithImages } from "../../components/tasks/DescriptionWithImages"
 import { ImageModal } from "../../components/tasks/ImageModal"
+import { StatusSelect } from "../../components/tasks/StatusSelect"
 import { SubtaskList } from "../../components/tasks/SubtaskList"
 import {
+  type FullStatus,
   getTaskState,
-  stateColors,
-  stateLabels
 } from "../../lib/constants/taskStatus"
 import { openCodeService } from "../../services/opencode"
 import { safeInvoke, safeListen } from "../../services/tauri"
@@ -265,6 +265,46 @@ function TaskDetailPage() {
   const updateContext = useCallback(<K extends keyof TaskFull["context"]>(field: K, value: TaskFull["context"][K]) => {
     if (!taskFull) return
     const updated = { ...taskFull, context: { ...taskFull.context, [field]: value } }
+    setTaskFull(updated)
+    saveTask(updated)
+  }, [taskFull, saveTask])
+
+  const updateStatus = useCallback((newFullStatus: FullStatus) => {
+    if (!taskFull) return
+    
+    let status: string
+    let substatus: string | null
+    
+    switch (newFullStatus) {
+      case "pending":
+        status = "pending"
+        substatus = null
+        break
+      case "structuring":
+        status = "active"
+        substatus = "structuring"
+        break
+      case "executing":
+        status = "active"
+        substatus = "executing"
+        break
+      case "awaiting_user":
+        status = "active"
+        substatus = "awaiting_user"
+        break
+      case "awaiting_review":
+        status = "active"
+        substatus = "awaiting_review"
+        break
+      case "done":
+        status = "done"
+        substatus = null
+        break
+      default:
+        return
+    }
+    
+    const updated = { ...taskFull, status, substatus }
     setTaskFull(updated)
     saveTask(updated)
   }, [taskFull, saveTask])
@@ -597,15 +637,11 @@ function TaskDetailPage() {
 
       <div className="border-b border-[#3d3a34] bg-gradient-to-r from-[#1c1c1c] via-[#232323] to-[#1c1c1c]">
         <div className="px-4 py-3 flex items-center gap-4 border-b border-[#2a2a2a]">
-          <div className="flex items-center gap-2">
-            <span
-              className="w-2.5 h-2.5 rounded-full animate-pulse"
-              style={{ backgroundColor: stateColors[taskState], boxShadow: `0 0 8px ${stateColors[taskState]}40` }}
-            />
-            <span className="text-sm font-medium" style={{ color: stateColors[taskState] }}>
-              {stateLabels[taskState]}
-            </span>
-          </div>
+          <StatusSelect
+            value={taskState}
+            onChange={updateStatus}
+            disabled={isBlocked}
+          />
 
           {lastAction && (
             <div className="flex items-center gap-1.5 text-xs text-[#636363]">
