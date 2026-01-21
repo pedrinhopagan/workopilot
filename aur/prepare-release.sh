@@ -4,7 +4,7 @@
 
 set -e
 
-VERSION="0.1.0"
+VERSION="0.2.0"
 RELEASE_DIR="workopilot-linux-x86_64"
 TARBALL="${RELEASE_DIR}.tar.gz"
 
