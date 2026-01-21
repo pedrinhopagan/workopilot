@@ -25,6 +25,8 @@ function hideWindow() {
   safeInvoke("hide_window")
 }
 
+const isDev = import.meta.env.DEV
+
 export function TabBar() {
   const location = useLocation()
   const currentPath = location.pathname
@@ -38,7 +40,7 @@ export function TabBar() {
       <div className="px-3 py-2 flex items-center">
         <img
           src="/workopilot_logo.svg"
-          alt="WorkOpilot"
+          alt="WorkoPilot"
           className="w-5 h-5 opacity-60 pointer-events-none"
         />
       </div>
@@ -58,6 +60,11 @@ export function TabBar() {
         </Link>
       ))}
       <div className="flex-1"></div>
+      {isDev && (
+        <span className="px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#909d63] border border-[#909d63]/50 rounded">
+          DEV
+        </span>
+      )}
       <Link
         to="/settings"
         className={
