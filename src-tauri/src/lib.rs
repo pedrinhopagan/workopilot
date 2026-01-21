@@ -52,6 +52,7 @@ pub fn run() {
             commands::detect_project_structure,
             commands::get_tasks,
             commands::get_urgent_tasks,
+            commands::get_active_tasks,
             commands::add_task,
             commands::update_task_status,
             commands::update_task_status_and_substatus,

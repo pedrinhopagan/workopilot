@@ -232,7 +232,8 @@ program
 program
   .command("update-task <taskId>")
   .description("Update a task field")
-  .option("--status <status>", "Set status (pending, in_progress, done)")
+  .option("--status <status>", "Set status (pending, active, done)")
+  .option("--substatus <substatus>", "Set substatus (structuring, executing, awaiting_user, awaiting_review, null)")
   .option("--title <title>", "Set title")
   .option("--complexity <complexity>", "Set complexity (simple, medium, complex)")
   .option("--description <description>", "Set context description")
@@ -243,6 +244,7 @@ program
       taskId: string,
       options: {
         status?: string;
+        substatus?: string;
         title?: string;
         complexity?: string;
         description?: string;
@@ -271,6 +273,27 @@ program
           updates.status = options.status;
           if (options.status === "done") {
             updates.completed_at = now;
+          }
+          // When status changes to active, also set timestamps_started_at
+          if (options.status === "active" && !oldTask.timestamps_started_at) {
+            updates.timestamps_started_at = now;
+          }
+        }
+        // Handle substatus - allow "null" string to clear it
+        if (options.substatus !== undefined) {
+          if (options.substatus === "null" || options.substatus === "") {
+            updates.substatus = null;
+          } else {
+            const validSubstatuses = ["structuring", "executing", "awaiting_user", "awaiting_review"];
+            if (!validSubstatuses.includes(options.substatus)) {
+              console.error(
+                JSON.stringify({
+                  error: `Invalid substatus: ${options.substatus}. Valid values: ${validSubstatuses.join(", ")}, null`,
+                })
+              );
+              process.exit(1);
+            }
+            updates.substatus = options.substatus;
           }
         }
         if (options.title) updates.title = options.title;

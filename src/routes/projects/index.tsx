@@ -4,6 +4,7 @@ import { safeInvoke, isTauri } from "../../services/tauri";
 import { useDialogStateStore } from "../../stores/dialogState";
 import { useSelectedProjectStore } from "../../stores/selectedProject";
 import type { Project, ProjectWithConfig, Task, SessionLog } from "../../types";
+import { getStatusColor, getStatusLabel, isUserActionRequired } from "../../lib/constants/taskStatus";
 import { z } from "zod";
 
 const priorities = [
@@ -32,6 +33,7 @@ function ProjectsPage() {
   const [newProjectPath, setNewProjectPath] = useState("");
 
   const [urgentTasks, setUrgentTasks] = useState<Task[]>([]);
+  const [activeTasks, setActiveTasks] = useState<Task[]>([]);
   const [logs, setLogs] = useState<SessionLog[]>([]);
   const [dailyTokens, setDailyTokens] = useState(0);
   const tokenGoal = 100000;
@@ -79,6 +81,7 @@ function ProjectsPage() {
       const config = await safeInvoke<ProjectWithConfig>("get_project_with_config", { projectId: id });
       setProjectConfig(config);
       await loadUrgentTasks(id);
+      await loadActiveTasks(id);
       await loadLogs(config);
     } catch (e) {
       console.error("Failed to load project config:", e);
@@ -94,6 +97,16 @@ function ProjectsPage() {
     } catch (e) {
       console.error("Failed to load urgent tasks:", e);
       setUrgentTasks([]);
+    }
+  }
+
+  async function loadActiveTasks(projectId: string) {
+    try {
+      const tasks = await safeInvoke<Task[]>("get_active_tasks", { projectId, limit: 5 });
+      setActiveTasks(tasks);
+    } catch (e) {
+      console.error("Failed to load active tasks:", e);
+      setActiveTasks([]);
     }
   }
 
@@ -379,6 +392,49 @@ function ProjectsPage() {
             </div>
           </div>
 
+          {activeTasks.length > 0 && (
+            <div className="bg-[#232323] border border-[#3d3a34] p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm text-[#828282] uppercase tracking-wide">Tarefas em Andamento</h3>
+                <Link to="/tasks" className="text-xs text-[#636363] hover:text-[#909d63] transition-colors">
+                  ver todas
+                </Link>
+              </div>
+
+              <div className="space-y-2">
+                {activeTasks.map((task) => {
+                  const statusColor = getStatusColor(task.status, task.substatus);
+                  const statusLabel = getStatusLabel(task.status, task.substatus);
+                  const needsAction = isUserActionRequired(task.status, task.substatus);
+
+                  return (
+                    <Link
+                      key={task.id}
+                      to="/tasks/$taskId"
+                      params={{ taskId: task.id }}
+                      className={`flex items-center gap-3 px-3 py-2 bg-[#1c1c1c] border-l-4 hover:bg-[#2a2a2a] transition-colors ${needsAction ? "ring-1" : ""}`}
+                      style={{ 
+                        borderLeftColor: statusColor,
+                        ...(needsAction ? { boxShadow: `0 0 0 1px ${statusColor}` } : {})
+                      }}
+                    >
+                      <span className="flex-1 text-[#d6d6d6] text-sm">{task.title}</span>
+                      <span
+                        className="px-2 py-0.5 text-xs text-[#1c1c1c] rounded"
+                        style={{ backgroundColor: statusColor }}
+                      >
+                        {statusLabel}
+                      </span>
+                      <span className={`px-2 py-0.5 text-xs text-[#1c1c1c] ${getPriorityClass(task.priority)}`}>
+                        P{task.priority}
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="bg-[#232323] border border-[#3d3a34] p-4">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm text-[#828282] uppercase tracking-wide">Tarefas Urgentes</h3>
@@ -390,7 +446,12 @@ function ProjectsPage() {
             {urgentTasks.length > 0 ? (
               <div className="space-y-2">
                 {urgentTasks.map((task) => (
-                  <div key={task.id} className="flex items-center gap-3 px-3 py-2 bg-[#1c1c1c] border border-[#2d2a24]">
+                  <Link
+                    key={task.id}
+                    to="/tasks/$taskId"
+                    params={{ taskId: task.id }}
+                    className="flex items-center gap-3 px-3 py-2 bg-[#1c1c1c] border border-[#2d2a24] hover:bg-[#2a2a2a] transition-colors"
+                  >
                     <span className="flex-1 text-[#d6d6d6] text-sm">{task.title}</span>
                     {task.due_date && (
                       <span className={`text-xs ${isDueOverdue(task.due_date) ? "text-[#bc5653]" : "text-[#636363]"}`}>
@@ -400,7 +461,7 @@ function ProjectsPage() {
                     <span className={`px-2 py-0.5 text-xs text-[#1c1c1c] ${getPriorityClass(task.priority)}`}>
                       P{task.priority}
                     </span>
-                  </div>
+                  </Link>
                 ))}
               </div>
             ) : (

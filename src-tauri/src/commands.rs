@@ -297,6 +297,17 @@ pub fn get_urgent_tasks(
 }
 
 #[tauri::command]
+pub fn get_active_tasks(
+    state: State<AppState>,
+    project_id: String,
+    limit: i32,
+) -> Result<Vec<Task>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.get_active_tasks(&project_id, limit)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn get_setting(state: State<AppState>, key: String) -> Result<Option<String>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.get_setting(&key).map_err(|e| e.to_string())

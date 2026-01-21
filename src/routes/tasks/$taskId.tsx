@@ -6,6 +6,7 @@ import {
   FileCheck,
   FileText,
   Loader2,
+  Monitor,
   Rocket,
   Target,
   X
@@ -57,6 +58,7 @@ function TaskDetailPage() {
 
   const [task, setTask] = useState<Task | null>(null)
   const [taskFull, setTaskFull] = useState<TaskFull | null>(null)
+  const [project, setProject] = useState<ProjectWithConfig | null>(null)
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
@@ -72,6 +74,7 @@ function TaskDetailPage() {
   const [isLaunchingExecuteAll, setIsLaunchingExecuteAll] = useState(false)
   const [isLaunchingExecuteSubtask, setIsLaunchingExecuteSubtask] = useState(false)
   const [isLaunchingReview, setIsLaunchingReview] = useState(false)
+  const [isLaunchingFocus, setIsLaunchingFocus] = useState(false)
   const [showSubtaskSelector, setShowSubtaskSelector] = useState(false)
   const [isOpenCodeConnected, setIsOpenCodeConnected] = useState(false)
   const [lastKnownModifiedAt, setLastKnownModifiedAt] = useState<string | null>(null)
@@ -94,24 +97,36 @@ function TaskDetailPage() {
     return true
   }, [activeExecution])
 
-  const isBlocked = isExecuting || isAdjusting || isLaunchingStructure || isLaunchingExecuteAll || isLaunchingExecuteSubtask || isLaunchingReview || isLaunchingQuickfix
+  const isBlocked = isExecuting || isAdjusting || isLaunchingStructure || isLaunchingExecuteAll || isLaunchingExecuteSubtask || isLaunchingReview || isLaunchingQuickfix || isLaunchingFocus
 
   const taskState = getTaskState(taskFull)
   const lastAction = taskFull ? getLastActionLabel(taskFull.ai_metadata.last_completed_action) : null
 
   const canStructure = taskFull && !taskFull.initialized
-  const canExecuteAll = taskFull && taskFull.initialized
-  const canExecuteSubtask = taskFull && taskFull.initialized && taskFull.subtasks.some((s) => s.status === "pending")
   const allSubtasksComplete = taskFull && taskFull.subtasks.length > 0 && taskFull.subtasks.every((s) => s.status === "done")
+  const canExecuteAll = taskFull && taskFull.initialized && !allSubtasksComplete
+  const canExecuteSubtask = taskFull && taskFull.initialized && taskFull.subtasks.some((s) => s.status === "pending")
   const canReview = taskFull && allSubtasksComplete
 
   const pendingSubtasks = taskFull?.subtasks.filter((s) => s.status === "pending").sort((a, b) => a.order - b.order) || []
 
-  const getSuggestedAction = useCallback((): "structure" | "execute_all" | "execute_subtask" | "review" | null => {
+  const tmuxSessionName = useMemo(() => {
+    if (activeExecution?.tmux_session) return activeExecution.tmux_session
+    if (!project || !taskId) return null
+    const safeName = project.name.replace(/[^a-zA-Z0-9-_]/g, "")
+    const taskShort = taskId.length > 8 ? taskId.slice(0, 8) : taskId
+    return `workopilot:${safeName}-${taskShort}`
+  }, [activeExecution?.tmux_session, project, taskId])
+
+  const isAIWorking = taskState === "structuring" || taskState === "executing"
+  const canFocusTerminal = isAIWorking && tmuxSessionName
+
+  const getSuggestedAction = useCallback((): "structure" | "execute_all" | "execute_subtask" | "review" | "focus_terminal" | null => {
     if (!taskFull) return null
     if (taskState === "pending") return "structure"
+    if (taskState === "structuring" || taskState === "executing") return "focus_terminal"
     if (taskState === "awaiting_review") return "review"
-    if (taskState === "ready_to_execute") {
+    if (taskState === "awaiting_user") {
       if (taskFull.subtasks.length === 0) return "execute_all"
       return taskFull.subtasks.some((s) => s.status === "pending") ? "execute_subtask" : "execute_all"
     }
@@ -149,10 +164,11 @@ function TaskDetailPage() {
       setTask(taskData)
 
       if (taskData?.project_id) {
-        const project = await safeInvoke<ProjectWithConfig>("get_project_with_config", { projectId: taskData.project_id })
-        setProjectPath(project.path)
+        const projectData = await safeInvoke<ProjectWithConfig>("get_project_with_config", { projectId: taskData.project_id })
+        setProject(projectData)
+        setProjectPath(projectData.path)
 
-        const fullTask = await safeInvoke<TaskFull>("get_task_full", { projectPath: project.path, taskId })
+        const fullTask = await safeInvoke<TaskFull>("get_task_full", { projectPath: projectData.path, taskId })
         setTaskFull(fullTask)
         setLastKnownModifiedAt(fullTask?.modified_at || null)
 
@@ -401,6 +417,18 @@ function TaskDetailPage() {
     }
   }
 
+  async function focusTerminal() {
+    if (!tmuxSessionName || isLaunchingFocus) return
+    setIsLaunchingFocus(true)
+    try {
+      await safeInvoke("focus_tmux_session", { sessionName: tmuxSessionName })
+    } catch (e) {
+      console.error("Failed to focus terminal:", e)
+    } finally {
+      setIsLaunchingFocus(false)
+    }
+  }
+
   function goBack() {
     navigate({ to: "/tasks" })
   }
@@ -589,141 +617,173 @@ function TaskDetailPage() {
           <div className="ml-auto flex items-center gap-1">
             <span className={`w-1.5 h-1.5 rounded-full transition-colors ${taskState !== "pending" ? "bg-[#909d63]" : "bg-[#3d3a34]"}`} />
             <span className={`w-4 h-px ${taskState !== "pending" ? "bg-[#909d63]" : "bg-[#3d3a34]"}`} />
-            <span className={`w-1.5 h-1.5 rounded-full transition-colors ${taskState === "in_progress" || taskState === "awaiting_review" || taskState === "done" ? "bg-[#909d63]" : "bg-[#3d3a34]"}`} />
+            <span className={`w-1.5 h-1.5 rounded-full transition-colors ${taskState !== "pending" && taskState !== "structuring" ? "bg-[#909d63]" : "bg-[#3d3a34]"}`} />
             <span className={`w-4 h-px ${taskState === "awaiting_review" || taskState === "done" ? "bg-[#909d63]" : "bg-[#3d3a34]"}`} />
             <span className={`w-1.5 h-1.5 rounded-full transition-colors ${taskState === "done" ? "bg-[#909d63]" : "bg-[#3d3a34]"}`} />
           </div>
         </div>
 
         <div className="px-4 py-4 flex items-stretch gap-3">
-          <div className="flex-1 relative">
-            <button
-              onClick={structureTask}
-              disabled={!canStructure || isBlocked}
-              className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
-                suggestedAction === "structure"
-                  ? "border-[#e5c07b] bg-[#e5c07b]/10 text-[#e5c07b] shadow-lg shadow-[#e5c07b]/10"
-                  : canStructure
-                    ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
+          {isAIWorking ? (
+            <div className="flex-1 relative">
+              <button
+                type="button"
+                onClick={focusTerminal}
+                disabled={!canFocusTerminal || isLaunchingFocus}
+                className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
+                  canFocusTerminal
+                    ? "border-[#61afef] bg-[#61afef]/10 text-[#61afef] shadow-lg shadow-[#61afef]/10"
                     : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
-              }`}
-            >
-              {isLaunchingStructure ? (
-                <Loader2 size={20} className="animate-spin" />
-              ) : (
-                <FileText size={20} />
-              )}
-              <span className="text-sm font-medium">Estruturar</span>
-            </button>
-            {suggestedAction === "structure" && (
-              <span className="absolute -top-2 -right-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-[#e5c07b] text-[#1c1c1c] rounded">
-                Sugestão
-              </span>
-            )}
-          </div>
-
-          <div className="flex-1 relative">
-            <button
-              onClick={executeAll}
-              disabled={!canExecuteAll || isBlocked}
-              className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
-                suggestedAction === "execute_all"
-                  ? "border-[#909d63] bg-[#909d63]/10 text-[#909d63] shadow-lg shadow-[#909d63]/10"
-                  : canExecuteAll
-                    ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
-                    : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
-              }`}
-            >
-              {isLaunchingExecuteAll ? (
-                <Loader2 size={20} className="animate-spin" />
-              ) : (
-                <Rocket size={20} />
-              )}
-              <span className="text-sm font-medium">Executar Tudo</span>
-            </button>
-            {suggestedAction === "execute_all" && (
-              <span className="absolute -top-2 -right-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-[#909d63] text-[#1c1c1c] rounded">
-                Sugestão
-              </span>
-            )}
-          </div>
-
-          <div className="flex-1 relative">
-            <button
-              onClick={() => canExecuteSubtask && setShowSubtaskSelector(!showSubtaskSelector)}
-              disabled={!canExecuteSubtask || isBlocked}
-              className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
-                suggestedAction === "execute_subtask"
-                  ? "border-[#61afef] bg-[#61afef]/10 text-[#61afef] shadow-lg shadow-[#61afef]/10"
-                : canExecuteSubtask
-                  ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
-                  : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
-              }`}
-            >
-              {isLaunchingExecuteSubtask ? (
-                <Loader2 size={20} className="animate-spin" />
-              ) : (
-                <Target size={20} />
-              )}
-              <span className="text-sm font-medium">Executar Subtask</span>
-              {canExecuteSubtask && (
-                <span className="text-[10px] opacity-60">({pendingSubtasks.length})</span>
-              )}
-            </button>
-            {suggestedAction === "execute_subtask" && (
+                }`}
+              >
+                {isLaunchingFocus ? (
+                  <Loader2 size={20} className="animate-spin" />
+                ) : (
+                  <Monitor size={20} />
+                )}
+                <span className="text-sm font-medium">Focar Terminal</span>
+              </button>
               <span className="absolute -top-2 -right-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-[#61afef] text-[#1c1c1c] rounded">
-                Sugestão
+                IA Trabalhando
               </span>
-            )}
-
-            {showSubtaskSelector && canExecuteSubtask && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-[#232323] border border-[#3d3a34] rounded-lg shadow-xl z-50 overflow-hidden animate-slide-down">
-                <div className="px-3 py-2 border-b border-[#3d3a34] text-xs text-[#636363] uppercase tracking-wider">
-                  Selecione uma subtask
-                </div>
-                <div className="max-h-48 overflow-y-auto">
-                  {pendingSubtasks.map((subtask) => (
-                    <button
-                      key={subtask.id}
-                      onClick={() => executeSubtask(subtask.id)}
-                      className="w-full px-3 py-2.5 text-left text-sm text-[#d6d6d6] hover:bg-[#2a2a2a] transition-colors flex items-center gap-2"
-                    >
-                      <span className="w-5 h-5 flex items-center justify-center rounded bg-[#3d3a34] text-[10px] text-[#909d63]">
-                        {subtask.order + 1}
-                      </span>
-                      <span className="flex-1 truncate">{subtask.title}</span>
-                    </button>
-                  ))}
-                </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex-1 relative">
+                <button
+                  type="button"
+                  onClick={structureTask}
+                  disabled={!canStructure || isBlocked}
+                  className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
+                    suggestedAction === "structure"
+                      ? "border-[#e5c07b] bg-[#e5c07b]/10 text-[#e5c07b] shadow-lg shadow-[#e5c07b]/10"
+                      : canStructure
+                        ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
+                        : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
+                  }`}
+                >
+                  {isLaunchingStructure ? (
+                    <Loader2 size={20} className="animate-spin" />
+                  ) : (
+                    <FileText size={20} />
+                  )}
+                  <span className="text-sm font-medium">Estruturar</span>
+                </button>
+                {suggestedAction === "structure" && (
+                  <span className="absolute -top-2 -right-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-[#e5c07b] text-[#1c1c1c] rounded">
+                    Sugestão
+                  </span>
+                )}
               </div>
-            )}
-          </div>
 
-          <div className="flex-1 relative">
-            <button
-              onClick={reviewTask}
-              disabled={!canReview || isBlocked}
-              className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
-                suggestedAction === "review"
-                  ? "border-[#e5c07b] bg-[#e5c07b]/10 text-[#e5c07b] shadow-lg shadow-[#e5c07b]/10"
-                  : canReview
-                    ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
-                    : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
-              }`}
-            >
-              {isLaunchingReview ? (
-                <Loader2 size={20} className="animate-spin" />
-              ) : (
-                <FileCheck size={20} />
-              )}
-              <span className="text-sm font-medium">Revisar</span>
-            </button>
-            {suggestedAction === "review" && (
-              <span className="absolute -top-2 -right-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-[#e5c07b] text-[#1c1c1c] rounded">
-                Sugestão
-              </span>
-            )}
-          </div>
+              <div className="flex-1 relative">
+                <button
+                  type="button"
+                  onClick={executeAll}
+                  disabled={!canExecuteAll || isBlocked}
+                  className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
+                    suggestedAction === "execute_all"
+                      ? "border-[#909d63] bg-[#909d63]/10 text-[#909d63] shadow-lg shadow-[#909d63]/10"
+                      : canExecuteAll
+                        ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
+                        : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
+                  }`}
+                >
+                  {isLaunchingExecuteAll ? (
+                    <Loader2 size={20} className="animate-spin" />
+                  ) : (
+                    <Rocket size={20} />
+                  )}
+                  <span className="text-sm font-medium">Executar Tudo</span>
+                </button>
+                {suggestedAction === "execute_all" && (
+                  <span className="absolute -top-2 -right-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-[#909d63] text-[#1c1c1c] rounded">
+                    Sugestão
+                  </span>
+                )}
+              </div>
+
+              <div className="flex-1 relative">
+                <button
+                  type="button"
+                  onClick={() => canExecuteSubtask && setShowSubtaskSelector(!showSubtaskSelector)}
+                  disabled={!canExecuteSubtask || isBlocked}
+                  className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
+                    suggestedAction === "execute_subtask"
+                      ? "border-[#61afef] bg-[#61afef]/10 text-[#61afef] shadow-lg shadow-[#61afef]/10"
+                    : canExecuteSubtask
+                      ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
+                      : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
+                  }`}
+                >
+                  {isLaunchingExecuteSubtask ? (
+                    <Loader2 size={20} className="animate-spin" />
+                  ) : (
+                    <Target size={20} />
+                  )}
+                  <span className="text-sm font-medium">Executar Subtask</span>
+                  {canExecuteSubtask && (
+                    <span className="text-[10px] opacity-60">({pendingSubtasks.length})</span>
+                  )}
+                </button>
+                {suggestedAction === "execute_subtask" && (
+                  <span className="absolute -top-2 -right-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-[#61afef] text-[#1c1c1c] rounded">
+                    Sugestão
+                  </span>
+                )}
+
+                {showSubtaskSelector && canExecuteSubtask && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-[#232323] border border-[#3d3a34] rounded-lg shadow-xl z-50 overflow-hidden animate-slide-down">
+                    <div className="px-3 py-2 border-b border-[#3d3a34] text-xs text-[#636363] uppercase tracking-wider">
+                      Selecione uma subtask
+                    </div>
+                    <div className="max-h-48 overflow-y-auto">
+                      {pendingSubtasks.map((subtask) => (
+                        <button
+                          type="button"
+                          key={subtask.id}
+                          onClick={() => executeSubtask(subtask.id)}
+                          className="w-full px-3 py-2.5 text-left text-sm text-[#d6d6d6] hover:bg-[#2a2a2a] transition-colors flex items-center gap-2"
+                        >
+                          <span className="w-5 h-5 flex items-center justify-center rounded bg-[#3d3a34] text-[10px] text-[#909d63]">
+                            {subtask.order + 1}
+                          </span>
+                          <span className="flex-1 truncate">{subtask.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 relative">
+                <button
+                  type="button"
+                  onClick={reviewTask}
+                  disabled={!canReview || isBlocked}
+                  className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
+                    suggestedAction === "review"
+                      ? "border-[#e5c07b] bg-[#e5c07b]/10 text-[#e5c07b] shadow-lg shadow-[#e5c07b]/10"
+                      : canReview
+                        ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
+                        : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
+                  }`}
+                >
+                  {isLaunchingReview ? (
+                    <Loader2 size={20} className="animate-spin" />
+                  ) : (
+                    <FileCheck size={20} />
+                  )}
+                  <span className="text-sm font-medium">Revisar</span>
+                </button>
+                {suggestedAction === "review" && (
+                  <span className="absolute -top-2 -right-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-[#e5c07b] text-[#1c1c1c] rounded">
+                    Sugestão
+                  </span>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -832,6 +892,19 @@ function TaskDetailPage() {
             Fix
           </button>
         </div>
+
+        {taskState !== "pending" && (
+          <SubtaskList
+            subtasks={taskFull.subtasks}
+            onAdd={addSubtask}
+            onToggle={toggleSubtask}
+            onRemove={removeSubtask}
+            onCodar={codarSubtask}
+            onUpdate={updateSubtask}
+            onReorder={reorderSubtasks}
+            disabled={isBlocked}
+          />
+        )}
 
         <DescriptionWithImages
           taskId={taskId}
@@ -997,16 +1070,18 @@ function TaskDetailPage() {
           )}
         </section>
 
-        <SubtaskList
-          subtasks={taskFull.subtasks}
-          onAdd={addSubtask}
-          onToggle={toggleSubtask}
-          onRemove={removeSubtask}
-          onCodar={codarSubtask}
-          onUpdate={updateSubtask}
-          onReorder={reorderSubtasks}
-          disabled={isBlocked}
-        />
+        {taskState === "pending" && (
+          <SubtaskList
+            subtasks={taskFull.subtasks}
+            onAdd={addSubtask}
+            onToggle={toggleSubtask}
+            onRemove={removeSubtask}
+            onCodar={codarSubtask}
+            onUpdate={updateSubtask}
+            onReorder={reorderSubtasks}
+            disabled={isBlocked}
+          />
+        )}
 
         <section>
           <div className="flex items-center justify-between">

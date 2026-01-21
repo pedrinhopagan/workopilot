@@ -42,24 +42,24 @@ export interface TasksTable {
   priority: number;
   category: string;
   status: string;
+  substatus: string | null;
   estimated_minutes: number | null;
   due_date: string | null;
   json_path: string | null;
   scheduled_date: string | null;
   created_at: Generated<string>;
   completed_at: string | null;
-  // New fields for full task data (to be migrated)
   complexity: string | null;
-  initialized: number | null; // 0 or 1
+  initialized: number | null;
   schema_version: number | null;
   context_description: string | null;
-  context_business_rules: string | null; // JSON array
+  context_business_rules: string | null;
   context_technical_notes: string | null;
-  context_acceptance_criteria: string | null; // JSON array
-  ai_metadata: string | null; // JSON object
+  context_acceptance_criteria: string | null;
+  ai_metadata: string | null;
   timestamps_started_at: string | null;
   modified_at: string | null;
-  modified_by: string | null; // "user" | "ai"
+  modified_by: string | null;
 }
 
 export interface SubtasksTable {

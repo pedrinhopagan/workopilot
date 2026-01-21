@@ -638,6 +638,46 @@ impl Database {
         Ok(tasks)
     }
 
+    pub fn get_active_tasks(&self, project_id: &str, limit: i32) -> Result<Vec<Task>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, json_path, created_at, scheduled_date
+             FROM tasks 
+             WHERE project_id = ?1 AND status = 'active'
+             ORDER BY 
+                CASE substatus
+                    WHEN 'awaiting_review' THEN 1
+                    WHEN 'awaiting_user' THEN 2
+                    WHEN 'executing' THEN 3
+                    WHEN 'structuring' THEN 4
+                    ELSE 5
+                END,
+                priority ASC,
+                created_at ASC
+             LIMIT ?2"
+        )?;
+
+        let tasks = stmt
+            .query_map([project_id, &limit.to_string()], |row| {
+                Ok(Task {
+                    id: row.get(0)?,
+                    project_id: row.get(1)?,
+                    title: row.get(2)?,
+                    description: row.get(3)?,
+                    priority: row.get(4)?,
+                    category: row.get(5)?,
+                    status: row.get(6)?,
+                    substatus: row.get(7)?,
+                    due_date: row.get(8)?,
+                    json_path: row.get(9)?,
+                    created_at: row.get(10)?,
+                    scheduled_date: row.get(11)?,
+                })
+            })?
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(tasks)
+    }
+
     pub fn add_task(
         &self,
         project_id: &str,
