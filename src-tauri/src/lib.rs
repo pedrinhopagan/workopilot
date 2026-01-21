@@ -86,6 +86,7 @@ pub fn run() {
             commands::focus_tmux_session,
             commands::launch_quickfix_background,
             commands::add_task_image,
+            commands::add_task_image_from_path,
             commands::get_task_images,
             commands::get_task_image,
             commands::delete_task_image,

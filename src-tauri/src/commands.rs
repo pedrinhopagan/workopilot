@@ -865,27 +865,31 @@ pub fn launch_task_workflow(
 
     let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
 
-    let (initial_prompt, is_structuring) = if let Some(st_id) = subtask_id {
+    let (initial_prompt, is_structuring) = if let Some(ref st_id) = subtask_id {
+        let subtask_title = task_full.subtasks.iter()
+            .find(|s| s.id == *st_id)
+            .map(|s| s.title.clone())
+            .unwrap_or_else(|| "Subtask".to_string());
         (
             format!(
-                "Usar skill workopilot-execute-subtask para executar a subtask {} da task {}",
-                st_id, task_id
+                "Executar subtask: {} (task: {}), utilize a skill workopilot-execute-subtask para executar a subtask {} da task {}",
+                subtask_title, task_full.title, st_id, task_id
             ),
             false,
         )
     } else if !task_full.ai_metadata.structuring_complete {
         (
             format!(
-                "Usar skill workopilot-structure para estruturar a task {}",
-                task_id
+                "Estruturar: {}, utilize a skill workopilot-structure para estruturar a task de id: {}",
+                task_full.title, task_id
             ),
             true,
         )
     } else {
         (
             format!(
-                "Usar skill workopilot-execute-all para executar a task {}",
-                task_id
+                "Executar: {}, utilize a skill workopilot-execute-all para executar a task de id: {}",
+                task_full.title, task_id
             ),
             false,
         )
@@ -912,6 +916,7 @@ pub fn launch_task_structure(
     let project = db
         .get_project_with_config(&project_id)
         .map_err(|e| e.to_string())?;
+    let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
     
     db.update_task_status_and_substatus(&task_id, "active", Some("structuring"))
         .map_err(|e| e.to_string())?;
@@ -920,8 +925,8 @@ pub fn launch_task_structure(
     copy_all_skills(&app_handle, &project.path)?;
 
     let initial_prompt = format!(
-        "Usar skill workopilot-structure para estruturar a task {}",
-        task_id
+        "Estruturar: {}, utilize a skill workopilot-structure para estruturar a task de id: {}",
+        task_full.title, task_id
     );
 
     launch_in_workopilot_session(&app_handle, &project, &initial_prompt, &task_id, true)
@@ -938,6 +943,7 @@ pub fn launch_task_execute_all(
     let project = db
         .get_project_with_config(&project_id)
         .map_err(|e| e.to_string())?;
+    let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
     
     db.update_task_status_and_substatus(&task_id, "active", Some("executing"))
         .map_err(|e| e.to_string())?;
@@ -946,8 +952,8 @@ pub fn launch_task_execute_all(
     copy_all_skills(&app_handle, &project.path)?;
 
     let initial_prompt = format!(
-        "Usar skill workopilot-execute-all para executar a task {}",
-        task_id
+        "Executar: {}, utilize a skill workopilot-execute-all para executar a task de id: {}",
+        task_full.title, task_id
     );
 
     launch_in_workopilot_session(&app_handle, &project, &initial_prompt, &task_id, false)
@@ -965,6 +971,11 @@ pub fn launch_task_execute_subtask(
     let project = db
         .get_project_with_config(&project_id)
         .map_err(|e| e.to_string())?;
+    let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
+    let subtask_title = task_full.subtasks.iter()
+        .find(|s| s.id == subtask_id)
+        .map(|s| s.title.clone())
+        .unwrap_or_else(|| "Subtask".to_string());
     
     db.update_task_status_and_substatus(&task_id, "active", Some("executing"))
         .map_err(|e| e.to_string())?;
@@ -973,8 +984,8 @@ pub fn launch_task_execute_subtask(
     copy_all_skills(&app_handle, &project.path)?;
 
     let initial_prompt = format!(
-        "Usar skill workopilot-execute-subtask para executar a subtask {} da task {}",
-        subtask_id, task_id
+        "Executar subtask: {} (task: {}), utilize a skill workopilot-execute-subtask para executar a subtask {} da task {}",
+        subtask_title, task_full.title, subtask_id, task_id
     );
 
     launch_in_workopilot_session(&app_handle, &project, &initial_prompt, &task_id, false)
@@ -999,6 +1010,7 @@ pub fn launch_task_review(
             eprintln!("[WorkoPilot] Failed to get project: {}", e);
             e.to_string()
         })?;
+    let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
     drop(db);
 
     eprintln!("[WorkoPilot] Project found: {}, path: {}", project.name, project.path);
@@ -1010,8 +1022,8 @@ pub fn launch_task_review(
     eprintln!("[WorkoPilot] Skills copied successfully");
 
     let initial_prompt = format!(
-        "Usar skill workopilot-review para revisar a task {}",
-        task_id
+        "Revisar: {}, utilize a skill workopilot-review para revisar a task de id: {}",
+        task_full.title, task_id
     );
     
     eprintln!("[WorkoPilot] Launching session with prompt: {}", initial_prompt);
@@ -1165,6 +1177,7 @@ pub async fn launch_quickfix_background(
     let project = db
         .get_project_with_config(&project_id)
         .map_err(|e| e.to_string())?;
+    let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
     drop(db);
 
     copy_all_skills(&app_handle, &project.path)?;
@@ -1173,8 +1186,8 @@ pub async fn launch_quickfix_background(
     let project_path = first_route.path.clone();
 
     let full_prompt = format!(
-        "Usar skill workopilot-quickfix para ajustar a task {}. Ajuste solicitado: {}",
-        task_id, quickfix_prompt
+        "Quickfix: {}, utilize a skill workopilot-quickfix para ajustar a task de id: {}. Ajuste solicitado: {}",
+        task_full.title, task_id, quickfix_prompt
     );
 
     let _ = app_handle.emit("quickfix-changed", QuickfixPayload {
@@ -1285,6 +1298,59 @@ pub fn get_task_image(state: State<AppState>, image_id: String) -> Result<TaskIm
 pub fn delete_task_image(state: State<AppState>, image_id: String) -> Result<(), String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
     db.delete_task_image(&image_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_task_image_from_path(
+    state: State<AppState>,
+    task_id: String,
+    file_path: String,
+) -> Result<String, String> {
+    use std::fs;
+    use std::path::Path;
+
+    let path = Path::new(&file_path);
+    let file_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("image.png")
+        .to_string();
+
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("png")
+        .to_lowercase();
+
+    let mime_type = match ext.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "png" => "image/png",
+        _ => return Err(format!("Unsupported image format: {}", ext)),
+    };
+
+    if !ALLOWED_MIME_TYPES.contains(&mime_type) {
+        return Err(format!(
+            "Invalid mime type: {}. Allowed: PNG, JPG, GIF, WebP",
+            mime_type
+        ));
+    }
+
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+
+    let current_count = db.get_task_image_count(&task_id).map_err(|e| e.to_string())?;
+    if current_count >= MAX_IMAGES_PER_TASK {
+        return Err(format!(
+            "Maximum of {} images per task reached",
+            MAX_IMAGES_PER_TASK
+        ));
+    }
+
+    let data = fs::read(&file_path).map_err(|e| format!("Failed to read file: {}", e))?;
+
+    db.add_task_image(&task_id, &data, mime_type, &file_name)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
