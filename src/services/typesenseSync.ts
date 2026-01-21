@@ -112,22 +112,24 @@ export async function searchLogs(filters: ActivityLogFilters) {
 	const available = await isTypesenseAvailable();
 	if (!available) {
 		const logs = await fetchLogsFromDatabase(filters.limit);
+		const mappedLogs = logs.map((log) => ({
+			id: log.id,
+			event_type: log.event_type,
+			entity_type: log.entity_type || "unknown",
+			entity_id: log.entity_id || "",
+			project_id: log.project_id || "",
+			project_name: "",
+			task_title: "",
+			metadata: log.metadata ? JSON.parse(log.metadata) : {},
+			created_at: Math.floor(new Date(log.created_at).getTime() / 1000),
+			created_at_str: log.created_at,
+		}));
+		const lastLog = mappedLogs[mappedLogs.length - 1];
 		return {
-			logs: logs.map((log) => ({
-				id: log.id,
-				event_type: log.event_type,
-				entity_type: log.entity_type || "unknown",
-				entity_id: log.entity_id || "",
-				project_id: log.project_id || "",
-				project_name: "",
-				task_title: "",
-				metadata: log.metadata ? JSON.parse(log.metadata) : {},
-				created_at: Math.floor(new Date(log.created_at).getTime() / 1000),
-				created_at_str: log.created_at,
-			})),
-			total: logs.length,
-			page: 1,
-			total_pages: 1,
+			logs: mappedLogs,
+			total: mappedLogs.length,
+			nextCursor: lastLog ? lastLog.created_at : null,
+			hasMore: false,
 		};
 	}
 

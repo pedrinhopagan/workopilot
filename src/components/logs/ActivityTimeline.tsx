@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
-import type { ActivityLogDocument } from "../../services/typesense";
+import type { ActivityLogDocument } from "../../routes/logs";
 import { TimelineItem } from "./TimelineItem";
+import { Activity } from "lucide-react";
 
 type ActivityTimelineProps = {
   logs: ActivityLogDocument[];
@@ -9,49 +10,8 @@ type ActivityTimelineProps = {
   onLoadMore?: () => void;
   hasMore?: boolean;
   isLoading?: boolean;
+  isLoadingMore?: boolean;
 };
-
-type GroupedLogs = {
-  label: string;
-  logs: ActivityLogDocument[];
-};
-
-function groupLogsByDate(logs: ActivityLogDocument[]): GroupedLogs[] {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-  const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-  const groups: Record<string, ActivityLogDocument[]> = {
-    Hoje: [],
-    Ontem: [],
-    "Esta semana": [],
-    Anteriores: [],
-  };
-
-  for (const log of logs) {
-    const logDate = new Date(log.created_at * 1000);
-    const logDay = new Date(
-      logDate.getFullYear(),
-      logDate.getMonth(),
-      logDate.getDate()
-    );
-
-    if (logDay.getTime() === today.getTime()) {
-      groups["Hoje"].push(log);
-    } else if (logDay.getTime() === yesterday.getTime()) {
-      groups["Ontem"].push(log);
-    } else if (logDay.getTime() >= weekAgo.getTime()) {
-      groups["Esta semana"].push(log);
-    } else {
-      groups["Anteriores"].push(log);
-    }
-  }
-
-  return Object.entries(groups)
-    .filter(([, logs]) => logs.length > 0)
-    .map(([label, logs]) => ({ label, logs }));
-}
 
 export function ActivityTimeline({
   logs,
@@ -60,17 +20,18 @@ export function ActivityTimeline({
   onLoadMore,
   hasMore,
   isLoading,
+  isLoadingMore,
 }: ActivityTimelineProps) {
   const observerRef = useRef<HTMLDivElement>(null);
 
   const handleObserver = useCallback(
     (entries: IntersectionObserverEntry[]) => {
       const [entry] = entries;
-      if (entry.isIntersecting && hasMore && !isLoading && onLoadMore) {
+      if (entry.isIntersecting && hasMore && !isLoading && !isLoadingMore && onLoadMore) {
         onLoadMore();
       }
     },
-    [hasMore, isLoading, onLoadMore]
+    [hasMore, isLoading, isLoadingMore, onLoadMore]
   );
 
   useEffect(() => {
@@ -88,45 +49,41 @@ export function ActivityTimeline({
     return () => observer.disconnect();
   }, [handleObserver]);
 
-  const groupedLogs = groupLogsByDate(logs);
-
   if (logs.length === 0 && !isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center text-[#636363] text-sm p-4 text-center">
-        Nenhum evento encontrado.
-        <br />
-        Os eventos aparecerao aqui conforme voce usar o WorkoPilot.
+      <div className="flex-1 flex flex-col items-center justify-center text-[#636363] p-8">
+        <div className="w-16 h-16 rounded-full bg-[#232323] border border-[#3d3a34] flex items-center justify-center mb-4">
+          <Activity size={24} className="text-[#636363]" />
+        </div>
+        <p className="text-sm mb-1">Nenhum evento encontrado</p>
+        <p className="text-xs text-[#4a4a4a]">
+          Os eventos aparecerao aqui conforme voce usar o WorkoPilot
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      {groupedLogs.map((group) => (
-        <div key={group.label}>
-          <div className="sticky top-0 bg-[#232323] px-3 py-2 border-b border-[#3d3a34]">
-            <span className="text-xs text-[#828282] uppercase tracking-wide">
-              {group.label}
-            </span>
+    <div className="h-full overflow-y-auto">
+      <div className="p-4 space-y-2">
+        {logs.map((log) => (
+          <TimelineItem
+            key={log.id}
+            log={log}
+            isSelected={selectedLogId === log.id}
+            onClick={() => onSelectLog(log)}
+          />
+        ))}
+
+        <div ref={observerRef} className="h-4" />
+
+        {(isLoading || isLoadingMore) && (
+          <div className="py-6 flex items-center justify-center gap-2 text-[#636363]">
+            <div className="w-4 h-4 border-2 border-[#636363] border-t-transparent rounded-full animate-spin" />
+            <span className="text-sm">{isLoadingMore ? "Carregando mais..." : "Carregando..."}</span>
           </div>
-          {group.logs.map((log) => (
-            <TimelineItem
-              key={log.id}
-              log={log}
-              isSelected={selectedLogId === log.id}
-              onClick={() => onSelectLog(log)}
-            />
-          ))}
-        </div>
-      ))}
-
-      <div ref={observerRef} className="h-4" />
-
-      {isLoading && (
-        <div className="p-4 text-center text-[#636363] text-sm">
-          Carregando...
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

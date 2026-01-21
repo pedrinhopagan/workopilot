@@ -33,14 +33,14 @@ export interface ActivityLogFilters {
 	to_date?: string;
 	query?: string;
 	limit?: number;
-	page?: number;
+	cursor?: number; // timestamp cursor for pagination (created_at value)
 }
 
 export interface ActivityLogSearchResult {
 	logs: ActivityLogDocument[];
 	total: number;
-	page: number;
-	total_pages: number;
+	nextCursor: number | null;
+	hasMore: boolean;
 }
 
 const ACTIVITY_LOGS_SCHEMA: CollectionCreateSchema = {
@@ -63,6 +63,9 @@ const ACTIVITY_LOGS_SCHEMA: CollectionCreateSchema = {
 type TypesenseClient = InstanceType<typeof Typesense.Client>;
 
 let typesenseClient: TypesenseClient | null = null;
+let typesenseAvailableCache: boolean | null = null;
+let typesenseAvailableCacheTime = 0;
+const AVAILABILITY_CACHE_TTL = 30000;
 
 const TYPESENSE_CONFIG = {
 	apiKey: "workopilot-dev-key",
@@ -111,11 +114,20 @@ export function getTypesenseClient(): TypesenseClient {
 }
 
 export async function isTypesenseAvailable(): Promise<boolean> {
+	const now = Date.now();
+	if (typesenseAvailableCache !== null && now - typesenseAvailableCacheTime < AVAILABILITY_CACHE_TTL) {
+		return typesenseAvailableCache;
+	}
+
 	try {
 		const client = await initTypesense();
 		await client.health.retrieve();
+		typesenseAvailableCache = true;
+		typesenseAvailableCacheTime = now;
 		return true;
 	} catch {
+		typesenseAvailableCache = false;
+		typesenseAvailableCacheTime = now;
 		return false;
 	}
 }
@@ -211,7 +223,7 @@ export async function searchActivityLogs(
 		to_date,
 		query,
 		limit = 50,
-		page = 1,
+		cursor,
 	} = filters;
 
 	const filterParts: string[] = [];
@@ -238,13 +250,17 @@ export async function searchActivityLogs(
 		filterParts.push(`created_at:<=${toTs}`);
 	}
 
+	if (cursor) {
+		filterParts.push(`created_at:<${cursor}`);
+	}
+
 	const searchParams = {
 		q: query || "*",
 		query_by: "task_title,project_name,event_type",
 		filter_by: filterParts.length > 0 ? filterParts.join(" && ") : undefined,
 		sort_by: "created_at:desc",
 		per_page: limit,
-		page,
+		page: 1,
 	};
 
 	try {
@@ -255,13 +271,15 @@ export async function searchActivityLogs(
 
 		const logs = result.hits?.map((hit) => hit.document) || [];
 		const total = result.found || 0;
-		const totalPages = Math.ceil(total / limit);
+		const lastLog = logs[logs.length - 1];
+		const nextCursor = lastLog ? lastLog.created_at : null;
+		const hasMore = logs.length === limit;
 
 		return {
 			logs,
 			total,
-			page,
-			total_pages: totalPages,
+			nextCursor,
+			hasMore,
 		};
 	} catch (error) {
 		console.error("Failed to search activity logs in Typesense:", error);

@@ -8,9 +8,11 @@ import {
   PowerOff,
   Bot,
   BotOff,
+  ChevronRight,
+  Folder,
   type LucideIcon,
 } from "lucide-react";
-import type { ActivityLogDocument } from "../../services/typesense";
+import type { ActivityLogDocument } from "../../routes/logs";
 
 type TimelineItemProps = {
   log: ActivityLogDocument;
@@ -20,72 +22,83 @@ type TimelineItemProps = {
 
 const EVENT_CONFIG: Record<
   string,
-  { icon: LucideIcon; color: string; bgColor: string; label: string }
+  { icon: LucideIcon; color: string; bgColor: string; borderColor: string; label: string }
 > = {
   task_created: {
     icon: Plus,
     color: "text-[#909d63]",
-    bgColor: "bg-[#909d63]/20",
+    bgColor: "bg-[#909d63]/10",
+    borderColor: "border-[#909d63]/30",
     label: "Task criada",
   },
   task_started: {
     icon: Play,
     color: "text-[#7daea3]",
-    bgColor: "bg-[#7daea3]/20",
+    bgColor: "bg-[#7daea3]/10",
+    borderColor: "border-[#7daea3]/30",
     label: "Task iniciada",
   },
   task_completed: {
     icon: CheckCircle2,
     color: "text-[#909d63]",
-    bgColor: "bg-[#909d63]/20",
+    bgColor: "bg-[#909d63]/10",
+    borderColor: "border-[#909d63]/30",
     label: "Task concluida",
   },
   task_status_changed: {
     icon: Circle,
     color: "text-[#ebc17a]",
-    bgColor: "bg-[#ebc17a]/20",
+    bgColor: "bg-[#ebc17a]/10",
+    borderColor: "border-[#ebc17a]/30",
     label: "Status alterado",
   },
   subtask_started: {
     icon: Play,
     color: "text-[#7daea3]",
-    bgColor: "bg-[#7daea3]/20",
+    bgColor: "bg-[#7daea3]/10",
+    borderColor: "border-[#7daea3]/30",
     label: "Subtask iniciada",
   },
   subtask_completed: {
     icon: CheckCircle2,
     color: "text-[#909d63]",
-    bgColor: "bg-[#909d63]/20",
+    bgColor: "bg-[#909d63]/10",
+    borderColor: "border-[#909d63]/30",
     label: "Subtask concluida",
   },
   subtask_status_changed: {
     icon: Circle,
     color: "text-[#ebc17a]",
-    bgColor: "bg-[#ebc17a]/20",
+    bgColor: "bg-[#ebc17a]/10",
+    borderColor: "border-[#ebc17a]/30",
     label: "Subtask alterada",
   },
   ai_session_start: {
     icon: Bot,
     color: "text-[#d3869b]",
-    bgColor: "bg-[#d3869b]/20",
+    bgColor: "bg-[#d3869b]/10",
+    borderColor: "border-[#d3869b]/30",
     label: "Sessao IA iniciada",
   },
   ai_session_end: {
     icon: BotOff,
     color: "text-[#d3869b]",
-    bgColor: "bg-[#d3869b]/20",
+    bgColor: "bg-[#d3869b]/10",
+    borderColor: "border-[#d3869b]/30",
     label: "Sessao IA finalizada",
   },
   user_session_start: {
     icon: Power,
     color: "text-[#83a598]",
-    bgColor: "bg-[#83a598]/20",
+    bgColor: "bg-[#83a598]/10",
+    borderColor: "border-[#83a598]/30",
     label: "App aberto",
   },
   user_session_end: {
     icon: PowerOff,
     color: "text-[#83a598]",
-    bgColor: "bg-[#83a598]/20",
+    bgColor: "bg-[#83a598]/10",
+    borderColor: "border-[#83a598]/30",
     label: "App fechado",
   },
 };
@@ -93,7 +106,8 @@ const EVENT_CONFIG: Record<
 const DEFAULT_CONFIG = {
   icon: Clock,
   color: "text-[#636363]",
-  bgColor: "bg-[#636363]/20",
+  bgColor: "bg-[#636363]/10",
+  borderColor: "border-[#636363]/30",
   label: "Evento",
 };
 
@@ -106,10 +120,10 @@ function formatRelativeTime(timestamp: number): string {
   const days = Math.floor(hours / 24);
 
   if (seconds < 60) return "agora";
-  if (minutes < 60) return `ha ${minutes}min`;
-  if (hours < 24) return `ha ${hours}h`;
+  if (minutes < 60) return `${minutes}min`;
+  if (hours < 24) return `${hours}h`;
   if (days === 1) return "ontem";
-  if (days < 7) return `ha ${days} dias`;
+  if (days < 7) return `${days}d`;
 
   const date = new Date(timestamp * 1000);
   return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
@@ -147,62 +161,75 @@ export function TimelineItem({ log, isSelected, onClick }: TimelineItemProps) {
   const title = getEventTitle(log);
   const relativeTime = formatRelativeTime(log.created_at);
   const metadata = log.metadata as Record<string, unknown>;
+  const tokensTotal = typeof metadata?.tokens_total === "number" ? metadata.tokens_total : null;
 
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`w-full flex items-start gap-3 p-3 text-left transition-colors border-b border-[#2d2a24] ${
+      className={`group w-full flex items-center gap-4 p-4 text-left transition-all duration-200 rounded-sm border ${
         isSelected
-          ? "bg-[#909d63] text-[#1c1c1c]"
-          : "hover:bg-[#2a2a2a]"
+          ? "bg-[#909d63]/15 border-[#909d63]/50 shadow-[0_0_0_1px_rgba(144,157,99,0.2)]"
+          : "bg-[#232323] border-[#3d3a34] hover:border-[#4d4a44] hover:bg-[#282828]"
       }`}
     >
       <div
-        className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
-          isSelected ? "bg-[#1c1c1c]/20" : config.bgColor
+        className={`flex-shrink-0 w-10 h-10 rounded-md flex items-center justify-center border transition-colors ${
+          isSelected
+            ? "bg-[#909d63]/20 border-[#909d63]/40"
+            : `${config.bgColor} ${config.borderColor}`
         }`}
       >
         <Icon
-          size={16}
-          className={isSelected ? "text-[#1c1c1c]" : config.color}
+          size={18}
+          className={isSelected ? "text-[#909d63]" : config.color}
         />
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-0.5">
           <span
-            className={`text-xs font-medium ${
-              isSelected ? "text-[#1c1c1c]/70" : "text-[#636363]"
+            className={`text-xs font-medium uppercase tracking-wide ${
+              isSelected ? "text-[#909d63]" : config.color
             }`}
           >
             {config.label}
           </span>
-          {metadata?.tokens_total && (
-            <span
-              className={`text-xs ${
-                isSelected ? "text-[#1c1c1c]/60" : "text-[#d3869b]"
-              }`}
-            >
-              {(metadata.tokens_total as number).toLocaleString()} tokens
+          {tokensTotal !== null && (
+            <span className="text-xs text-[#d3869b]/80 bg-[#d3869b]/10 px-1.5 py-0.5 rounded-sm">
+              {tokensTotal.toLocaleString()} tokens
             </span>
           )}
         </div>
         <p
-          className={`text-sm truncate ${
-            isSelected ? "text-[#1c1c1c]" : "text-[#d6d6d6]"
+          className={`text-sm font-medium truncate mb-1 ${
+            isSelected ? "text-[#d6d6d6]" : "text-[#d6d6d6]"
           }`}
         >
           {title}
         </p>
-        <span
-          className={`text-xs ${
-            isSelected ? "text-[#1c1c1c]/60" : "text-[#636363]"
-          }`}
-        >
-          {relativeTime}
-        </span>
+        <div className="flex items-center gap-2 text-xs text-[#636363]">
+          <span>{relativeTime}</span>
+          {log.project_name && (
+            <>
+              <span className="text-[#4d4a44]">·</span>
+              <span className="flex items-center gap-1 text-[#7daea3]/70">
+                <Folder size={10} />
+                {log.project_name}
+              </span>
+            </>
+          )}
+        </div>
       </div>
+
+      <ChevronRight
+        size={16}
+        className={`flex-shrink-0 transition-all duration-200 ${
+          isSelected
+            ? "text-[#909d63] opacity-100"
+            : "text-[#636363] opacity-0 group-hover:opacity-100"
+        }`}
+      />
     </button>
   );
 }

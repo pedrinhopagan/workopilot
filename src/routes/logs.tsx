@@ -1,73 +1,146 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { TabBar } from "../components/TabBar";
 import { ActivityTimeline } from "../components/logs/ActivityTimeline";
 import { LogFilters, type FilterState } from "../components/logs/LogFilters";
-import type { ActivityLogDocument, ActivityLogSearchResult } from "../services/typesense";
-import { searchLogs, startTypesenseSync, stopTypesenseSync } from "../services/typesenseSync";
+import { LogDetailDrawer } from "../components/logs/LogDetailDrawer";
+import { LogsMetrics } from "../components/logs/LogsMetrics";
+import { safeInvoke } from "../services/tauri";
+
+interface ActivityLogWithContext {
+  id: string;
+  event_type: string;
+  entity_type: string | null;
+  entity_id: string | null;
+  project_id: string | null;
+  metadata: string | null;
+  created_at: string;
+  project_name: string | null;
+  task_title: string | null;
+}
+
+interface SearchResult {
+  logs: ActivityLogWithContext[];
+  total: number;
+  next_cursor: string | null;
+  has_more: boolean;
+}
+
+export interface ActivityLogDocument {
+  id: string;
+  event_type: string;
+  entity_type: string;
+  entity_id: string;
+  project_id: string;
+  project_name: string;
+  task_title: string;
+  metadata: Record<string, unknown>;
+  created_at: number;
+  created_at_str: string;
+}
+
+function toActivityLogDocument(log: ActivityLogWithContext): ActivityLogDocument {
+  let parsedMetadata: Record<string, unknown> = {};
+  if (log.metadata) {
+    try {
+      parsedMetadata = JSON.parse(log.metadata);
+    } catch {
+      parsedMetadata = {};
+    }
+  }
+
+  return {
+    id: log.id,
+    event_type: log.event_type,
+    entity_type: log.entity_type || "unknown",
+    entity_id: log.entity_id || "",
+    project_id: log.project_id || "",
+    project_name: log.project_name || "",
+    task_title: log.task_title || (parsedMetadata.task_title as string) || "",
+    metadata: parsedMetadata,
+    created_at: Math.floor(new Date(log.created_at).getTime() / 1000),
+    created_at_str: log.created_at,
+  };
+}
 
 function LogsPage() {
   const [logs, setLogs] = useState<ActivityLogDocument[]>([]);
   const [selectedLog, setSelectedLog] = useState<ActivityLogDocument | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [filters, setFilters] = useState<FilterState>({
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(true);
+  const [totalLogs, setTotalLogs] = useState(0);
+  const loadingRef = useRef(false);
+  const filtersRef = useRef<FilterState>({
     query: "",
     eventTypes: [],
     projectId: null,
     fromDate: null,
     toDate: null,
   });
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [totalLogs, setTotalLogs] = useState(0);
+  const initialLoadDone = useRef(false);
 
-  const loadLogs = useCallback(async (currentFilters: FilterState, currentPage: number, append = false) => {
-    setIsLoading(true);
+  const loadLogs = useCallback(async (currentCursor: string | null) => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
+
+    const currentFilters = filtersRef.current;
+    const isInitialLoad = currentCursor === null;
+    
+    if (isInitialLoad) {
+      setIsLoading(true);
+    } else {
+      setIsLoadingMore(true);
+    }
+
     try {
-      const result: ActivityLogSearchResult = await searchLogs({
-        query: currentFilters.query || undefined,
-        event_type: currentFilters.eventTypes.length > 0 ? currentFilters.eventTypes : undefined,
-        project_id: currentFilters.projectId || undefined,
-        from_date: currentFilters.fromDate || undefined,
-        to_date: currentFilters.toDate || undefined,
-        limit: 50,
-        page: currentPage,
+      const result = await safeInvoke<SearchResult>("search_activity_logs", {
+        query: currentFilters.query || null,
+        eventTypes: currentFilters.eventTypes.length > 0 ? currentFilters.eventTypes : null,
+        projectId: currentFilters.projectId || null,
+        fromDate: currentFilters.fromDate || null,
+        toDate: currentFilters.toDate || null,
+        cursor: currentCursor,
+        limit: 30,
       });
 
-      if (append) {
-        setLogs((prev) => [...prev, ...result.logs]);
+      const mappedLogs = result.logs.map(toActivityLogDocument);
+
+      if (isInitialLoad) {
+        setLogs(mappedLogs);
       } else {
-        setLogs(result.logs);
+        setLogs((prev) => [...prev, ...mappedLogs]);
       }
       setTotalLogs(result.total);
-      setHasMore(currentPage < result.total_pages);
+      setCursor(result.next_cursor);
+      setHasMore(result.has_more);
     } catch (e) {
       console.error("Failed to load logs:", e);
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
+      loadingRef.current = false;
     }
   }, []);
 
   useEffect(() => {
-    startTypesenseSync(30000);
-    return () => stopTypesenseSync();
-  }, []);
-
-  useEffect(() => {
-    setPage(1);
-    setSelectedLog(null);
-    loadLogs(filters, 1, false);
-  }, [filters, loadLogs]);
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = true;
+      loadLogs(null);
+    }
+  }, [loadLogs]);
 
   function handleFiltersChange(newFilters: FilterState) {
-    setFilters(newFilters);
+    filtersRef.current = newFilters;
+    setCursor(null);
+    setSelectedLog(null);
+    loadLogs(null);
   }
 
   function handleLoadMore() {
-    if (!isLoading && hasMore) {
-      const nextPage = page + 1;
-      setPage(nextPage);
-      loadLogs(filters, nextPage, true);
+    if (!isLoading && !isLoadingMore && hasMore && cursor !== null) {
+      loadLogs(cursor);
     }
   }
 
@@ -75,220 +148,48 @@ function LogsPage() {
     setSelectedLog(log);
   }
 
-  function formatTimestamp(timestamp: number): string {
-    const date = new Date(timestamp * 1000);
-    return date.toLocaleString("pt-BR", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
-  function formatTokens(n: number): string {
-    if (n >= 1000000) return `${(n / 1000000).toFixed(2)}M`;
-    if (n >= 1000) return `${(n / 1000).toFixed(1)}k`;
-    return n.toString();
+  function handleCloseDrawer() {
+    setSelectedLog(null);
   }
 
   return (
     <>
       <TabBar />
-      <main className="flex flex-1 overflow-hidden">
-        <aside className="w-80 border-r border-[#3d3a34] flex flex-col bg-[#232323]">
-          <div className="p-3 border-b border-[#3d3a34] flex items-center justify-between">
-            <span className="text-xs text-[#828282] uppercase tracking-wide">
-              Timeline de Eventos
-            </span>
-            <span className="text-xs text-[#636363]">
-              {totalLogs} evento{totalLogs !== 1 ? "s" : ""}
-            </span>
+      <main className="flex-1 flex flex-col overflow-hidden bg-[#1c1c1c]">
+        <div className="border-b border-[#3d3a34] bg-[#232323]/50">
+          <div className="max-w-5xl mx-auto">
+            <LogFilters onFiltersChange={handleFiltersChange} totalLogs={totalLogs} />
           </div>
+        </div>
 
-          <LogFilters onFiltersChange={handleFiltersChange} />
-
-          <ActivityTimeline
-            logs={logs}
-            selectedLogId={selectedLog?.id || null}
-            onSelectLog={handleSelectLog}
-            onLoadMore={handleLoadMore}
-            hasMore={hasMore}
-            isLoading={isLoading}
-          />
-        </aside>
-
-        <section className="flex-1 overflow-y-auto p-4">
-          {selectedLog ? (
-            <LogDetail
-              log={selectedLog}
-              formatTimestamp={formatTimestamp}
-              formatTokens={formatTokens}
+        <div className="border-b border-[#3d3a34]">
+          <div className="max-w-5xl mx-auto">
+            <LogsMetrics
+              logs={logs}
+              fromDate={filtersRef.current.fromDate}
+              toDate={filtersRef.current.toDate}
             />
-          ) : (
-            <div className="flex items-center justify-center h-full text-[#828282]">
-              Selecione um evento da timeline para ver os detalhes
-            </div>
-          )}
-        </section>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-hidden">
+          <div className="max-w-5xl mx-auto h-full">
+            <ActivityTimeline
+              logs={logs}
+              selectedLogId={selectedLog?.id || null}
+              onSelectLog={handleSelectLog}
+              onLoadMore={handleLoadMore}
+              hasMore={hasMore}
+              isLoading={isLoading}
+              isLoadingMore={isLoadingMore}
+            />
+          </div>
+        </div>
       </main>
+
+      <LogDetailDrawer log={selectedLog} onClose={handleCloseDrawer} />
     </>
   );
-}
-
-type LogDetailProps = {
-  log: ActivityLogDocument;
-  formatTimestamp: (timestamp: number) => string;
-  formatTokens: (n: number) => string;
-};
-
-function LogDetail({ log, formatTimestamp, formatTokens }: LogDetailProps) {
-  const metadata = log.metadata as Record<string, unknown>;
-
-  const oldStatus = typeof metadata?.old_status === "string" ? metadata.old_status : null;
-  const newStatus = typeof metadata?.new_status === "string" ? metadata.new_status : null;
-  const tokensInput = typeof metadata?.tokens_input === "number" ? metadata.tokens_input : null;
-  const tokensOutput = typeof metadata?.tokens_output === "number" ? metadata.tokens_output : null;
-  const tokensTotal = typeof metadata?.tokens_total === "number" ? metadata.tokens_total : null;
-  const sessionId = typeof metadata?.session_id === "string" ? metadata.session_id : null;
-  const subtaskTitle = typeof metadata?.subtask_title === "string" ? metadata.subtask_title : null;
-  const durationSeconds = typeof metadata?.duration_seconds === "number" ? metadata.duration_seconds : null;
-  const appVersion = typeof metadata?.app_version === "string" ? metadata.app_version : null;
-  const taskTitle = typeof metadata?.task_title === "string" ? metadata.task_title : null;
-
-  return (
-    <div className="max-w-2xl">
-      <div className="mb-4">
-        <div className="flex items-center gap-2 mb-1">
-          <span className="px-2 py-0.5 bg-[#909d63]/20 text-[#909d63] text-xs uppercase">
-            {log.event_type.replace(/_/g, " ")}
-          </span>
-          {log.project_name && (
-            <span className="px-2 py-0.5 bg-[#7daea3]/20 text-[#7daea3] text-xs">
-              {log.project_name}
-            </span>
-          )}
-        </div>
-        <h2 className="text-xl text-[#d6d6d6]">
-          {log.task_title || taskTitle || log.event_type.replace(/_/g, " ")}
-        </h2>
-        <p className="text-sm text-[#636363]">
-          {formatTimestamp(log.created_at)}
-        </p>
-      </div>
-
-      {metadata && Object.keys(metadata).length > 0 && (
-        <div className="bg-[#232323] border border-[#3d3a34] p-4 mb-4">
-          <h3 className="text-xs text-[#828282] uppercase tracking-wide mb-3">
-            Detalhes
-          </h3>
-          <dl className="space-y-2">
-            {oldStatus && newStatus && (
-              <div className="flex items-center gap-2 text-sm">
-                <dt className="text-[#636363]">Status:</dt>
-                <dd className="flex items-center gap-2">
-                  <span className="text-[#bc5653]">{oldStatus}</span>
-                  <span className="text-[#636363]">→</span>
-                  <span className="text-[#909d63]">{newStatus}</span>
-                </dd>
-              </div>
-            )}
-
-            {tokensInput !== null && (
-              <div className="flex items-center gap-2 text-sm">
-                <dt className="text-[#636363]">Tokens entrada:</dt>
-                <dd className="text-[#d6d6d6]">
-                  {formatTokens(tokensInput)}
-                </dd>
-              </div>
-            )}
-
-            {tokensOutput !== null && (
-              <div className="flex items-center gap-2 text-sm">
-                <dt className="text-[#636363]">Tokens saida:</dt>
-                <dd className="text-[#d6d6d6]">
-                  {formatTokens(tokensOutput)}
-                </dd>
-              </div>
-            )}
-
-            {tokensTotal !== null && (
-              <div className="flex items-center gap-2 text-sm">
-                <dt className="text-[#636363]">Tokens total:</dt>
-                <dd className="text-[#d3869b] font-medium">
-                  {formatTokens(tokensTotal)}
-                </dd>
-              </div>
-            )}
-
-            {sessionId && (
-              <div className="flex items-center gap-2 text-sm">
-                <dt className="text-[#636363]">Session ID:</dt>
-                <dd className="text-[#d6d6d6] font-mono text-xs">
-                  {sessionId}
-                </dd>
-              </div>
-            )}
-
-            {subtaskTitle && (
-              <div className="flex items-center gap-2 text-sm">
-                <dt className="text-[#636363]">Subtask:</dt>
-                <dd className="text-[#d6d6d6]">{subtaskTitle}</dd>
-              </div>
-            )}
-
-            {durationSeconds !== null && (
-              <div className="flex items-center gap-2 text-sm">
-                <dt className="text-[#636363]">Duracao:</dt>
-                <dd className="text-[#d6d6d6]">
-                  {formatDuration(durationSeconds)}
-                </dd>
-              </div>
-            )}
-
-            {appVersion && (
-              <div className="flex items-center gap-2 text-sm">
-                <dt className="text-[#636363]">Versao app:</dt>
-                <dd className="text-[#d6d6d6]">{appVersion}</dd>
-              </div>
-            )}
-          </dl>
-        </div>
-      )}
-
-      {log.entity_id && (
-        <div className="bg-[#232323] border border-[#3d3a34] p-4">
-          <h3 className="text-xs text-[#828282] uppercase tracking-wide mb-3">
-            Referencia
-          </h3>
-          <div className="space-y-2 text-sm">
-            <div className="flex items-center gap-2">
-              <span className="text-[#636363]">Tipo:</span>
-              <span className="text-[#d6d6d6]">{log.entity_type}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-[#636363]">ID:</span>
-              <code className="text-[#828282] font-mono text-xs bg-[#1c1c1c] px-1.5 py-0.5">
-                {log.entity_id}
-              </code>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  if (minutes < 60) {
-    return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
-  }
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }
 
 export const Route = createFileRoute("/logs")({
