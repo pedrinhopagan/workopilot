@@ -94,6 +94,8 @@ export const Calendar = forwardRef<CalendarRef, CalendarProps>(function Calendar
   const currentMonth = useAgendaStore((s) => s.currentMonth);
   const setCurrentMonth = useAgendaStore((s) => s.setCurrentMonth);
   const setDraggedTask = useAgendaStore((s) => s.setDraggedTask);
+  const isDistributing = useAgendaStore((s) => s.isDistributing);
+  const isDistributionMode = useAgendaStore((s) => s.isDistributionMode);
   const [tasks, setTasks] = useState<CalendarTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -160,8 +162,24 @@ export const Calendar = forwardRef<CalendarRef, CalendarProps>(function Calendar
   }));
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-4">
+    <div className="flex flex-col h-full relative">
+      {isDistributing && (
+        <div className="absolute inset-0 bg-[#1c1c1c]/80 z-10 flex flex-col items-center justify-center">
+          <div className="animate-spin w-10 h-10 border-3 border-[#909d63] border-t-transparent rounded-full mb-4" />
+          <p className="text-[#d6d6d6] font-medium">Distribuindo com IA...</p>
+          <p className="text-[#828282] text-sm mt-1">OpenCode está processando</p>
+        </div>
+      )}
+
+      {isDistributionMode && !isDistributing && (
+        <div className="absolute top-0 left-0 right-0 bg-[#909d63]/20 border-b border-[#909d63] px-4 py-2 z-10">
+          <p className="text-[#909d63] text-sm font-medium text-center">
+            Clique nos dias para selecionar onde distribuir as tarefas
+          </p>
+        </div>
+      )}
+
+      <div className={`flex items-center justify-between mb-4 ${isDistributionMode && !isDistributing ? "mt-10" : ""}`}>
         <div className="flex items-center gap-2">
           <button
             onClick={previousMonth}
