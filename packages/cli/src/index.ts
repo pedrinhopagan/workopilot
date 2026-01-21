@@ -239,6 +239,7 @@ program
   .option("--description <description>", "Set context description")
   .option("--initialized <bool>", "Set initialized (true/false)")
   .option("--structuring-complete <bool>", "Set structuring_complete (true/false)")
+  .option("--scheduled-date <date>", "Set scheduled date (YYYY-MM-DD format, or 'null' to unschedule)")
   .action(
     async (
       taskId: string,
@@ -250,6 +251,7 @@ program
         description?: string;
         initialized?: string;
         structuringComplete?: string;
+        scheduledDate?: string;
       }
     ) => {
       try {
@@ -311,6 +313,23 @@ program
             options.structuringComplete === "true";
           currentAiMetadata.last_interaction = now;
           updates.ai_metadata = JSON.stringify(currentAiMetadata);
+        }
+
+        if (options.scheduledDate !== undefined) {
+          if (options.scheduledDate === "null" || options.scheduledDate === "") {
+            updates.scheduled_date = null;
+          } else {
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (!dateRegex.test(options.scheduledDate)) {
+              console.error(
+                JSON.stringify({
+                  error: `Invalid date format: ${options.scheduledDate}. Use YYYY-MM-DD format.`,
+                })
+              );
+              process.exit(1);
+            }
+            updates.scheduled_date = options.scheduledDate;
+          }
         }
 
         updates.modified_at = now;
