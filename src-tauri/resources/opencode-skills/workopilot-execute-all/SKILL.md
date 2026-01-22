@@ -28,6 +28,9 @@ metadata:
 Use os comandos da CLI WorkoPilot para ler e atualizar dados:
 
 ```bash
+# Marcar task como ATIVA (primeiro passo obrigatorio)
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status active
+
 # Ler task completa (inclui subtasks)
 cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts get-task {taskId}
 
@@ -35,8 +38,8 @@ cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.t
 cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-subtask {subtaskId} --status in_progress
 cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-subtask {subtaskId} --status done
 
-# Atualizar status da task (limpa substatus "executing" e muda para awaiting_review)
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --substatus awaiting_review
+# Marcar task como PENDENTE (ultimo passo obrigatorio - sinaliza que IA terminou)
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status pending
 ```
 
 **IMPORTANTE**: A CLI grava diretamente no SQLite. O WorkoPilot detecta mudancas automaticamente.
@@ -58,6 +61,12 @@ Antes de executar, verifique:
 ---
 
 ## Fluxo de Execucao
+
+### 0. Marcar task como ATIVA (OBRIGATORIO - PRIMEIRO PASSO)
+```bash
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status active
+```
+**IMPORTANTE**: Este comando DEVE ser o primeiro a executar. Isso sinaliza ao WorkoPilot que a IA esta trabalhando ativamente nesta task.
 
 ### 1. Ler a task via CLI
 ```bash
@@ -99,10 +108,10 @@ Se nao houver subtasks:
 ### 5. Finalizar
 Quando todas as subtasks estiverem done (ou task simples concluida):
 ```bash
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --substatus awaiting_review
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status pending
 ```
 
-**NOTA**: Use `--substatus awaiting_review` para atualizar o substatus corretamente. Isso limpa o status "Executando" e muda para "Aguardando revisao".
+**NOTA**: Use `--status pending` para sinalizar ao WorkoPilot que a IA terminou e o usuario pode agir. O status visual "Aguardando revisao" sera derivado automaticamente quando todas subtasks estiverem done.
 
 ---
 
@@ -112,7 +121,8 @@ cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.t
 |---------|-----------|
 | `get-task {id}` | Retorna JSON completo da task com subtasks |
 | `update-task {id} --status {status}` | Atualiza status da task |
-| `update-task {id} --substatus {substatus}` | Atualiza substatus (executing, awaiting_review, awaiting_user, null) |
+| `update-task {id} --status active` | Marca que IA esta trabalhando (inicio) |
+| `update-task {id} --status pending` | Marca que IA terminou (fim) |
 | `update-subtask {id} --status {status}` | Atualiza status da subtask (pending, in_progress, done) |
 | `list-tasks [--project {id}]` | Lista tasks do projeto |
 
@@ -150,9 +160,10 @@ Apos atualizar via CLI com sucesso, diga:
 ## Checklist Final
 
 Antes de encerrar, verifique:
+- [ ] Marquei task como `--status active` NO INICIO?
 - [ ] Li a task via CLI (`get-task`)?
 - [ ] Executei todas as subtasks na ordem?
 - [ ] Atualizei status de cada subtask via CLI?
-- [ ] Setei task para `awaiting_review`?
+- [ ] Setei task para `--status pending` ao finalizar?
 
 **A CLI GRAVA DIRETAMENTE NO SQLITE - NAO USE ARQUIVOS JSON!**

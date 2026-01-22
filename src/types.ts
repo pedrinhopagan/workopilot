@@ -38,8 +38,7 @@ export interface ProjectWithConfig {
   created_at: string;
 }
 
-export type TaskStatus = "pending" | "active" | "done";
-export type TaskSubstatus = "structuring" | "executing" | "awaiting_user" | "awaiting_review" | null;
+export type TaskStatus = "pending" | "structuring" | "structured" | "working" | "standby" | "ready_to_review" | "completed";
 
 export interface Task {
   id: string;
@@ -49,7 +48,6 @@ export interface Task {
   priority: number;
   category: string;
   status: string;
-  substatus: string | null;
   due_date: string | null;
   json_path: string | null;
   created_at: string | null;
@@ -96,7 +94,6 @@ export interface TaskFull {
   id: string;
   title: string;
   status: string;
-  substatus: string | null;
   priority: number;
   category: string;
   complexity: string | null;
@@ -136,7 +133,6 @@ export interface CalendarTask {
   priority: number;
   category: string;
   status: string;
-  substatus: string | null;
   scheduled_date: string;
   due_date: string | null;
   is_overdue: boolean;

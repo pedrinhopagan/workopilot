@@ -96,6 +96,7 @@ impl Database {
         self.migrate_user_sessions_table()?;
         self.migrate_projects_display_order()?;
         self.migrate_tasks_substatus()?;
+        self.migrate_task_status_values()?;
 
         Ok(())
     }
@@ -411,6 +412,18 @@ impl Database {
         Ok(())
     }
 
+    fn migrate_task_status_values(&self) -> Result<()> {
+        self.conn.execute(
+            "UPDATE tasks SET status = 'completed' WHERE status = 'done'",
+            [],
+        )?;
+        self.conn.execute(
+            "UPDATE tasks SET status = 'working' WHERE status = 'active'",
+            [],
+        )?;
+        Ok(())
+    }
+
     pub fn get_projects(&self) -> Result<Vec<Project>> {
         let mut stmt = self
             .conn
@@ -576,7 +589,7 @@ impl Database {
 
     pub fn get_tasks(&self) -> Result<Vec<Task>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, json_path, created_at, scheduled_date
+            "SELECT id, project_id, title, description, priority, category, status, due_date, json_path, created_at, scheduled_date
              FROM tasks 
              ORDER BY priority ASC, created_at DESC"
         )?;
@@ -591,11 +604,10 @@ impl Database {
                     priority: row.get(4)?,
                     category: row.get(5)?,
                     status: row.get(6)?,
-                    substatus: row.get(7)?,
-                    due_date: row.get(8)?,
-                    json_path: row.get(9)?,
-                    created_at: row.get(10)?,
-                    scheduled_date: row.get(11)?,
+                    due_date: row.get(7)?,
+                    json_path: row.get(8)?,
+                    created_at: row.get(9)?,
+                    scheduled_date: row.get(10)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -605,9 +617,9 @@ impl Database {
 
     pub fn get_urgent_tasks(&self, project_id: &str, limit: i32) -> Result<Vec<Task>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, json_path, created_at, scheduled_date
+            "SELECT id, project_id, title, description, priority, category, status, due_date, json_path, created_at, scheduled_date
              FROM tasks 
-             WHERE project_id = ?1 AND status = 'pending'
+             WHERE project_id = ?1 AND status IN ('pending', 'structured', 'standby', 'ready_to_review')
              ORDER BY 
                 CASE WHEN due_date IS NOT NULL THEN 0 ELSE 1 END,
                 due_date ASC,
@@ -626,11 +638,10 @@ impl Database {
                     priority: row.get(4)?,
                     category: row.get(5)?,
                     status: row.get(6)?,
-                    substatus: row.get(7)?,
-                    due_date: row.get(8)?,
-                    json_path: row.get(9)?,
-                    created_at: row.get(10)?,
-                    scheduled_date: row.get(11)?,
+                    due_date: row.get(7)?,
+                    json_path: row.get(8)?,
+                    created_at: row.get(9)?,
+                    scheduled_date: row.get(10)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -640,17 +651,10 @@ impl Database {
 
     pub fn get_active_tasks(&self, project_id: &str, limit: i32) -> Result<Vec<Task>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, json_path, created_at, scheduled_date
+            "SELECT id, project_id, title, description, priority, category, status, due_date, json_path, created_at, scheduled_date
              FROM tasks 
-             WHERE project_id = ?1 AND status = 'active'
+             WHERE project_id = ?1 AND status IN ('structuring', 'working')
              ORDER BY 
-                CASE substatus
-                    WHEN 'awaiting_review' THEN 1
-                    WHEN 'awaiting_user' THEN 2
-                    WHEN 'executing' THEN 3
-                    WHEN 'structuring' THEN 4
-                    ELSE 5
-                END,
                 priority ASC,
                 created_at ASC
              LIMIT ?2"
@@ -666,11 +670,10 @@ impl Database {
                     priority: row.get(4)?,
                     category: row.get(5)?,
                     status: row.get(6)?,
-                    substatus: row.get(7)?,
-                    due_date: row.get(8)?,
-                    json_path: row.get(9)?,
-                    created_at: row.get(10)?,
-                    scheduled_date: row.get(11)?,
+                    due_date: row.get(7)?,
+                    json_path: row.get(8)?,
+                    created_at: row.get(9)?,
+                    scheduled_date: row.get(10)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -717,7 +720,7 @@ impl Database {
         category: &str,
         status: &str,
     ) -> Result<()> {
-        let completed_at = if status == "done" {
+        let completed_at = if status == "completed" {
             Some(chrono::Utc::now().to_rfc3339())
         } else {
             None
@@ -738,7 +741,7 @@ impl Database {
 
     pub fn get_task_by_id(&self, task_id: &str) -> Result<Task> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, json_path, created_at, scheduled_date
+            "SELECT id, project_id, title, description, priority, category, status, due_date, json_path, created_at, scheduled_date
              FROM tasks WHERE id = ?1"
         )?;
 
@@ -751,50 +754,30 @@ impl Database {
                 priority: row.get(4)?,
                 category: row.get(5)?,
                 status: row.get(6)?,
-                substatus: row.get(7)?,
-                due_date: row.get(8)?,
-                json_path: row.get(9)?,
-                created_at: row.get(10)?,
-                scheduled_date: row.get(11)?,
+                due_date: row.get(7)?,
+                json_path: row.get(8)?,
+                created_at: row.get(9)?,
+                scheduled_date: row.get(10)?,
             })
         })
     }
 
     pub fn update_task_status(&self, task_id: &str, status: &str) -> Result<()> {
-        let completed_at = if status == "done" {
+        let completed_at = if status == "completed" {
+            Some(chrono::Utc::now().to_rfc3339())
+        } else {
+            None
+        };
+
+        let started_at = if status == "structuring" || status == "working" {
             Some(chrono::Utc::now().to_rfc3339())
         } else {
             None
         };
 
         self.conn.execute(
-            "UPDATE tasks SET status = ?1, completed_at = ?2 WHERE id = ?3",
-            (status, completed_at, task_id),
-        )?;
-        Ok(())
-    }
-
-    pub fn update_task_status_and_substatus(
-        &self,
-        task_id: &str,
-        status: &str,
-        substatus: Option<&str>,
-    ) -> Result<()> {
-        let completed_at = if status == "done" {
-            Some(chrono::Utc::now().to_rfc3339())
-        } else {
-            None
-        };
-
-        let started_at = if status == "active" {
-            Some(chrono::Utc::now().to_rfc3339())
-        } else {
-            None
-        };
-
-        self.conn.execute(
-            "UPDATE tasks SET status = ?1, substatus = ?2, completed_at = ?3, timestamps_started_at = COALESCE(timestamps_started_at, ?4) WHERE id = ?5",
-            (status, substatus, completed_at, started_at, task_id),
+            "UPDATE tasks SET status = ?1, completed_at = ?2, timestamps_started_at = COALESCE(timestamps_started_at, ?3) WHERE id = ?4",
+            (status, completed_at, started_at, task_id),
         )?;
         Ok(())
     }
@@ -878,7 +861,7 @@ impl Database {
         category: Option<&str>,
         priority: Option<i32>,
     ) -> Result<Vec<Task>> {
-        let mut query = "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, json_path, created_at, scheduled_date
+        let mut query = "SELECT id, project_id, title, description, priority, category, status, due_date, json_path, created_at, scheduled_date
              FROM tasks
              WHERE scheduled_date IS NULL AND status != 'done'".to_string();
 
@@ -900,7 +883,6 @@ impl Database {
 
         let mut stmt = self.conn.prepare(&query)?;
 
-        // Build params dynamically
         let mut params: Vec<&dyn rusqlite::ToSql> = vec![];
         if let Some(ref p) = project_id {
             params.push(p);
@@ -922,11 +904,10 @@ impl Database {
                     priority: row.get(4)?,
                     category: row.get(5)?,
                     status: row.get(6)?,
-                    substatus: row.get(7)?,
-                    due_date: row.get(8)?,
-                    json_path: row.get(9)?,
-                    created_at: row.get(10)?,
-                    scheduled_date: row.get(11)?,
+                    due_date: row.get(7)?,
+                    json_path: row.get(8)?,
+                    created_at: row.get(9)?,
+                    scheduled_date: row.get(10)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -935,7 +916,7 @@ impl Database {
     }
 
     pub fn get_tasks_for_date(&self, date: &str) -> Result<Vec<Task>> {
-        let query = "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, json_path, created_at, scheduled_date
+        let query = "SELECT id, project_id, title, description, priority, category, status, due_date, json_path, created_at, scheduled_date
              FROM tasks
              WHERE scheduled_date = ?1
              ORDER BY priority ASC, created_at ASC";
@@ -952,11 +933,10 @@ impl Database {
                     priority: row.get(4)?,
                     category: row.get(5)?,
                     status: row.get(6)?,
-                    substatus: row.get(7)?,
-                    due_date: row.get(8)?,
-                    json_path: row.get(9)?,
-                    created_at: row.get(10)?,
-                    scheduled_date: row.get(11)?,
+                    due_date: row.get(7)?,
+                    json_path: row.get(8)?,
+                    created_at: row.get(9)?,
+                    scheduled_date: row.get(10)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -1014,7 +994,7 @@ impl Database {
 
     pub fn get_task_full(&self, task_id: &str) -> Result<TaskFull> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, project_id, title, description, priority, category, status, substatus, due_date, 
+            "SELECT id, project_id, title, description, priority, category, status, due_date, 
                     scheduled_date, created_at, completed_at, complexity, initialized, schema_version,
                     context_description, context_business_rules, context_technical_notes, 
                     context_acceptance_criteria, ai_metadata, timestamps_started_at, 
@@ -1023,9 +1003,9 @@ impl Database {
         )?;
 
         let task = stmt.query_row([task_id], |row| {
-            let business_rules_json: Option<String> = row.get(16)?;
-            let acceptance_criteria_json: Option<String> = row.get(18)?;
-            let ai_metadata_json: Option<String> = row.get(19)?;
+            let business_rules_json: Option<String> = row.get(15)?;
+            let acceptance_criteria_json: Option<String> = row.get(17)?;
+            let ai_metadata_json: Option<String> = row.get(18)?;
 
             let business_rules: Vec<String> = business_rules_json
                 .and_then(|s| serde_json::from_str(&s).ok())
@@ -1039,37 +1019,36 @@ impl Database {
                 .unwrap_or_default();
 
             let created_at: String = row
-                .get::<_, Option<String>>(10)?
+                .get::<_, Option<String>>(9)?
                 .unwrap_or_else(default_created_at);
 
             Ok(TaskFull {
-                schema_version: row.get::<_, Option<i32>>(14)?.unwrap_or(2),
-                initialized: row.get::<_, Option<i32>>(13)?.unwrap_or(0) == 1,
+                schema_version: row.get::<_, Option<i32>>(13)?.unwrap_or(2),
+                initialized: row.get::<_, Option<i32>>(12)?.unwrap_or(0) == 1,
                 id: row.get(0)?,
                 title: row.get(2)?,
                 status: row.get(6)?,
-                substatus: row.get(7)?,
                 priority: row.get(4)?,
                 category: row.get(5)?,
-                complexity: row.get(12)?,
+                complexity: row.get(11)?,
                 context: TaskContext {
-                    description: row.get(15)?,
+                    description: row.get(14)?,
                     business_rules,
-                    technical_notes: row.get(17)?,
+                    technical_notes: row.get(16)?,
                     acceptance_criteria,
                 },
                 subtasks: vec![],
                 ai_metadata,
                 timestamps: TaskTimestamps {
                     created_at,
-                    started_at: row.get(20)?,
-                    completed_at: row.get(11)?,
+                    started_at: row.get(19)?,
+                    completed_at: row.get(10)?,
                 },
-                modified_at: row.get(21)?,
-                modified_by: row.get(22)?,
+                modified_at: row.get(20)?,
+                modified_by: row.get(21)?,
                 project_id: row.get(1)?,
-                due_date: row.get(8)?,
-                scheduled_date: row.get(9)?,
+                due_date: row.get(7)?,
+                scheduled_date: row.get(8)?,
             })
         })?;
 
@@ -1126,17 +1105,16 @@ impl Database {
 
         self.conn.execute(
             "UPDATE tasks SET 
-                title = ?1, status = ?2, substatus = ?3, priority = ?4, category = ?5, complexity = ?6,
-                initialized = ?7, schema_version = ?8, context_description = ?9,
-                context_business_rules = ?10, context_technical_notes = ?11,
-                context_acceptance_criteria = ?12, ai_metadata = ?13,
-                timestamps_started_at = ?14, completed_at = ?15,
-                modified_at = ?16, modified_by = ?17
-             WHERE id = ?18",
+                title = ?1, status = ?2, priority = ?3, category = ?4, complexity = ?5,
+                initialized = ?6, schema_version = ?7, context_description = ?8,
+                context_business_rules = ?9, context_technical_notes = ?10,
+                context_acceptance_criteria = ?11, ai_metadata = ?12,
+                timestamps_started_at = ?13, completed_at = ?14,
+                modified_at = ?15, modified_by = ?16
+             WHERE id = ?17",
             params![
                 &task.title,
                 &task.status,
-                &task.substatus,
                 task.priority,
                 &task.category,
                 &task.complexity,
@@ -1208,17 +1186,16 @@ impl Database {
             serde_json::to_string(&task.ai_metadata).unwrap_or_else(|_| "{}".to_string());
 
         self.conn.execute(
-            "INSERT INTO tasks (id, project_id, title, status, substatus, priority, category, complexity,
+            "INSERT INTO tasks (id, project_id, title, status, priority, category, complexity,
                                initialized, schema_version, context_description, context_business_rules,
                                context_technical_notes, context_acceptance_criteria, ai_metadata,
                                timestamps_started_at, completed_at, modified_at, modified_by, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
             params![
                 &task.id,
                 project_id,
                 &task.title,
                 &task.status,
-                &task.substatus,
                 task.priority,
                 &task.category,
                 &task.complexity,
@@ -1910,7 +1887,6 @@ pub struct Task {
     pub priority: i32,
     pub category: String,
     pub status: String,
-    pub substatus: Option<String>,
     pub due_date: Option<String>,
     pub json_path: Option<String>,
     pub created_at: Option<String>,
@@ -2083,8 +2059,6 @@ pub struct TaskFull {
     pub id: String,
     pub title: String,
     pub status: String,
-    #[serde(default)]
-    pub substatus: Option<String>,
     pub priority: i32,
     pub category: String,
     pub complexity: Option<String>,
@@ -2113,7 +2087,6 @@ impl TaskFull {
             id,
             title,
             status: "pending".to_string(),
-            substatus: None,
             priority,
             category,
             complexity: None,

@@ -1,26 +1,177 @@
-use crate::database::{
-    ActivityLog, ActivityLogSearchResult, CalendarTask, Project, ProjectRoute, ProjectWithConfig, 
-    SessionLog, Task, TaskExecution, TaskFull, TaskImage, TaskImageMetadata, TmuxConfig, UserSession,
-};
 use crate::AppState;
-use base64::{engine::general_purpose::STANDARD, Engine};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::process::Command;
 use tauri::{Emitter, Manager, State};
 
-#[tauri::command]
-pub fn get_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_projects().map_err(|e| e.to_string())
+macro_rules! sidecar_call {
+    ($state:expr, $method:expr) => {{
+        let mut sidecar = $state.sidecar.sidecar.lock().map_err(|e| e.to_string())?;
+        if !sidecar.is_running() {
+            sidecar.start()?;
+        }
+        sidecar.call($method, None)
+    }};
+    ($state:expr, $method:expr, $params:expr) => {{
+        let mut sidecar = $state.sidecar.sidecar.lock().map_err(|e| e.to_string())?;
+        if !sidecar.is_running() {
+            sidecar.start()?;
+        }
+        sidecar.call($method, Some($params))
+    }};
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Project {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub description: Option<String>,
+    #[serde(default)]
+    pub display_order: i32,
+    #[serde(default)]
+    pub routes: Vec<ProjectRoute>,
+    #[serde(default)]
+    pub tmux_config: Option<TmuxConfig>,
+    #[serde(default)]
+    pub business_rules: Option<String>,
+    #[serde(default)]
+    pub tmux_configured: bool,
+    pub created_at: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ProjectRoute {
+    pub id: String,
+    pub path: String,
+    pub order: i32,
+    pub env_path: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TmuxTab {
+    pub id: String,
+    pub name: String,
+    pub route_id: String,
+    pub startup_command: Option<String>,
+    pub order: i32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TmuxConfig {
+    pub session_name: String,
+    pub tabs: Vec<TmuxTab>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Task {
+    pub id: String,
+    pub project_id: Option<String>,
+    pub title: String,
+    pub description: Option<String>,
+    pub priority: i32,
+    pub category: String,
+    pub status: String,
+    pub due_date: Option<String>,
+    pub scheduled_date: Option<String>,
+    pub created_at: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TaskFull {
+    pub schema_version: i32,
+    pub initialized: bool,
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    pub priority: i32,
+    pub category: String,
+    pub complexity: Option<String>,
+    pub context: TaskContext,
+    pub subtasks: Vec<Subtask>,
+    pub ai_metadata: AIMetadata,
+    pub timestamps: TaskTimestamps,
+    pub modified_at: Option<String>,
+    pub modified_by: Option<String>,
+    pub project_id: Option<String>,
+    pub due_date: Option<String>,
+    pub scheduled_date: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct TaskContext {
+    pub description: Option<String>,
+    #[serde(default)]
+    pub business_rules: Vec<String>,
+    pub technical_notes: Option<String>,
+    pub acceptance_criteria: Option<Vec<String>>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct Subtask {
+    pub id: String,
+    #[serde(default)]
+    pub task_id: Option<String>,
+    pub title: String,
+    pub status: String,
+    #[serde(default)]
+    pub order: i32,
+    pub description: Option<String>,
+    pub acceptance_criteria: Option<Vec<String>>,
+    pub technical_notes: Option<String>,
+    pub prompt_context: Option<String>,
+    pub created_at: Option<String>,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct AIMetadata {
+    pub last_interaction: Option<String>,
+    pub last_completed_action: Option<String>,
+    #[serde(default)]
+    pub session_ids: Vec<String>,
+    #[serde(default)]
+    pub tokens_used: i64,
+    #[serde(default)]
+    pub structuring_complete: bool,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct TaskTimestamps {
+    pub created_at: String,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TaskExecution {
+    pub id: String,
+    pub task_id: String,
+    pub subtask_id: Option<String>,
+    pub execution_type: String,
+    pub status: String,
+    pub current_step: i32,
+    pub total_steps: i32,
+    pub current_step_description: Option<String>,
+    pub waiting_for_input: bool,
+    pub tmux_session: Option<String>,
+    pub pid: Option<i32>,
+    pub last_heartbeat: String,
+    pub error_message: Option<String>,
+    pub started_at: String,
+    pub ended_at: Option<String>,
 }
 
 #[tauri::command]
-pub fn get_project_with_config(
-    state: State<AppState>,
-    project_id: String,
-) -> Result<ProjectWithConfig, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_project_with_config(&project_id)
-        .map_err(|e| e.to_string())
+pub fn get_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
+    let result = sidecar_call!(state, "projects.list")?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
+}
+
+#[tauri::command]
+pub fn get_project_with_config(state: State<AppState>, project_id: String) -> Result<Project, String> {
+    let result = sidecar_call!(state, "projects.get", json!({ "id": project_id }))?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
 }
 
 #[tauri::command]
@@ -30,9 +181,15 @@ pub fn add_project(
     path: String,
     description: Option<String>,
 ) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.add_project(&name, &path, description.as_deref())
-        .map_err(|e| e.to_string())
+    let result = sidecar_call!(state, "projects.create", json!({
+        "name": name,
+        "path": path,
+        "description": description
+    }))?;
+    
+    let project: Project = serde_json::from_value(result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
+    Ok(project.id)
 }
 
 #[tauri::command]
@@ -42,9 +199,12 @@ pub fn update_project(
     name: String,
     description: Option<String>,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.update_project(&project_id, &name, description.as_deref())
-        .map_err(|e| e.to_string())
+    sidecar_call!(state, "projects.update", json!({
+        "id": project_id,
+        "name": name,
+        "description": description
+    }))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -53,9 +213,11 @@ pub fn update_project_name(
     project_id: String,
     name: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.update_project_name(&project_id, &name)
-        .map_err(|e| e.to_string())
+    sidecar_call!(state, "projects.update", json!({
+        "id": project_id,
+        "name": name
+    }))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -64,10 +226,11 @@ pub fn update_project_routes(
     project_id: String,
     routes: Vec<ProjectRoute>,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let routes_json = serde_json::to_string(&routes).map_err(|e| e.to_string())?;
-    db.update_project_routes(&project_id, &routes_json)
-        .map_err(|e| e.to_string())
+    sidecar_call!(state, "projects.update", json!({
+        "id": project_id,
+        "routes": routes
+    }))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -76,10 +239,11 @@ pub fn update_project_tmux_config(
     project_id: String,
     tmux_config: TmuxConfig,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let config_json = serde_json::to_string(&tmux_config).map_err(|e| e.to_string())?;
-    db.update_project_tmux_config(&project_id, &config_json)
-        .map_err(|e| e.to_string())
+    sidecar_call!(state, "projects.update", json!({
+        "id": project_id,
+        "tmuxConfig": tmux_config
+    }))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -88,9 +252,11 @@ pub fn update_project_business_rules(
     project_id: String,
     rules: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.update_project_business_rules(&project_id, &rules)
-        .map_err(|e| e.to_string())
+    sidecar_call!(state, "projects.update", json!({
+        "id": project_id,
+        "businessRules": rules
+    }))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -98,9 +264,11 @@ pub fn update_projects_order(
     state: State<AppState>,
     project_orders: Vec<(String, i32)>,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.update_projects_order(&project_orders)
-        .map_err(|e| e.to_string())
+    let ordered_ids: Vec<String> = project_orders.iter().map(|(id, _)| id.clone()).collect();
+    sidecar_call!(state, "projects.updateOrder", json!({
+        "orderedIds": ordered_ids
+    }))?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -109,26 +277,381 @@ pub fn set_tmux_configured(
     project_id: String,
     configured: bool,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.set_tmux_configured(&project_id, configured)
-        .map_err(|e| e.to_string())
+    sidecar_call!(state, "projects.update", json!({
+        "id": project_id,
+        "tmuxConfigured": configured
+    }))?;
+    Ok(())
 }
 
 #[tauri::command]
 pub fn delete_project(state: State<AppState>, project_id: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.delete_project(&project_id).map_err(|e| e.to_string())
+    sidecar_call!(state, "projects.delete", json!({ "id": project_id }))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
+    let result = sidecar_call!(state, "tasks.list")?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
+}
+
+#[tauri::command]
+pub fn get_urgent_tasks(
+    state: State<AppState>,
+    project_id: String,
+    limit: i32,
+) -> Result<Vec<Task>, String> {
+    let result = sidecar_call!(state, "tasks.list", json!({
+        "projectId": project_id,
+        "status": ["pending", "structured", "standby", "ready_to_review"],
+        "limit": limit
+    }))?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
+}
+
+#[tauri::command]
+pub fn get_active_tasks(
+    state: State<AppState>,
+    project_id: String,
+    limit: i32,
+) -> Result<Vec<Task>, String> {
+    let result = sidecar_call!(state, "tasks.list", json!({
+        "projectId": project_id,
+        "status": ["structuring", "working"],
+        "limit": limit
+    }))?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
+}
+
+#[tauri::command]
+pub fn get_setting(state: State<AppState>, key: String) -> Result<Option<String>, String> {
+    let result = sidecar_call!(state, "settings.get", json!({ "key": key }))?;
+    if result.is_null() {
+        Ok(None)
+    } else {
+        Ok(result.as_str().map(|s| s.to_string()))
+    }
+}
+
+#[tauri::command]
+pub fn set_setting(state: State<AppState>, key: String, value: String) -> Result<(), String> {
+    sidecar_call!(state, "settings.set", json!({ "key": key, "value": value }))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn add_task(
+    state: State<AppState>,
+    project_id: String,
+    title: String,
+    priority: i32,
+    category: String,
+) -> Result<String, String> {
+    let result = sidecar_call!(state, "tasks.create", json!({
+        "projectId": project_id,
+        "title": title,
+        "priority": priority,
+        "category": category
+    }))?;
+    
+    let task: TaskFull = serde_json::from_value(result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
+    Ok(task.id)
+}
+
+#[tauri::command]
+pub fn update_task_status(
+    state: State<AppState>,
+    task_id: String,
+    status: String,
+) -> Result<(), String> {
+    sidecar_call!(state, "tasks.updateStatus", json!({
+        "id": task_id,
+        "status": status,
+        "modifiedBy": "user"
+    }))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn schedule_task(
+    state: State<AppState>,
+    task_id: String,
+    scheduled_date: String,
+) -> Result<(), String> {
+    sidecar_call!(state, "tasks.schedule", json!({
+        "id": task_id,
+        "date": scheduled_date
+    }))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn unschedule_task(state: State<AppState>, task_id: String) -> Result<(), String> {
+    sidecar_call!(state, "tasks.unschedule", json!({ "id": task_id }))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_tasks_for_month(
+    state: State<AppState>,
+    year: i32,
+    month: i32,
+    project_id: Option<String>,
+) -> Result<Vec<Task>, String> {
+    let mut params = json!({ "year": year, "month": month });
+    if let Some(pid) = project_id {
+        params["projectId"] = json!(pid);
+    }
+    let result = sidecar_call!(state, "tasks.listForMonth", params)?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
+}
+
+#[tauri::command]
+pub fn get_unscheduled_tasks(
+    state: State<AppState>,
+    project_id: Option<String>,
+    _category: Option<String>,
+    _priority: Option<i32>,
+) -> Result<Vec<Task>, String> {
+    let result = sidecar_call!(state, "tasks.listUnscheduled", json!({
+        "projectId": project_id
+    }))?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
+}
+
+#[tauri::command]
+pub fn get_tasks_for_date(state: State<AppState>, date: String) -> Result<Vec<Task>, String> {
+    let result = sidecar_call!(state, "tasks.listForDate", json!({ "date": date }))?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
+}
+
+#[tauri::command]
+pub fn create_task_with_json(
+    state: State<AppState>,
+    project_id: String,
+    _project_path: String,
+    title: String,
+    priority: i32,
+    category: String,
+) -> Result<String, String> {
+    let result = sidecar_call!(state, "tasks.create", json!({
+        "projectId": project_id,
+        "title": title,
+        "priority": priority,
+        "category": category
+    }))?;
+    
+    let task: TaskFull = serde_json::from_value(result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
+    Ok(task.id)
+}
+
+#[tauri::command]
+pub fn get_task_full(
+    state: State<AppState>,
+    _project_path: String,
+    task_id: String,
+) -> Result<TaskFull, String> {
+    let result = sidecar_call!(state, "tasks.getFull", json!({ "id": task_id }))?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
+}
+
+#[tauri::command]
+pub fn save_task_full(
+    state: State<AppState>,
+    _project_path: String,
+    task: TaskFull,
+) -> Result<(), String> {
+    sidecar_call!(state, "tasks.saveFull", serde_json::to_value(&task).map_err(|e| e.to_string())?)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_task_and_sync(
+    state: State<AppState>,
+    _project_path: String,
+    task: TaskFull,
+) -> Result<(), String> {
+    sidecar_call!(state, "tasks.saveFull", serde_json::to_value(&task).map_err(|e| e.to_string())?)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn delete_task_full(
+    state: State<AppState>,
+    _project_path: String,
+    task_id: String,
+) -> Result<(), String> {
+    sidecar_call!(state, "tasks.delete", json!({ "id": task_id }))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_task_by_id(state: State<AppState>, task_id: String) -> Result<Task, String> {
+    let result = sidecar_call!(state, "tasks.get", json!({ "id": task_id }))?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
+}
+
+#[tauri::command]
+pub fn start_task_execution(
+    state: State<AppState>,
+    task_id: String,
+    subtask_id: Option<String>,
+    tmux_session: Option<String>,
+    pid: Option<i32>,
+    total_steps: Option<i32>,
+) -> Result<TaskExecution, String> {
+    let result = sidecar_call!(state, "executions.start", json!({
+        "taskId": task_id,
+        "subtaskId": subtask_id,
+        "tmuxSession": tmux_session,
+        "pid": pid,
+        "totalSteps": total_steps.unwrap_or(0)
+    }))?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
+}
+
+#[tauri::command]
+pub fn end_task_execution(
+    state: State<AppState>,
+    task_id: String,
+    _status: String,
+    error_message: Option<String>,
+) -> Result<(), String> {
+    sidecar_call!(state, "executions.end", json!({
+        "taskId": task_id,
+        "errorMessage": error_message
+    }))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_task_execution_progress(
+    state: State<AppState>,
+    task_id: String,
+    current_step: Option<i32>,
+    total_steps: Option<i32>,
+    description: Option<String>,
+    waiting_for_input: Option<bool>,
+) -> Result<(), String> {
+    let active_result = sidecar_call!(state, "executions.getActiveForTask", json!({
+        "taskId": task_id
+    }))?;
+    
+    if active_result.is_null() {
+        return Err("No active execution found".to_string());
+    }
+    
+    let execution: TaskExecution = serde_json::from_value(active_result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
+    
+    let mut update = json!({});
+    if let Some(step) = current_step {
+        update["currentStep"] = json!(step);
+    }
+    if let Some(total) = total_steps {
+        update["totalSteps"] = json!(total);
+    }
+    if let Some(desc) = description {
+        update["currentStepDescription"] = json!(desc);
+    }
+    if let Some(waiting) = waiting_for_input {
+        update["waitingForInput"] = json!(waiting);
+    }
+    update["id"] = json!(execution.id);
+    
+    sidecar_call!(state, "executions.update", update)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_active_task_execution(
+    state: State<AppState>,
+    task_id: String,
+) -> Result<Option<TaskExecution>, String> {
+    let result = sidecar_call!(state, "executions.getActiveForTask", json!({
+        "taskId": task_id
+    }))?;
+    
+    if result.is_null() {
+        Ok(None)
+    } else {
+        let execution = serde_json::from_value(result)
+            .map_err(|e| format!("Deserialize error: {}", e))?;
+        Ok(Some(execution))
+    }
+}
+
+#[tauri::command]
+pub fn get_all_active_executions(state: State<AppState>) -> Result<Vec<TaskExecution>, String> {
+    let result = sidecar_call!(state, "executions.listAllActive")?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
+}
+
+#[tauri::command]
+pub fn cleanup_stale_task_executions(
+    state: State<AppState>,
+    timeout_minutes: Option<i32>,
+) -> Result<i32, String> {
+    let result = sidecar_call!(state, "executions.cleanupStale", json!({
+        "maxAgeMinutes": timeout_minutes.unwrap_or(5)
+    }))?;
+    
+    result.as_i64().map(|n| n as i32).ok_or_else(|| "Invalid result".to_string())
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CalendarTask {
+    pub id: String,
+    pub title: String,
+    pub project_id: Option<String>,
+    pub project_name: String,
+    pub priority: i32,
+    pub category: String,
+    pub status: String,
+    pub scheduled_date: String,
+    pub due_date: Option<String>,
+    pub is_overdue: bool,
+    pub subtask_count: i32,
+    pub subtask_done_count: i32,
+}
+
+#[tauri::command]
+pub fn enrich_calendar_tasks(
+    state: State<AppState>,
+    tasks: Vec<CalendarTask>,
+    _project_paths: std::collections::HashMap<String, String>,
+) -> Result<Vec<CalendarTask>, String> {
+    let mut enriched = Vec::with_capacity(tasks.len());
+    
+    for mut task in tasks {
+        if let Ok(result) = sidecar_call!(state, "subtasks.listByTaskId", json!({
+            "taskId": task.id
+        })) {
+            if let Ok(subtasks) = serde_json::from_value::<Vec<Subtask>>(result) {
+                task.subtask_count = subtasks.len() as i32;
+                task.subtask_done_count = subtasks.iter().filter(|s| s.status == "done").count() as i32;
+            }
+        }
+        enriched.push(task);
+    }
+    
+    Ok(enriched)
 }
 
 #[tauri::command]
 pub fn launch_project_tmux(state: State<AppState>, project_id: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let project = db
-        .get_project_with_config(&project_id)
-        .map_err(|e| e.to_string())?;
+    let result = sidecar_call!(state, "projects.get", json!({ "id": project_id }))?;
+    let project: Project = serde_json::from_value(result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
 
-    let session_name = &project.tmux_config.session_name;
-    let mut sorted_tabs = project.tmux_config.tabs.clone();
+    let tmux_config = project.tmux_config.ok_or("No tmux config")?;
+    let routes = project.routes;
+    
+    let session_name = &tmux_config.session_name;
+    let mut sorted_tabs = tmux_config.tabs.clone();
     sorted_tabs.sort_by_key(|t| t.order);
 
     let mut script = format!(
@@ -144,11 +667,10 @@ fi
     );
 
     for (i, tab) in sorted_tabs.iter().enumerate() {
-        let route = project
-            .routes
+        let route = routes
             .iter()
             .find(|r| r.id == tab.route_id)
-            .unwrap_or_else(|| project.routes.first().unwrap());
+            .unwrap_or_else(|| routes.first().unwrap());
 
         let path = &route.path;
         let tab_name = &tab.name;
@@ -280,135 +802,6 @@ pub fn detect_project_structure(root_path: String) -> Result<Vec<ProjectRoute>, 
 }
 
 #[tauri::command]
-pub fn get_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_tasks().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_urgent_tasks(
-    state: State<AppState>,
-    project_id: String,
-    limit: i32,
-) -> Result<Vec<Task>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_urgent_tasks(&project_id, limit)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_active_tasks(
-    state: State<AppState>,
-    project_id: String,
-    limit: i32,
-) -> Result<Vec<Task>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_active_tasks(&project_id, limit)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_setting(state: State<AppState>, key: String) -> Result<Option<String>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_setting(&key).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn set_setting(state: State<AppState>, key: String, value: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.set_setting(&key, &value).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn add_task(
-    state: State<AppState>,
-    project_id: String,
-    title: String,
-    priority: i32,
-    category: String,
-) -> Result<String, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.add_task(&project_id, &title, priority, &category)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn update_task_status(
-    state: State<AppState>,
-    task_id: String,
-    status: String,
-) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.update_task_status(&task_id, &status)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn update_task_status_and_substatus(
-    state: State<AppState>,
-    task_id: String,
-    status: String,
-    substatus: Option<String>,
-) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.update_task_status_and_substatus(&task_id, &status, substatus.as_deref())
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn schedule_task(
-    state: State<AppState>,
-    task_id: String,
-    scheduled_date: String,
-) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.schedule_task(&task_id, &scheduled_date)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn unschedule_task(state: State<AppState>, task_id: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.unschedule_task(&task_id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_tasks_for_month(
-    state: State<AppState>,
-    year: i32,
-    month: i32,
-    project_id: Option<String>,
-) -> Result<Vec<CalendarTask>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_tasks_for_month(year, month, project_id.as_deref())
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_unscheduled_tasks(
-    state: State<AppState>,
-    project_id: Option<String>,
-    category: Option<String>,
-    priority: Option<i32>,
-) -> Result<Vec<Task>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_unscheduled_tasks(project_id.as_deref(), category.as_deref(), priority)
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_tasks_for_date(state: State<AppState>, date: String) -> Result<Vec<Task>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_tasks_for_date(&date).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_session_logs(state: State<AppState>) -> Result<Vec<SessionLog>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_session_logs().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub fn get_ai_suggestion(tasks: Vec<Task>) -> Result<String, String> {
     if tasks.is_empty() {
         return Ok(
@@ -418,13 +811,13 @@ pub fn get_ai_suggestion(tasks: Vec<Task>) -> Result<String, String> {
 
     let high_priority: Vec<_> = tasks
         .iter()
-        .filter(|t| t.priority == 1 && t.status != "done")
+        .filter(|t| t.priority == 1 && t.status != "completed")
         .collect();
     let medium_priority: Vec<_> = tasks
         .iter()
-        .filter(|t| t.priority == 2 && t.status != "done")
+        .filter(|t| t.priority == 2 && t.status != "completed")
         .collect();
-    let pending_count = tasks.iter().filter(|t| t.status != "done").count();
+    let pending_count = tasks.iter().filter(|t| t.status != "completed").count();
 
     if pending_count == 0 {
         return Ok(
@@ -460,80 +853,27 @@ pub fn get_ai_suggestion(tasks: Vec<Task>) -> Result<String, String> {
     Ok(suggestion)
 }
 
-#[tauri::command]
-pub fn create_task_with_json(
-    state: State<AppState>,
-    project_id: String,
-    _project_path: String,
-    title: String,
-    priority: i32,
-    category: String,
-) -> Result<String, String> {
-    let task_id = uuid::Uuid::new_v4().to_string();
-    let task_full = TaskFull::new(task_id.clone(), title, priority, category);
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct FileModified {
+    pub path: String,
+    pub action: String,
+}
 
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.create_task_full(&task_full, &project_id)
-        .map_err(|e| e.to_string())?;
-
-    Ok(task_id)
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct SessionLog {
+    pub id: String,
+    pub project_name: String,
+    pub summary: String,
+    pub tokens_total: i32,
+    pub files_modified: Vec<FileModified>,
+    pub created_at: String,
 }
 
 #[tauri::command]
-pub fn get_task_full(
-    state: State<AppState>,
-    _project_path: String,
-    task_id: String,
-) -> Result<TaskFull, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_task_full(&task_id).map_err(|e| e.to_string())
+pub fn get_session_logs(_state: State<AppState>) -> Result<Vec<SessionLog>, String> {
+    Ok(vec![])
 }
 
-#[tauri::command]
-pub fn save_task_full(
-    state: State<AppState>,
-    _project_path: String,
-    task: TaskFull,
-) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.save_task_full(&task).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn update_task_and_sync(
-    state: State<AppState>,
-    _project_path: String,
-    task: TaskFull,
-) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.save_task_full(&task).map_err(|e| e.to_string())?;
-    db.update_task(
-        &task.id,
-        &task.title,
-        task.priority,
-        &task.category,
-        &task.status,
-    )
-    .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn delete_task_full(
-    state: State<AppState>,
-    _project_path: String,
-    task_id: String,
-) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.delete_task(&task_id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_task_by_id(state: State<AppState>, task_id: String) -> Result<Task, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_task_by_id(&task_id).map_err(|e| e.to_string())
-}
-
-/// Generate the ASCII loading animation bash script
 fn generate_loading_animation_script(
     session_name: &str,
     tab_name: &str,
@@ -653,7 +993,7 @@ stty echo 2>/dev/null
 
 fn launch_in_workopilot_session(
     _app_handle: &tauri::AppHandle,
-    project: &ProjectWithConfig,
+    project: &Project,
     initial_prompt: &str,
     task_id: &str,
     is_structuring: bool,
@@ -758,7 +1098,6 @@ echo "[WorkoPilot Script] Project path: $PROJECT_PATH"
 
 if tmux has-session -t "$SESSION" 2>/dev/null; then
     echo "[WorkoPilot Script] Session exists, killing old window if any..."
-    # Kill existing tab if it exists (might be in bad state)
     tmux kill-window -t "$SESSION:$TAB_NAME" 2>/dev/null
     tmux new-window -t "$SESSION" -n "$TAB_NAME" -c "$PROJECT_PATH"
 else
@@ -799,7 +1138,6 @@ tmux attach-session -t "$SESSION"
 }
 
 fn get_skills_resource_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    // Try resource_dir first (production), fallback to src-tauri/resources (dev)
     app_handle
         .path()
         .resource_dir()
@@ -807,7 +1145,6 @@ fn get_skills_resource_dir(app_handle: &tauri::AppHandle) -> Result<std::path::P
         .ok()
         .filter(|p| p.exists())
         .or_else(|| {
-            // Dev mode fallback: use src-tauri/resources directly
             let dev_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .join("resources")
                 .join("opencode-skills");
@@ -829,9 +1166,6 @@ fn get_opencode_skills_dir() -> Result<std::path::PathBuf, String> {
         .join("skills"))
 }
 
-/// Syncs WorkoPilot skills to ~/.config/opencode/skills/
-/// This is the single source of truth - skills are stored in WorkoPilot bundle
-/// and synced to OpenCode's personal skills directory
 fn sync_skills_to_opencode(app_handle: &tauri::AppHandle) -> Result<u32, String> {
     let resource_dir = get_skills_resource_dir(app_handle)?;
     let skills_base_dir = get_opencode_skills_dir()?;
@@ -879,12 +1213,13 @@ pub fn launch_task_workflow(
     task_id: String,
     subtask_id: Option<String>,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let project = db
-        .get_project_with_config(&project_id)
-        .map_err(|e| e.to_string())?;
-
-    let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
+    let project_result = sidecar_call!(state, "projects.get", json!({ "id": project_id }))?;
+    let project: Project = serde_json::from_value(project_result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
+    
+    let task_result = sidecar_call!(state, "tasks.getFull", json!({ "id": task_id }))?;
+    let task_full: TaskFull = serde_json::from_value(task_result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
 
     let (initial_prompt, is_structuring) = if let Some(ref st_id) = subtask_id {
         let subtask_title = task_full.subtasks.iter()
@@ -916,7 +1251,6 @@ pub fn launch_task_workflow(
         )
     };
 
-    drop(db);
     launch_in_workopilot_session(
         &app_handle,
         &project,
@@ -933,15 +1267,20 @@ pub fn launch_task_structure(
     project_id: String,
     task_id: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let project = db
-        .get_project_with_config(&project_id)
-        .map_err(|e| e.to_string())?;
-    let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
+    let project_result = sidecar_call!(state, "projects.get", json!({ "id": project_id }))?;
+    let project: Project = serde_json::from_value(project_result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
     
-    db.update_task_status_and_substatus(&task_id, "active", Some("structuring"))
-        .map_err(|e| e.to_string())?;
-    drop(db);
+    let task_result = sidecar_call!(state, "tasks.getFull", json!({ "id": task_id }))?;
+    let task_full: TaskFull = serde_json::from_value(task_result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
+    
+    // Update task status via sidecar
+    sidecar_call!(state, "tasks.updateStatus", json!({
+        "id": task_id,
+        "status": "structuring",
+        "modifiedBy": "user"
+    }))?;
 
     let initial_prompt = format!(
         "Estruturar: {}, utilize a skill workopilot-structure para estruturar a task de id: {}",
@@ -958,15 +1297,19 @@ pub fn launch_task_execute_all(
     project_id: String,
     task_id: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let project = db
-        .get_project_with_config(&project_id)
-        .map_err(|e| e.to_string())?;
-    let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
+    let project_result = sidecar_call!(state, "projects.get", json!({ "id": project_id }))?;
+    let project: Project = serde_json::from_value(project_result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
     
-    db.update_task_status_and_substatus(&task_id, "active", Some("executing"))
-        .map_err(|e| e.to_string())?;
-    drop(db);
+    let task_result = sidecar_call!(state, "tasks.getFull", json!({ "id": task_id }))?;
+    let task_full: TaskFull = serde_json::from_value(task_result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
+    
+    sidecar_call!(state, "tasks.updateStatus", json!({
+        "id": task_id,
+        "status": "working",
+        "modifiedBy": "user"
+    }))?;
 
     let initial_prompt = format!(
         "Executar: {}, utilize a skill workopilot-execute-all para executar a task de id: {}",
@@ -984,19 +1327,24 @@ pub fn launch_task_execute_subtask(
     task_id: String,
     subtask_id: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let project = db
-        .get_project_with_config(&project_id)
-        .map_err(|e| e.to_string())?;
-    let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
+    let project_result = sidecar_call!(state, "projects.get", json!({ "id": project_id }))?;
+    let project: Project = serde_json::from_value(project_result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
+    
+    let task_result = sidecar_call!(state, "tasks.getFull", json!({ "id": task_id }))?;
+    let task_full: TaskFull = serde_json::from_value(task_result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
+    
     let subtask_title = task_full.subtasks.iter()
         .find(|s| s.id == subtask_id)
         .map(|s| s.title.clone())
         .unwrap_or_else(|| "Subtask".to_string());
     
-    db.update_task_status_and_substatus(&task_id, "active", Some("executing"))
-        .map_err(|e| e.to_string())?;
-    drop(db);
+    sidecar_call!(state, "tasks.updateStatus", json!({
+        "id": task_id,
+        "status": "working",
+        "modifiedBy": "user"
+    }))?;
 
     let initial_prompt = format!(
         "Executar subtask: {} (task: {}), utilize a skill workopilot-execute-subtask para executar a subtask {} da task {}",
@@ -1015,20 +1363,22 @@ pub fn launch_task_review(
 ) -> Result<(), String> {
     eprintln!("[WorkoPilot] launch_task_review called: project_id={}, task_id={}", project_id, task_id);
     
-    let db = state.db.lock().map_err(|e| {
-        eprintln!("[WorkoPilot] Failed to lock db: {}", e);
-        e.to_string()
-    })?;
-    let project = db
-        .get_project_with_config(&project_id)
+    let project_result = sidecar_call!(state, "projects.get", json!({ "id": project_id }))
         .map_err(|e| {
             eprintln!("[WorkoPilot] Failed to get project: {}", e);
-            e.to_string()
+            e
         })?;
-    let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
-    drop(db);
+    let project: Project = serde_json::from_value(project_result)
+        .map_err(|e| {
+            eprintln!("[WorkoPilot] Failed to deserialize project: {}", e);
+            format!("Deserialize error: {}", e)
+        })?;
+    
+    let task_result = sidecar_call!(state, "tasks.getFull", json!({ "id": task_id }))?;
+    let task_full: TaskFull = serde_json::from_value(task_result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
 
-    eprintln!("[WorkoPilot] Project found: {}, path: {}", project.name, project.path);
+    eprintln!("[WorkoPilot] Project found: {}", project.name);
 
     let initial_prompt = format!(
         "Revisar: {}, utilize a skill workopilot-review para revisar a task de id: {}",
@@ -1040,105 +1390,29 @@ pub fn launch_task_review(
 }
 
 #[tauri::command]
-pub fn enrich_calendar_tasks(
-    state: State<AppState>,
-    tasks: Vec<CalendarTask>,
-    _project_paths: std::collections::HashMap<String, String>,
-) -> Result<Vec<CalendarTask>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let mut enriched = vec![];
-
-    for mut task in tasks {
-        if let Ok((total, done)) = db.get_subtask_counts(&task.id) {
-            task.subtask_count = total;
-            task.subtask_done_count = done;
-        }
-        enriched.push(task);
-    }
-
-    Ok(enriched)
-}
-
-#[tauri::command]
-pub fn start_task_execution(
-    state: State<AppState>,
-    task_id: String,
-    subtask_id: Option<String>,
-    tmux_session: Option<String>,
-    pid: Option<i32>,
-    total_steps: Option<i32>,
-) -> Result<TaskExecution, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.start_execution(
-        &task_id,
-        subtask_id.as_deref(),
-        tmux_session.as_deref(),
-        pid,
-        total_steps.unwrap_or(0),
-    )
-    .map_err(|e| format!("Failed to start execution: {}", e))
-}
-
-#[tauri::command]
-pub fn end_task_execution(
-    state: State<AppState>,
-    task_id: String,
-    status: String,
-    error_message: Option<String>,
-) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.end_execution(&task_id, &status, error_message.as_deref())
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn update_task_execution_progress(
-    state: State<AppState>,
-    task_id: String,
-    current_step: Option<i32>,
-    total_steps: Option<i32>,
-    description: Option<String>,
-    waiting_for_input: Option<bool>,
-) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.update_execution_progress(
-        &task_id,
-        current_step,
-        total_steps,
-        description.as_deref(),
-        waiting_for_input,
-    )
-    .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_active_task_execution(
-    state: State<AppState>,
-    task_id: String,
-) -> Result<Option<TaskExecution>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_active_execution(&task_id).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn get_all_active_executions(state: State<AppState>) -> Result<Vec<TaskExecution>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_all_active_executions().map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-pub fn cleanup_stale_task_executions(
-    state: State<AppState>,
-    timeout_minutes: Option<i32>,
-) -> Result<i32, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.cleanup_stale_executions(timeout_minutes.unwrap_or(5))
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub fn focus_tmux_session(app_handle: tauri::AppHandle, session_name: String) -> Result<(), String> {
-    use std::process::Command;
+    if let Ok(output) = Command::new("tmux")
+        .args(["list-clients", "-t", &session_name, "-F", "#{client_tty}"])
+        .output()
+    {
+        if output.status.success() && !output.stdout.is_empty() {
+            if let Ok(search_output) = Command::new("xdotool")
+                .args(["search", "--name", &session_name])
+                .output()
+            {
+                if search_output.status.success() {
+                    let window_ids = String::from_utf8_lossy(&search_output.stdout);
+                    if let Some(window_id) = window_ids.lines().next() {
+                        let _ = Command::new("xdotool")
+                            .args(["windowactivate", window_id])
+                            .spawn();
+                        crate::window::hide(&app_handle);
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
 
     let script = format!(
         r#"#!/usr/bin/env bash
@@ -1166,7 +1440,7 @@ fi
     Ok(())
 }
 
-#[derive(Clone, serde::Serialize)]
+#[derive(Clone, Serialize)]
 pub struct QuickfixPayload {
     pub task_id: String,
     pub status: String,
@@ -1182,12 +1456,13 @@ pub async fn launch_quickfix_background(
     task_id: String,
     quickfix_prompt: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let project = db
-        .get_project_with_config(&project_id)
-        .map_err(|e| e.to_string())?;
-    let task_full = db.get_task_full(&task_id).map_err(|e| e.to_string())?;
-    drop(db);
+    let project_result = sidecar_call!(state, "projects.get", json!({ "id": project_id }))?;
+    let project: Project = serde_json::from_value(project_result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
+    
+    let task_result = sidecar_call!(state, "tasks.getFull", json!({ "id": task_id }))?;
+    let task_full: TaskFull = serde_json::from_value(task_result)
+        .map_err(|e| format!("Deserialize error: {}", e))?;
 
     let first_route = project.routes.first().ok_or("No routes configured")?;
     let project_path = first_route.path.clone();
@@ -1252,8 +1527,23 @@ pub async fn launch_quickfix_background(
     Ok(())
 }
 
-const MAX_IMAGES_PER_TASK: i32 = 5;
-const ALLOWED_MIME_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "image/webp"];
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TaskImageMetadata {
+    pub id: String,
+    pub file_name: String,
+    pub mime_type: String,
+    pub created_at: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TaskImage {
+    pub id: String,
+    pub task_id: String,
+    pub data: String,
+    pub mime_type: String,
+    pub file_name: String,
+    pub created_at: Option<String>,
+}
 
 #[tauri::command]
 pub fn add_task_image(
@@ -1263,6 +1553,11 @@ pub fn add_task_image(
     file_name: String,
     mime_type: String,
 ) -> Result<String, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    
+    const ALLOWED_MIME_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "image/webp"];
+    const MAX_IMAGES_PER_TASK: i32 = 5;
+    
     if !ALLOWED_MIME_TYPES.contains(&mime_type.as_str()) {
         return Err(format!(
             "Invalid mime type: {}. Allowed: PNG, JPG, GIF, WebP",
@@ -1291,14 +1586,29 @@ pub fn add_task_image(
 #[tauri::command]
 pub fn get_task_images(state: State<AppState>, task_id: String) -> Result<Vec<TaskImageMetadata>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_task_images_metadata(&task_id)
-        .map_err(|e| e.to_string())
+    let images = db.get_task_images_metadata(&task_id).map_err(|e| e.to_string())?;
+    Ok(images.into_iter().map(|i| TaskImageMetadata {
+        id: i.id,
+        file_name: i.file_name,
+        mime_type: i.mime_type,
+        created_at: i.created_at,
+    }).collect())
 }
 
 #[tauri::command]
 pub fn get_task_image(state: State<AppState>, image_id: String) -> Result<TaskImage, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_task_image(&image_id).map_err(|e| e.to_string())
+    let image = db.get_task_image(&image_id).map_err(|e| e.to_string())?;
+    Ok(TaskImage {
+        id: image.id,
+        task_id: image.task_id,
+        data: STANDARD.encode(&image.data),
+        mime_type: image.mime_type,
+        file_name: image.file_name,
+        created_at: image.created_at,
+    })
 }
 
 #[tauri::command]
@@ -1315,6 +1625,9 @@ pub fn add_task_image_from_path(
 ) -> Result<String, String> {
     use std::fs;
     use std::path::Path;
+    
+    const ALLOWED_MIME_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "image/webp"];
+    const MAX_IMAGES_PER_TASK: i32 = 5;
 
     let path = Path::new(&file_path);
     let file_name = path
@@ -1360,6 +1673,38 @@ pub fn add_task_image_from_path(
         .map_err(|e| e.to_string())
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ActivityLog {
+    pub id: String,
+    pub event_type: String,
+    pub entity_type: Option<String>,
+    pub entity_id: Option<String>,
+    pub project_id: Option<String>,
+    pub metadata: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ActivityLogWithContext {
+    pub id: String,
+    pub event_type: String,
+    pub entity_type: Option<String>,
+    pub entity_id: Option<String>,
+    pub project_id: Option<String>,
+    pub metadata: Option<String>,
+    pub created_at: String,
+    pub project_name: Option<String>,
+    pub task_title: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ActivityLogSearchResult {
+    pub logs: Vec<ActivityLogWithContext>,
+    pub total: i32,
+    pub next_cursor: Option<String>,
+    pub has_more: bool,
+}
+
 #[tauri::command]
 pub fn get_activity_logs(
     state: State<AppState>,
@@ -1369,13 +1714,22 @@ pub fn get_activity_logs(
     limit: Option<i32>,
 ) -> Result<Vec<ActivityLog>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_activity_logs(
+    let logs = db.get_activity_logs(
         event_type.as_deref(),
         entity_type.as_deref(),
         project_id.as_deref(),
         limit,
-    )
-    .map_err(|e| e.to_string())
+    ).map_err(|e| e.to_string())?;
+    
+    Ok(logs.into_iter().map(|l| ActivityLog {
+        id: l.id,
+        event_type: l.event_type,
+        entity_type: l.entity_type,
+        entity_id: l.entity_id,
+        project_id: l.project_id,
+        metadata: l.metadata,
+        created_at: l.created_at,
+    }).collect())
 }
 
 #[tauri::command]
@@ -1390,7 +1744,7 @@ pub fn search_activity_logs(
     limit: Option<i32>,
 ) -> Result<ActivityLogSearchResult, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.search_activity_logs(
+    let result = db.search_activity_logs(
         query.as_deref(),
         event_types,
         project_id.as_deref(),
@@ -1398,8 +1752,33 @@ pub fn search_activity_logs(
         to_date.as_deref(),
         cursor.as_deref(),
         limit.unwrap_or(30),
-    )
-    .map_err(|e| e.to_string())
+    ).map_err(|e| e.to_string())?;
+    
+    Ok(ActivityLogSearchResult {
+        logs: result.logs.into_iter().map(|l| ActivityLogWithContext {
+            id: l.id,
+            event_type: l.event_type,
+            entity_type: l.entity_type,
+            entity_id: l.entity_id,
+            project_id: l.project_id,
+            metadata: l.metadata,
+            created_at: l.created_at,
+            project_name: l.project_name,
+            task_title: l.task_title,
+        }).collect(),
+        total: result.total,
+        next_cursor: result.next_cursor,
+        has_more: result.has_more,
+    })
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct UserSession {
+    pub id: String,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub duration_seconds: Option<i32>,
+    pub app_version: Option<String>,
 }
 
 #[tauri::command]
@@ -1408,5 +1787,13 @@ pub fn get_user_sessions(
     limit: Option<i32>,
 ) -> Result<Vec<UserSession>, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.get_user_sessions(limit).map_err(|e| e.to_string())
+    let sessions = db.get_user_sessions(limit).map_err(|e| e.to_string())?;
+    
+    Ok(sessions.into_iter().map(|s| UserSession {
+        id: s.id,
+        started_at: s.started_at,
+        ended_at: s.ended_at,
+        duration_seconds: s.duration_seconds,
+        app_version: s.app_version,
+    }).collect())
 }

@@ -17,11 +17,17 @@ import { SelectImageKDE } from "../../components/SelectImageKDE"
 import { DescriptionWithImages } from "../../components/tasks/DescriptionWithImages"
 import { ImageModal } from "../../components/tasks/ImageModal"
 import { ImageThumbnail } from "../../components/tasks/ImageThumbnail"
-import { StatusSelect } from "../../components/tasks/StatusSelect"
+import { TaskStatusSelect } from "../../components/tasks/TaskStatusSelect"
 import { SubtaskList } from "../../components/tasks/SubtaskList"
 import {
-  type FullStatus,
-  getTaskState,
+  type TaskStatus,
+  getTaskStatusFromTask,
+  getTaskStatusColor,
+  getTaskStatusLabel,
+  getTaskStatusHighlight,
+  getSuggestedAction,
+  isTaskAIWorking,
+  type SuggestedAction,
 } from "../../lib/constants/taskStatus"
 import { openCodeService } from "../../services/opencode"
 import { safeInvoke, safeListen } from "../../services/tauri"
@@ -104,16 +110,14 @@ function TaskDetailPage() {
 
   const isBlocked = isExecuting || isAdjusting || isLaunchingStructure || isLaunchingExecuteAll || isLaunchingExecuteSubtask || isLaunchingReview || isLaunchingQuickfix || isLaunchingFocus
 
-  const taskState = getTaskState(taskFull)
+  const taskStatus = getTaskStatusFromTask(taskFull)
+  const taskStatusColor = getTaskStatusColor(taskFull)
+  const taskStatusLabel = getTaskStatusLabel(taskFull)
+  const taskHighlight = getTaskStatusHighlight(taskFull)
   const lastAction = taskFull ? getLastActionLabel(taskFull.ai_metadata.last_completed_action) : null
 
-  const canStructure = taskFull && !taskFull.initialized
-  const allSubtasksComplete = taskFull && taskFull.subtasks.length > 0 && taskFull.subtasks.every((s) => s.status === "done")
-  const canExecuteAll = taskFull && taskFull.initialized && !allSubtasksComplete
-  const canExecuteSubtask = taskFull && taskFull.initialized && taskFull.subtasks.some((s) => s.status === "pending")
-  const canReview = taskFull && allSubtasksComplete
-
   const pendingSubtasks = taskFull?.subtasks.filter((s) => s.status === "pending").sort((a, b) => a.order - b.order) || []
+  const canExecuteSubtask = taskFull && taskFull.initialized && pendingSubtasks.length > 0
 
   const tmuxSessionName = useMemo(() => {
     if (activeExecution?.tmux_session) return activeExecution.tmux_session
@@ -123,22 +127,14 @@ function TaskDetailPage() {
     return `workopilot:${safeName}-${taskShort}`
   }, [activeExecution?.tmux_session, project, taskId])
 
-  const isAIWorking = taskState === "structuring" || taskState === "executing"
-  const canFocusTerminal = isAIWorking && tmuxSessionName
+  const isAIWorkingOnTask = isTaskAIWorking(taskFull)
+  const canFocusTerminal = isAIWorkingOnTask && tmuxSessionName
 
-  const getSuggestedAction = useCallback((): "structure" | "execute_all" | "execute_subtask" | "review" | "focus_terminal" | null => {
-    if (!taskFull) return null
-    if (taskState === "pending") return "structure"
-    if (taskState === "structuring" || taskState === "executing") return "focus_terminal"
-    if (taskState === "awaiting_review") return "review"
-    if (taskState === "awaiting_user") {
-      if (taskFull.subtasks.length === 0) return "execute_all"
-      return taskFull.subtasks.some((s) => s.status === "pending") ? "execute_subtask" : "execute_all"
-    }
-    return null
-  }, [taskFull, taskState])
+  const suggestedActionFromStatus: SuggestedAction | "focus_terminal" = isAIWorkingOnTask 
+    ? "focus_terminal" 
+    : getSuggestedAction(taskFull)
 
-  const suggestedAction = getSuggestedAction()
+  const suggestedAction = suggestedActionFromStatus
 
   const loadActiveExecution = useCallback(async () => {
     try {
@@ -345,42 +341,10 @@ function TaskDetailPage() {
     saveTask(updated)
   }, [taskFull, saveTask])
 
-  const updateStatus = useCallback((newFullStatus: FullStatus) => {
+  const updateBaseStatus = useCallback((newStatus: TaskStatus) => {
     if (!taskFull) return
     
-    let status: string
-    let substatus: string | null
-    
-    switch (newFullStatus) {
-      case "pending":
-        status = "pending"
-        substatus = null
-        break
-      case "structuring":
-        status = "active"
-        substatus = "structuring"
-        break
-      case "executing":
-        status = "active"
-        substatus = "executing"
-        break
-      case "awaiting_user":
-        status = "active"
-        substatus = "awaiting_user"
-        break
-      case "awaiting_review":
-        status = "active"
-        substatus = "awaiting_review"
-        break
-      case "done":
-        status = "done"
-        substatus = null
-        break
-      default:
-        return
-    }
-    
-    const updated = { ...taskFull, status, substatus }
+    const updated = { ...taskFull, status: newStatus }
     setTaskFull(updated)
     saveTask(updated)
   }, [taskFull, saveTask])
@@ -711,12 +675,27 @@ function TaskDetailPage() {
         </div>
       )}
 
-      <div className="border-b border-[#3d3a34] bg-gradient-to-r from-[#1c1c1c] via-[#232323] to-[#1c1c1c]">
+      <div 
+        className={`border-b border-[#3d3a34] bg-gradient-to-r from-[#1c1c1c] via-[#232323] to-[#1c1c1c] ${
+          taskHighlight === "ring" ? "ring-1" : taskHighlight === "border-l" ? "border-l-4" : ""
+        }`}
+        style={{
+          ...(taskHighlight === "ring" ? { boxShadow: `0 0 0 1px ${taskStatusColor}` } : {}),
+          ...(taskHighlight === "border-l" ? { borderLeftColor: taskStatusColor } : {}),
+        }}
+      >
         <div className="px-4 py-3 flex items-center gap-4 border-b border-[#2a2a2a]">
-          <StatusSelect
-            value={taskState}
-            onChange={updateStatus}
+          <TaskStatusSelect
+            value={taskFull.status as TaskStatus}
+            onChange={updateBaseStatus}
           />
+
+          <span 
+            className="px-2 py-1 text-xs font-medium rounded"
+            style={{ backgroundColor: `${taskStatusColor}20`, color: taskStatusColor }}
+          >
+            {taskStatusLabel}
+          </span>
 
           {lastAction && (
             <div className="flex items-center gap-1.5 text-xs text-[#636363]">
@@ -726,16 +705,34 @@ function TaskDetailPage() {
           )}
 
           <div className="ml-auto flex items-center gap-1">
-            <span className={`w-1.5 h-1.5 rounded-full transition-colors ${taskState !== "pending" ? "bg-[#909d63]" : "bg-[#3d3a34]"}`} />
-            <span className={`w-4 h-px ${taskState !== "pending" ? "bg-[#909d63]" : "bg-[#3d3a34]"}`} />
-            <span className={`w-1.5 h-1.5 rounded-full transition-colors ${taskState !== "pending" && taskState !== "structuring" ? "bg-[#909d63]" : "bg-[#3d3a34]"}`} />
-            <span className={`w-4 h-px ${taskState === "awaiting_review" || taskState === "done" ? "bg-[#909d63]" : "bg-[#3d3a34]"}`} />
-            <span className={`w-1.5 h-1.5 rounded-full transition-colors ${taskState === "done" ? "bg-[#909d63]" : "bg-[#3d3a34]"}`} />
+            <span 
+              className="w-1.5 h-1.5 rounded-full transition-colors" 
+              style={{ backgroundColor: taskStatus !== "pending" ? "#909d63" : "#3d3a34" }}
+              title="Pendente → Estruturando"
+            />
+            <span 
+              className="w-4 h-px" 
+              style={{ backgroundColor: taskStatus !== "pending" && taskStatus !== "structuring" ? "#909d63" : "#3d3a34" }}
+            />
+            <span 
+              className="w-1.5 h-1.5 rounded-full transition-colors" 
+              style={{ backgroundColor: ["structured", "working", "standby", "ready_to_review", "completed"].includes(taskStatus) ? "#909d63" : "#3d3a34" }}
+              title="Estruturada → Trabalhando"
+            />
+            <span 
+              className="w-4 h-px" 
+              style={{ backgroundColor: ["ready_to_review", "completed"].includes(taskStatus) ? "#909d63" : "#3d3a34" }}
+            />
+            <span 
+              className="w-1.5 h-1.5 rounded-full transition-colors" 
+              style={{ backgroundColor: taskStatus === "completed" ? "#909d63" : "#3d3a34" }}
+              title="Concluída"
+            />
           </div>
         </div>
 
         <div className="px-4 py-4 flex items-stretch gap-3">
-          {isAIWorking ? (
+          {isAIWorkingOnTask ? (
             <div className="flex-1 relative">
               <button
                 type="button"
@@ -764,13 +761,10 @@ function TaskDetailPage() {
                 <button
                   type="button"
                   onClick={structureTask}
-                  disabled={!canStructure || isBlocked}
                   className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
                     suggestedAction === "structure"
                       ? "border-[#e5c07b] bg-[#e5c07b]/10 text-[#e5c07b] shadow-lg shadow-[#e5c07b]/10"
-                      : canStructure
-                        ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
-                        : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
+                      : "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
                   }`}
                 >
                   {isLaunchingStructure ? (
@@ -791,13 +785,10 @@ function TaskDetailPage() {
                 <button
                   type="button"
                   onClick={executeAll}
-                  disabled={!canExecuteAll || isBlocked}
                   className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
                     suggestedAction === "execute_all"
                       ? "border-[#909d63] bg-[#909d63]/10 text-[#909d63] shadow-lg shadow-[#909d63]/10"
-                      : canExecuteAll
-                        ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
-                        : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
+                      : "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
                   }`}
                 >
                   {isLaunchingExecuteAll ? (
@@ -817,14 +808,11 @@ function TaskDetailPage() {
               <div className="flex-1 relative">
                 <button
                   type="button"
-                  onClick={() => canExecuteSubtask && setShowSubtaskSelector(!showSubtaskSelector)}
-                  disabled={!canExecuteSubtask || isBlocked}
+                  onClick={() => setShowSubtaskSelector(!showSubtaskSelector)}
                   className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
                     suggestedAction === "execute_subtask"
                       ? "border-[#61afef] bg-[#61afef]/10 text-[#61afef] shadow-lg shadow-[#61afef]/10"
-                    : canExecuteSubtask
-                      ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
-                      : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
+                      : "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
                   }`}
                 >
                   {isLaunchingExecuteSubtask ? (
@@ -871,13 +859,10 @@ function TaskDetailPage() {
                 <button
                   type="button"
                   onClick={reviewTask}
-                  disabled={!canReview || isBlocked}
                   className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 rounded-lg border transition-all duration-200 ${
                     suggestedAction === "review"
                       ? "border-[#e5c07b] bg-[#e5c07b]/10 text-[#e5c07b] shadow-lg shadow-[#e5c07b]/10"
-                      : canReview
-                        ? "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
-                        : "border-[#2a2a2a] bg-[#1c1c1c] text-[#4a4a4a] cursor-not-allowed"
+                      : "border-[#3d3a34] bg-[#232323] text-[#d6d6d6] hover:border-[#4a4a4a] hover:bg-[#2a2a2a]"
                   }`}
                 >
                   {isLaunchingReview ? (
@@ -1004,7 +989,7 @@ function TaskDetailPage() {
           </button>
         </div>
 
-        {taskState !== "pending" && (
+        {taskStatus !== "pending" && (
           <SubtaskList
             subtasks={taskFull.subtasks}
             onAdd={addSubtask}
@@ -1244,7 +1229,7 @@ function TaskDetailPage() {
           )}
         </section>
 
-        {taskState === "pending" && (
+        {taskStatus === "pending" && (
           <SubtaskList
             subtasks={taskFull.subtasks}
             onAdd={addSubtask}

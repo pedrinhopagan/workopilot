@@ -69,7 +69,13 @@ export async function checkForStructuringChanges(): Promise<void> {
 export async function checkAllInProgressTasks(): Promise<void> {
   try {
     const tasks: Task[] = await safeInvoke("get_all_tasks");
-    const inProgressTasks = tasks.filter((t) => t.status === "in_progress" || t.status === "pending");
+    const inProgressTasks = tasks.filter((t) => 
+      t.status === "structuring" || 
+      t.status === "working" || 
+      t.status === "pending" ||
+      t.status === "structured" ||
+      t.status === "standby"
+    );
 
     for (const task of inProgressTasks) {
       if (!task.project_id) continue;

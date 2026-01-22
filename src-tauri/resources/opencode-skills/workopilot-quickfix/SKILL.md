@@ -91,7 +91,7 @@ Informe o que foi alterado de forma concisa.
 |---------|-----------|
 | `get-task {id}` | Retorna JSON completo da task com subtasks |
 | `update-task {id} --title {title}` | Atualiza titulo da task |
-| `update-task {id} --status {status}` | Atualiza status (pending, in_progress, awaiting_review, done) |
+| `update-task {id} --status {status}` | Atualiza status (pending, active, completed) |
 | `update-task {id} --description {desc}` | Atualiza descricao |
 | `update-subtask {id} --title {title}` | Atualiza titulo da subtask |
 | `update-subtask {id} --status {status}` | Atualiza status da subtask |

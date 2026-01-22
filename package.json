@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Seu copiloto de trabalho para desenvolvimento com IA",
   "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "dev": "WORKOPILOT_DEV=1 tauri dev",
     "dev:web": "vite dev",

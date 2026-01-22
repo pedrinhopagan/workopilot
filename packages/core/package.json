@@ -1,0 +1,37 @@
+{
+  "name": "@workopilot/core",
+  "version": "0.1.0",
+  "description": "Core domain and infrastructure for WorkoPilot",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./domain": {
+      "import": "./src/domain/index.ts",
+      "types": "./src/domain/index.ts"
+    },
+    "./infrastructure": {
+      "import": "./src/infrastructure/index.ts",
+      "types": "./src/infrastructure/index.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "kysely": "^0.27.5",
+    "kysely-bun-sqlite": "^0.3.2"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.7.3"
+  },
+  "peerDependencies": {
+    "bun": ">=1.0.0"
+  }
+}

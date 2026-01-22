@@ -1,19 +1,26 @@
 mod activity_logger;
 mod commands;
 mod database;
+mod ipc_socket;
 mod settings;
+mod sidecar;
+mod sidecar_commands;
 mod token_tracker;
 mod tray;
 mod window;
 
 use activity_logger::ActivityLogger;
 use database::Database;
+use ipc_socket::IpcSocketServer;
+use sidecar::SidecarState;
 use std::sync::Mutex;
 use tauri::Manager;
 
 pub struct AppState {
     pub db: Mutex<Database>,
     pub activity_logger: ActivityLogger,
+    pub ipc_socket: Mutex<Option<IpcSocketServer>>,
+    pub sidecar: SidecarState,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -34,6 +41,8 @@ pub fn run() {
         .manage(AppState { 
             db: Mutex::new(db),
             activity_logger,
+            ipc_socket: Mutex::new(None),
+            sidecar: SidecarState::new(),
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_projects,
@@ -55,7 +64,6 @@ pub fn run() {
             commands::get_active_tasks,
             commands::add_task,
             commands::update_task_status,
-            commands::update_task_status_and_substatus,
             commands::schedule_task,
             commands::unschedule_task,
             commands::get_tasks_for_month,
@@ -97,6 +105,9 @@ pub fn run() {
             settings::get_shortcut,
             settings::set_shortcut,
             window::hide_window,
+            sidecar_commands::sidecar_call,
+            sidecar_commands::sidecar_status,
+            sidecar_commands::sidecar_restart,
         ])
         .setup(|app| {
             settings::register_initial_shortcut(app.handle())?;
@@ -113,6 +124,22 @@ pub fn run() {
             match commands::sync_skills(app.handle().clone()) {
                 Ok(count) => eprintln!("[WORKOPILOT] Synced {} skills to OpenCode on startup", count),
                 Err(e) => eprintln!("[WORKOPILOT] Failed to sync skills on startup: {}", e),
+            }
+            
+            match IpcSocketServer::new(app.handle().clone()) {
+                Ok(server) => {
+                    if let Ok(mut ipc_socket) = state.ipc_socket.lock() {
+                        *ipc_socket = Some(server);
+                    }
+                }
+                Err(e) => eprintln!("[WORKOPILOT] Failed to start IPC socket server: {}", e),
+            }
+            
+            if let Ok(mut sidecar) = state.sidecar.sidecar.lock() {
+                match sidecar.start() {
+                    Ok(_) => eprintln!("[WORKOPILOT] Sidecar started"),
+                    Err(e) => eprintln!("[WORKOPILOT] Failed to start sidecar: {}", e),
+                }
             }
             
             if std::env::var("WORKOPILOT_DEV").is_ok() {

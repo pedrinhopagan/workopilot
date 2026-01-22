@@ -3,8 +3,8 @@ import { useState, useEffect } from "react";
 import { safeInvoke, isTauri } from "../../services/tauri";
 import { useDialogStateStore } from "../../stores/dialogState";
 import { useSelectedProjectStore } from "../../stores/selectedProject";
-import type { Project, ProjectWithConfig, Task, SessionLog } from "../../types";
-import { getStatusColor, getStatusLabel, isUserActionRequired } from "../../lib/constants/taskStatus";
+import type { Project, ProjectWithConfig, Task, TaskFull, SessionLog } from "../../types";
+import { getTaskStatusColor, getTaskStatusLabel, isTaskAIWorking, getTaskStatusHighlight } from "../../lib/constants/taskStatus";
 import { z } from "zod";
 
 const priorities = [
@@ -34,6 +34,7 @@ function ProjectsPage() {
 
   const [urgentTasks, setUrgentTasks] = useState<Task[]>([]);
   const [activeTasks, setActiveTasks] = useState<Task[]>([]);
+  const [activeTasksFullCache, setActiveTasksFullCache] = useState<Map<string, TaskFull>>(new Map());
   const [logs, setLogs] = useState<SessionLog[]>([]);
   const [dailyTokens, setDailyTokens] = useState(0);
   const tokenGoal = 100000;
@@ -104,6 +105,23 @@ function ProjectsPage() {
     try {
       const tasks = await safeInvoke<Task[]>("get_active_tasks", { projectId, limit: 5 });
       setActiveTasks(tasks);
+      
+      if (projectConfig) {
+        const newCache = new Map<string, TaskFull>();
+        for (const task of tasks) {
+          try {
+            const taskFull = await safeInvoke<TaskFull>("get_task_full", { 
+              projectPath: projectConfig.path, 
+              taskId: task.id 
+            });
+            if (taskFull) {
+              newCache.set(task.id, taskFull);
+            }
+          } catch {
+          }
+        }
+        setActiveTasksFullCache(newCache);
+      }
     } catch (e) {
       console.error("Failed to load active tasks:", e);
       setActiveTasks([]);
@@ -403,21 +421,34 @@ function ProjectsPage() {
 
               <div className="space-y-2">
                 {activeTasks.map((task) => {
-                  const statusColor = getStatusColor(task.status, task.substatus);
-                  const statusLabel = getStatusLabel(task.status, task.substatus);
-                  const needsAction = isUserActionRequired(task.status, task.substatus);
+                  const taskFull = activeTasksFullCache.get(task.id) || null;
+                  const statusColor = getTaskStatusColor(taskFull);
+                  const statusLabel = getTaskStatusLabel(taskFull);
+                  const highlight = getTaskStatusHighlight(taskFull);
+                  const isAIWorking = isTaskAIWorking(taskFull);
+
+                  const highlightClasses = highlight === "ring" 
+                    ? "ring-1" 
+                    : highlight === "border-l" 
+                      ? "border-l-4" 
+                      : "";
 
                   return (
                     <Link
                       key={task.id}
                       to="/tasks/$taskId"
                       params={{ taskId: task.id }}
-                      className={`flex items-center gap-3 px-3 py-2 bg-[#1c1c1c] border-l-4 hover:bg-[#2a2a2a] transition-colors ${needsAction ? "ring-1" : ""}`}
+                      className={`flex items-center gap-3 px-3 py-2 bg-[#1c1c1c] hover:bg-[#2a2a2a] transition-colors ${highlightClasses}`}
                       style={{ 
-                        borderLeftColor: statusColor,
-                        ...(needsAction ? { boxShadow: `0 0 0 1px ${statusColor}` } : {})
+                        ...(highlight === "border-l" ? { borderLeftColor: statusColor } : {}),
+                        ...(highlight === "ring" ? { boxShadow: `0 0 0 1px ${statusColor}` } : {})
                       }}
                     >
+                      {isAIWorking && (
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#61afef" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin flex-shrink-0">
+                          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                        </svg>
+                      )}
                       <span className="flex-1 text-[#d6d6d6] text-sm">{task.title}</span>
                       <span
                         className="px-2 py-0.5 text-xs text-[#1c1c1c] rounded"
