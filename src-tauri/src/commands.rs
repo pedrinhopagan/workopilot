@@ -79,8 +79,6 @@ pub struct Task {
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TaskFull {
-    pub schema_version: i32,
-    pub initialized: bool,
     pub id: String,
     pub title: String,
     pub status: String,
@@ -92,7 +90,6 @@ pub struct TaskFull {
     pub ai_metadata: AIMetadata,
     pub timestamps: TaskTimestamps,
     pub modified_at: Option<String>,
-    pub modified_by: Option<String>,
     pub project_id: Option<String>,
     pub due_date: Option<String>,
     pub scheduled_date: Option<String>,
@@ -318,7 +315,7 @@ pub fn get_active_tasks(
 ) -> Result<Vec<Task>, String> {
     let result = sidecar_call!(state, "tasks.list", json!({
         "projectId": project_id,
-        "status": ["structuring", "working"],
+        "status": ["in_progress"],
         "limit": limit
     }))?;
     serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
@@ -811,13 +808,13 @@ pub fn get_ai_suggestion(tasks: Vec<Task>) -> Result<String, String> {
 
     let high_priority: Vec<_> = tasks
         .iter()
-        .filter(|t| t.priority == 1 && t.status != "completed")
+        .filter(|t| t.priority == 1 && t.status != "done")
         .collect();
     let medium_priority: Vec<_> = tasks
         .iter()
-        .filter(|t| t.priority == 2 && t.status != "completed")
+        .filter(|t| t.priority == 2 && t.status != "done")
         .collect();
-    let pending_count = tasks.iter().filter(|t| t.status != "completed").count();
+    let pending_count = tasks.iter().filter(|t| t.status != "done").count();
 
     if pending_count == 0 {
         return Ok(
@@ -1278,7 +1275,7 @@ pub fn launch_task_structure(
     // Update task status via sidecar
     sidecar_call!(state, "tasks.updateStatus", json!({
         "id": task_id,
-        "status": "structuring",
+        "status": "in_progress",
         "modifiedBy": "user"
     }))?;
 
@@ -1307,7 +1304,7 @@ pub fn launch_task_execute_all(
     
     sidecar_call!(state, "tasks.updateStatus", json!({
         "id": task_id,
-        "status": "working",
+        "status": "in_progress",
         "modifiedBy": "user"
     }))?;
 
@@ -1342,7 +1339,7 @@ pub fn launch_task_execute_subtask(
     
     sidecar_call!(state, "tasks.updateStatus", json!({
         "id": task_id,
-        "status": "working",
+        "status": "in_progress",
         "modifiedBy": "user"
     }))?;
 
