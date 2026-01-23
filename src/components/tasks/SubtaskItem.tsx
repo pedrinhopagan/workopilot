@@ -5,7 +5,6 @@ type SubtaskItemProps = {
   subtask: Subtask
   onToggle: (id: string) => void
   onRemove: (id: string) => void
-  onCodar: (id: string) => void
   onUpdate: (id: string, field: keyof Subtask, value: unknown) => void
   expanded?: boolean
   onToggleExpand: (id: string) => void
@@ -16,7 +15,6 @@ export function SubtaskItem({
   subtask,
   onToggle,
   onRemove,
-  onCodar,
   onUpdate,
   expanded = false,
   onToggleExpand,
@@ -52,11 +50,11 @@ export function SubtaskItem({
 
   return (
     <div className={`animate-fade-in ${isDone ? "opacity-50" : ""} ${disabled ? "opacity-50 pointer-events-none" : ""}`}>
-      <div className="flex items-center gap-3 px-3 py-2 bg-[#232323] hover:bg-[#2a2a2a] transition-colors group">
+      <div className="flex items-center gap-3 px-3 py-2 bg-card hover:bg-popover transition-colors group">
         <button
           onClick={() => onToggle(subtask.id)}
           disabled={disabled}
-          className={`transition-colors ${isDone ? "text-[#909d63]" : "text-[#636363] hover:text-[#909d63]"} ${disabled ? "cursor-not-allowed" : ""}`}
+          className={`transition-colors ${isDone ? "text-primary" : "text-muted-foreground hover:text-primary"} ${disabled ? "cursor-not-allowed" : ""}`}
         >
           {isDone ? "[x]" : "[ ]"}
         </button>
@@ -64,7 +62,7 @@ export function SubtaskItem({
         <button
           onClick={() => onToggleExpand(subtask.id)}
           disabled={disabled}
-          className={`text-[#636363] hover:text-[#909d63] transition-colors ${disabled ? "cursor-not-allowed" : ""}`}
+          className={`text-muted-foreground hover:text-primary transition-colors ${disabled ? "cursor-not-allowed" : ""}`}
           title={expanded ? "Recolher detalhes" : "Expandir detalhes"}
         >
           <svg
@@ -83,12 +81,12 @@ export function SubtaskItem({
           </svg>
         </button>
 
-        <span className={`flex-1 text-[#d6d6d6] text-sm ${isDone ? "line-through" : ""}`}>
+        <span className={`flex-1 text-foreground text-sm ${isDone ? "line-through" : ""}`}>
           {subtask.title}
         </span>
 
         {!expanded && hasDetails && (
-          <span className="text-[#636363] text-xs">
+          <span className="text-muted-foreground text-xs">
             {subtask.acceptance_criteria && subtask.acceptance_criteria.length > 0
               ? `(${subtask.acceptance_criteria.length} criterios)`
               : "(detalhes)"}
@@ -98,7 +96,7 @@ export function SubtaskItem({
         <button
           onClick={() => onRemove(subtask.id)}
           disabled={disabled}
-          className={`opacity-0 group-hover:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1 ${disabled ? "cursor-not-allowed hidden" : ""}`}
+          className={`opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80 transition-all p-1 ${disabled ? "cursor-not-allowed hidden" : ""}`}
           title="Remover subtask"
         >
           <svg
@@ -117,43 +115,36 @@ export function SubtaskItem({
           </svg>
         </button>
 
-        <button
-          onClick={() => onCodar(subtask.id)}
-          disabled={isDone || disabled}
-          className="px-3 py-1 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] disabled:bg-[#3d3a34] disabled:text-[#636363] disabled:cursor-not-allowed transition-colors"
-        >
-          Codar &gt;
-        </button>
       </div>
 
       {expanded && (
-        <div className="px-3 py-3 bg-[#1c1c1c] border-l-2 border-[#3d3a34] ml-6 animate-slide-down space-y-4">
+        <div className="px-3 py-3 bg-background border-l-2 border-border ml-6 animate-slide-down space-y-4">
           <div className="space-y-1">
-            <label className="text-[#636363] text-xs uppercase tracking-wide">Descricao</label>
+            <label className="text-muted-foreground text-xs uppercase tracking-wide">Descricao</label>
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               onBlur={() => onUpdate(subtask.id, "description", description || null)}
               disabled={disabled}
               placeholder="Descreva a subtask..."
-              className="w-full bg-[#232323] text-[#d6d6d6] text-sm px-3 py-2 border border-[#3d3a34] focus:border-[#909d63] focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-card text-foreground text-sm px-3 py-2 border border-border focus:border-primary focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               rows={2}
             />
           </div>
 
           <div className="space-y-2">
-            <label className="text-[#636363] text-xs uppercase tracking-wide">Criterios de Aceitacao</label>
+            <label className="text-muted-foreground text-xs uppercase tracking-wide">Criterios de Aceitacao</label>
 
             {subtask.acceptance_criteria && subtask.acceptance_criteria.length > 0 && (
               <ul className="space-y-1">
                 {subtask.acceptance_criteria.map((criteria, index) => (
                   <li key={index} className="flex items-center gap-2 group/criteria">
-                    <span className="text-[#909d63]">-</span>
-                    <span className="flex-1 text-[#d6d6d6] text-sm">{criteria}</span>
+                    <span className="text-primary">-</span>
+                    <span className="flex-1 text-foreground text-sm">{criteria}</span>
                     <button
                       onClick={() => removeCriteria(index)}
                       disabled={disabled}
-                      className={`opacity-0 group-hover/criteria:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1 ${disabled ? "hidden" : ""}`}
+                      className={`opacity-0 group-hover/criteria:opacity-100 text-destructive hover:text-destructive/80 transition-all p-1 ${disabled ? "hidden" : ""}`}
                       title="Remover criterio"
                     >
                       <svg
@@ -184,12 +175,12 @@ export function SubtaskItem({
                 onKeyDown={(e) => e.key === "Enter" && addCriteria()}
                 disabled={disabled}
                 placeholder="Adicionar criterio..."
-                className="flex-1 bg-[#232323] text-[#d6d6d6] text-sm px-3 py-1 border border-[#3d3a34] focus:border-[#909d63] focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 bg-card text-foreground text-sm px-3 py-1 border border-border focus:border-primary focus:outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
                 onClick={addCriteria}
                 disabled={!newCriteria.trim() || disabled}
-                className="px-3 py-1 text-xs bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73] disabled:bg-[#3d3a34] disabled:text-[#636363] disabled:cursor-not-allowed transition-colors"
+                className="px-3 py-1 text-xs bg-primary text-primary-foreground hover:bg-primary/90 disabled:bg-border disabled:text-muted-foreground disabled:cursor-not-allowed transition-colors"
               >
                 +
               </button>
@@ -197,14 +188,14 @@ export function SubtaskItem({
           </div>
 
           <div className="space-y-1">
-            <label className="text-[#636363] text-xs uppercase tracking-wide">Notas Tecnicas</label>
+            <label className="text-muted-foreground text-xs uppercase tracking-wide">Notas Tecnicas</label>
             <textarea
               value={technicalNotes}
               onChange={(e) => setTechnicalNotes(e.target.value)}
               onBlur={() => onUpdate(subtask.id, "technical_notes", technicalNotes || null)}
               disabled={disabled}
               placeholder="Adicione notas tecnicas, referencias, ou consideracoes de implementacao..."
-              className="w-full bg-[#232323] text-[#d6d6d6] text-sm px-3 py-2 border border-[#3d3a34] focus:border-[#909d63] focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full bg-card text-foreground text-sm px-3 py-2 border border-border focus:border-primary focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               rows={3}
             />
           </div>

@@ -3,10 +3,10 @@ import { Settings, X } from "lucide-react"
 import { safeGetCurrentWindow, safeInvoke } from "../services/tauri"
 
 const tabs = [
+  { path: "/home", label: "Home" },
   { path: "/projects", label: "Projetos" },
   { path: "/tasks", label: "Tarefas" },
   { path: "/agenda", label: "Agenda" },
-  { path: "/logs", label: "Logs" },
 ]
 
 async function handleMouseDown(e: React.MouseEvent) {
@@ -33,7 +33,7 @@ export function TabBar() {
 
   return (
     <nav
-      className="flex items-center border-b border-[#3d3a34] cursor-grab active:cursor-grabbing select-none"
+      className="flex items-center border-b border-border cursor-grab active:cursor-grabbing select-none"
       onMouseDown={handleMouseDown}
       role="banner"
     >
@@ -51,9 +51,9 @@ export function TabBar() {
           className={
             currentPath === tab.path ||
             currentPath.startsWith(tab.path + "/") ||
-            (currentPath === "/" && tab.path === "/projects")
-              ? "px-4 py-2 text-sm transition-colors cursor-pointer bg-[#909d63] text-[#1c1c1c] font-medium"
-              : "px-4 py-2 text-sm transition-colors cursor-pointer text-[#828282] hover:text-[#d6d6d6] hover:bg-[#333333]"
+            (currentPath === "/" && tab.path === "/home")
+              ? "px-4 py-2 text-sm transition-colors cursor-pointer bg-primary text-primary-foreground font-medium"
+              : "px-4 py-2 text-sm transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-secondary"
           }
         >
           {tab.label}
@@ -61,7 +61,7 @@ export function TabBar() {
       ))}
       <div className="flex-1"></div>
       {isDev && (
-        <span className="px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-[#909d63] border border-[#909d63]/50 rounded">
+        <span className="px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-primary border border-primary/50">
           DEV
         </span>
       )}
@@ -69,8 +69,8 @@ export function TabBar() {
         to="/settings"
         className={
           currentPath === "/settings"
-            ? "px-3 py-2 text-sm transition-colors cursor-pointer text-[#909d63]"
-            : "px-3 py-2 text-sm transition-colors cursor-pointer text-[#636363] hover:text-[#d6d6d6]"
+            ? "px-3 py-2 text-sm transition-colors cursor-pointer text-primary"
+            : "px-3 py-2 text-sm transition-colors cursor-pointer text-muted-foreground hover:text-foreground"
         }
         title="Configuracoes"
       >
@@ -78,7 +78,7 @@ export function TabBar() {
       </Link>
       <button
         onClick={hideWindow}
-        className="px-3 py-2 text-sm transition-colors cursor-pointer text-[#636363] hover:text-[#bc5653]"
+        className="px-3 py-2 text-sm transition-colors cursor-pointer text-muted-foreground hover:text-destructive"
         title="Esconder"
       >
         <X size={16} />

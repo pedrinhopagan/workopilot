@@ -208,17 +208,17 @@ export function HotkeyInput({
 	if (isListening) {
 		if (currentModifier && currentKey) {
 			displayText = `${currentModifier} + ${currentKey}`;
-			displayClass = "text-[#909d63]";
+			displayClass = "text-primary";
 		} else if (currentModifier) {
 			displayText = `${currentModifier} + ...`;
-			displayClass = "text-[#909d63]";
+			displayClass = "text-primary";
 		} else {
 			displayText = "Press keys...";
-			displayClass = "text-[#636363] italic";
+			displayClass = "text-muted-foreground italic";
 		}
 	} else {
 		displayText = value ? formatDisplay(value) : "Click to set";
-		displayClass = value ? "text-[#d6d6d6]" : "text-[#636363]";
+		displayClass = value ? "text-foreground" : "text-muted-foreground";
 	}
 
 	return (
@@ -230,14 +230,14 @@ export function HotkeyInput({
 			onKeyDown={handleKeyDownContainer}
 			className={`
         relative px-3 py-1.5 min-w-[140px]
-        bg-[#1c1c1c] border text-sm text-left
+        bg-background border text-sm text-left
         transition-all duration-200 ease-out
         select-none cursor-pointer
         focus:outline-none
         ${
 					isListening
-						? "border-[#909d63] shadow-[0_0_0_1px_rgba(144,157,99,0.3),0_0_12px_rgba(144,157,99,0.15)]"
-						: "border-[#3d3a34] hover:border-[#4d4a44] focus:border-[#909d63]"
+						? "border-primary shadow-[0_0_0_1px_hsl(var(--primary)/0.3),0_0_12px_hsl(var(--primary)/0.15)]"
+						: "border-border hover:border-secondary focus:border-primary"
 				}
         ${disabled ? "opacity-50 cursor-not-allowed" : ""}
         ${className}
@@ -252,7 +252,7 @@ export function HotkeyInput({
 		>
 			{isListening && (
 				<span
-					className="absolute inset-0 border border-[#909d63] rounded-[inherit] animate-pulse opacity-50"
+					className="absolute inset-0 border border-primary rounded-[inherit] animate-pulse opacity-50"
 					style={{ animationDuration: "1.5s" }}
 				/>
 			)}
@@ -269,7 +269,7 @@ export function HotkeyInput({
 					height="14"
 					viewBox="0 0 24 24"
 					fill="none"
-					stroke={isListening ? "#909d63" : "#636363"}
+					stroke={isListening ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))"}
 					strokeWidth="1.5"
 					strokeLinecap="round"
 					strokeLinejoin="round"

@@ -122,7 +122,7 @@ export function StructuringCompleteModal() {
         aria-label="Fechar modal"
         onKeyDown={(e) => e.key === "Escape" && handleClose()}
       />
-      <div className="relative bg-[#1c1c1c] border border-[#3d3a34] max-w-lg w-full mx-4 overflow-hidden animate-modal-in">
+      <div className="relative bg-background border border-border max-w-lg w-full mx-4 overflow-hidden animate-modal-in">
         <ModalHeader
           subtaskCount={notification.subtaskCount}
           onClose={handleClose}
@@ -149,22 +149,22 @@ function ModalHeader({
   onClose: () => void
 }) {
   return (
-    <div className="px-5 py-4 border-b border-[#3d3a34] bg-gradient-to-r from-[#909d63]/10 via-transparent to-transparent">
+    <div className="px-5 py-4 border-b border-border bg-gradient-to-r from-primary/10 via-transparent to-transparent">
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full bg-[#909d63]/20 flex items-center justify-center">
-          <Check size={20} color="#909d63" />
+        <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center">
+          <Check size={20} className="text-primary" />
         </div>
         <div>
-          <h3 className="text-[#d6d6d6] text-base font-medium">
+          <h3 className="text-foreground text-base font-medium">
             Estruturação Concluída
           </h3>
-          <p className="text-[#636363] text-sm mt-0.5">
+          <p className="text-muted-foreground text-sm mt-0.5">
             {subtaskCount} subtasks criadas
           </p>
         </div>
         <button
           onClick={onClose}
-          className="ml-auto text-[#636363] hover:text-[#d6d6d6] transition-colors p-1"
+          className="ml-auto text-muted-foreground hover:text-foreground transition-colors p-1"
           aria-label="Fechar"
         >
           <X size={18} />
@@ -177,8 +177,8 @@ function ModalHeader({
 function ModalTaskInfo({ taskTitle }: { taskTitle: string }) {
   return (
     <div className="px-5 py-4">
-      <p className="text-[#d6d6d6] text-sm mb-1">Task estruturada:</p>
-      <p className="text-[#909d63] font-medium truncate">{taskTitle}</p>
+      <p className="text-foreground text-sm mb-1">Task estruturada:</p>
+      <p className="text-primary font-medium truncate">{taskTitle}</p>
     </div>
   )
 }
@@ -200,7 +200,7 @@ function ModalActions({
 }) {
   return (
     <div className="px-5 pb-5">
-      <p className="text-[#636363] text-xs uppercase tracking-wider mb-3">
+      <p className="text-muted-foreground text-xs uppercase tracking-wider mb-3">
         Próxima ação
       </p>
       <div className="grid grid-cols-2 gap-3">
@@ -208,10 +208,7 @@ function ModalActions({
           onClick={onExecuteAll}
           disabled={isLaunching}
           isLoading={launchingAction === "execute_all"}
-          loadingColor="#909d63"
-          hoverBorderColor="hover:border-[#909d63]"
-          hoverBgColor="hover:bg-[#909d63]/10"
-          hoverTextColor="group-hover:text-[#909d63]"
+          variant="primary"
           icon={<Rocket size={24} />}
           label="Executar Tudo"
         />
@@ -219,10 +216,7 @@ function ModalActions({
           onClick={onExecuteFirstSubtask}
           disabled={isLaunching}
           isLoading={launchingAction === "execute_subtask"}
-          loadingColor="#61afef"
-          hoverBorderColor="hover:border-[#61afef]"
-          hoverBgColor="hover:bg-[#61afef]/10"
-          hoverTextColor="group-hover:text-[#61afef]"
+          variant="info"
           icon={<Target size={24} />}
           label="Executar Subtask"
         />
@@ -230,10 +224,7 @@ function ModalActions({
           onClick={onReview}
           disabled={isLaunching}
           isLoading={launchingAction === "review"}
-          loadingColor="#e5c07b"
-          hoverBorderColor="hover:border-[#e5c07b]"
-          hoverBgColor="hover:bg-[#e5c07b]/10"
-          hoverTextColor="group-hover:text-[#e5c07b]"
+          variant="accent"
           icon={<Eye size={24} />}
           label="Revisar"
         />
@@ -241,10 +232,7 @@ function ModalActions({
           onClick={onViewTask}
           disabled={isLaunching}
           isLoading={false}
-          loadingColor="#636363"
-          hoverBorderColor="hover:border-[#636363]"
-          hoverBgColor="hover:bg-[#2a2a2a]"
-          hoverTextColor="group-hover:text-[#d6d6d6]"
+          variant="muted"
           icon={<Sparkles size={24} />}
           label="Editar Manualmente"
         />
@@ -253,42 +241,59 @@ function ModalActions({
   )
 }
 
+type ActionVariant = "primary" | "info" | "accent" | "muted"
+
 function ActionButton({
   onClick,
   disabled,
   isLoading,
-  loadingColor,
-  hoverBorderColor,
-  hoverBgColor,
-  hoverTextColor,
+  variant,
   icon,
   label,
 }: {
   onClick: () => void
   disabled: boolean
   isLoading: boolean
-  loadingColor: string
-  hoverBorderColor: string
-  hoverBgColor: string
-  hoverTextColor: string
+  variant: ActionVariant
   icon: React.ReactNode
   label: string
 }) {
+  const variantClasses: Record<ActionVariant, { hover: string; text: string }> = {
+    primary: {
+      hover: "hover:border-primary hover:bg-primary/10",
+      text: "group-hover:text-primary",
+    },
+    info: {
+      hover: "hover:border-chart-4 hover:bg-chart-4/10",
+      text: "group-hover:text-chart-4",
+    },
+    accent: {
+      hover: "hover:border-accent hover:bg-accent/10",
+      text: "group-hover:text-accent",
+    },
+    muted: {
+      hover: "hover:border-muted-foreground hover:bg-secondary",
+      text: "group-hover:text-foreground",
+    },
+  }
+
+  const classes = variantClasses[variant]
+
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex flex-col items-center gap-2 p-4 rounded-lg border border-[#3d3a34] bg-[#232323] ${hoverBorderColor} ${hoverBgColor} transition-all group disabled:opacity-50 disabled:cursor-not-allowed`}
+      className={`flex flex-col items-center gap-2 p-4 border border-border bg-card ${classes.hover} transition-all group disabled:opacity-50 disabled:cursor-not-allowed`}
     >
       {isLoading ? (
-        <Loader2 size={24} color={loadingColor} className="animate-spin" />
+        <Loader2 size={24} className={`animate-spin ${classes.text.replace("group-hover:", "")}`} />
       ) : (
-        <span className={`text-[#636363] ${hoverTextColor} transition-colors`}>
+        <span className={`text-muted-foreground ${classes.text} transition-colors`}>
           {icon}
         </span>
       )}
       <span
-        className={`text-sm text-[#d6d6d6] ${hoverTextColor} transition-colors`}
+        className={`text-sm text-foreground ${classes.text} transition-colors`}
       >
         {label}
       </span>

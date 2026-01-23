@@ -90,13 +90,13 @@ export function TaskStatusSelect({ value, onChange, disabled = false }: TaskStat
         disabled={disabled}
         className={`
           flex items-center gap-2 px-3 py-1.5 
-          bg-[#1c1c1c] border border-[#3d3a34] rounded-lg
+          bg-background border border-border rounded-lg
           transition-all duration-200 ease-out
           ${disabled 
             ? "opacity-50 cursor-not-allowed" 
-            : "hover:border-[#636363] hover:bg-[#232323] cursor-pointer"
+            : "hover:border-muted-foreground hover:bg-card cursor-pointer"
           }
-          ${isOpen ? "border-[#636363] bg-[#232323]" : ""}
+          ${isOpen ? "border-muted-foreground bg-card" : ""}
         `}
         style={{
           boxShadow: isOpen ? `0 0 0 1px ${currentColor}30` : undefined,
@@ -106,7 +106,7 @@ export function TaskStatusSelect({ value, onChange, disabled = false }: TaskStat
         
         <svg
           aria-hidden="true"
-          className={`w-4 h-4 text-[#636363] transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+          className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -122,12 +122,12 @@ export function TaskStatusSelect({ value, onChange, disabled = false }: TaskStat
         <div
           className="
             absolute top-full left-0 mt-2 min-w-[160px]
-            bg-[#232323] border border-[#3d3a34] rounded-lg
+            bg-card border border-border rounded-lg
             shadow-xl z-50 overflow-hidden
             animate-fade-in
           "
           style={{
-            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(61, 58, 52, 0.5)",
+            boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px hsl(var(--border) / 0.5)",
           }}
         >
           <div className="py-1">
@@ -144,8 +144,8 @@ export function TaskStatusSelect({ value, onChange, disabled = false }: TaskStat
                     w-full px-3 py-2 flex items-center gap-2
                     transition-all duration-150 ease-out
                     ${isSelected 
-                      ? "bg-[#2a2a2a]" 
-                      : "hover:bg-[#2a2a2a]"
+                      ? "bg-popover" 
+                      : "hover:bg-popover"
                     }
                   `}
                   style={{

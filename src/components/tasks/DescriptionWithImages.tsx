@@ -179,7 +179,7 @@ export function DescriptionWithImages({
 
   const wrapperClassName = [
     "border transition-colors",
-    isFocused ? "border-[#909d63]" : "border-[#3d3a34]",
+    isFocused ? "border-primary" : "border-border",
     uploadFeedback === "success" ? "animate-flash-success" : "",
     uploadFeedback === "error" ? "animate-flash-error" : "",
   ].filter(Boolean).join(" ")
@@ -187,9 +187,9 @@ export function DescriptionWithImages({
   return (
     <section className="flex flex-col gap-2">
       <div className="flex items-center gap-3">
-        <label className="text-xs text-[#828282] uppercase tracking-wide">Descricao</label>
+        <label className="text-xs text-muted-foreground uppercase tracking-wide">Descricao</label>
         {canUpload && (
-          <span className={`flex items-center gap-1 text-xs transition-colors ${isFocused ? "text-[#909d63]" : "text-[#4a4a4a]"}`}>
+          <span className={`flex items-center gap-1 text-xs transition-colors ${isFocused ? "text-primary" : "text-muted-foreground/60"}`}>
             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
               <circle cx="9" cy="9" r="2"/>
@@ -199,7 +199,7 @@ export function DescriptionWithImages({
           </span>
         )}
         {isUploading && (
-          <span className="flex items-center gap-1 text-xs text-[#909d63]">
+          <span className="flex items-center gap-1 text-xs text-primary">
             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin">
               <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
             </svg>
@@ -224,12 +224,12 @@ export function DescriptionWithImages({
           disabled={disabled}
           placeholder="Descreva o objetivo desta tarefa... (Ctrl+V para colar imagens)"
           rows={3}
-          className="w-full px-3 py-2 bg-[#232323] border-none text-[#d6d6d6] text-sm resize-y outline-none transition-opacity disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-[#4a4a4a]"
+          className="w-full px-3 py-2 bg-card border-none text-foreground text-sm resize-y outline-none transition-opacity disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-muted-foreground/60"
         />
       </div>
 
       {errorMessage && (
-        <span className="text-xs text-[#bc5653]">{errorMessage}</span>
+        <span className="text-xs text-destructive">{errorMessage}</span>
       )}
 
       {images.length > 0 && (
@@ -246,7 +246,7 @@ export function DescriptionWithImages({
             />
           ))}
 
-          <span className="text-xs text-[#636363] ml-1">{images.length}/{maxImages}</span>
+          <span className="text-xs text-muted-foreground ml-1">{images.length}/{maxImages}</span>
         </div>
       )}
     </section>

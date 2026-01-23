@@ -1,17 +1,19 @@
 import { useState, useEffect, useCallback } from "react";
 import { safeInvoke } from "../../services/tauri";
+import { useDbRefetchStore } from "../../stores/dbRefetch";
 import type { Task, TaskFull, Subtask, ProjectWithConfig } from "../../types";
 import { DayTaskItem } from "./DayTaskItem";
 import { useAgendaStore } from "../../stores/agenda";
 
 type DayDrawerProps = {
-  onClose: () => void;
-  onTaskChange: () => void;
+  onTaskChange?: () => void;
 };
 
-export function DayDrawer({ onClose, onTaskChange }: DayDrawerProps) {
+export function DayDrawer({ onTaskChange }: DayDrawerProps) {
   const selectedDate = useAgendaStore((s) => s.selectedDate);
   const drawerCollapsed = useAgendaStore((s) => s.drawerCollapsed);
+  const closeDrawer = useAgendaStore((s) => s.closeDrawer);
+  const changeCounter = useDbRefetchStore((s) => s.changeCounter);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [taskFullCache, setTaskFullCache] = useState<Map<string, TaskFull>>(new Map());
@@ -38,7 +40,7 @@ export function DayDrawer({ onClose, onTaskChange }: DayDrawerProps) {
 
   async function loadAllTaskFulls(taskList: Task[]) {
     for (const task of taskList) {
-      if (task.project_id && task.json_path) {
+      if (task.project_id) {
         const project = await safeInvoke<ProjectWithConfig>("get_project_with_config", {
           projectId: task.project_id,
         }).catch(() => null);
@@ -119,13 +121,13 @@ export function DayDrawer({ onClose, onTaskChange }: DayDrawerProps) {
   function handleClickOutside(e: React.MouseEvent) {
     const target = e.target as HTMLElement;
     if (target.classList.contains("drawer-backdrop")) {
-      onClose();
+      closeDrawer();
     }
   }
 
   function handleTaskChange() {
     loadTasks();
-    onTaskChange();
+    onTaskChange?.();
   }
 
   useEffect(() => {
@@ -135,14 +137,19 @@ export function DayDrawer({ onClose, onTaskChange }: DayDrawerProps) {
   }, [selectedDate]);
 
   useEffect(() => {
+    if (changeCounter === 0 || !selectedDate) return;
+    loadTasks();
+  }, [changeCounter, selectedDate]);
+
+  useEffect(() => {
     function handleKeydown(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        onClose();
+        closeDrawer();
       }
     }
     window.addEventListener("keydown", handleKeydown);
     return () => window.removeEventListener("keydown", handleKeydown);
-  }, [onClose]);
+  }, [closeDrawer]);
 
   if (!selectedDate || drawerCollapsed) return null;
 
@@ -155,11 +162,12 @@ export function DayDrawer({ onClose, onTaskChange }: DayDrawerProps) {
         aria-label="Fechar drawer"
       />
 
-      <div className="fixed top-0 right-0 h-full w-[400px] bg-[#1c1c1c] border-l border-[#3d3a34] z-50 flex flex-col shadow-xl animate-slide-in">
-        <div className="flex items-center gap-3 p-4 border-b border-[#3d3a34]">
+      <div className="fixed top-0 right-0 h-full w-[400px] bg-background border-l border-border z-50 flex flex-col shadow-xl animate-slide-in">
+        <div className="flex items-center gap-3 p-4 border-b border-border">
           <button
-            onClick={onClose}
-            className="text-[#636363] hover:text-[#d6d6d6] transition-colors p-1"
+            type="button"
+            onClick={closeDrawer}
+            className="text-muted-foreground hover:text-foreground transition-colors p-1"
             title="Fechar"
           >
             <svg
@@ -173,17 +181,18 @@ export function DayDrawer({ onClose, onTaskChange }: DayDrawerProps) {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
+              <title>Fechar</title>
               <path d="m15 18-6-6 6-6" />
             </svg>
           </button>
-          <h2 className="text-base font-medium text-[#d6d6d6] capitalize">{formattedDate()}</h2>
+          <h2 className="text-base font-medium text-foreground capitalize">{formattedDate()}</h2>
         </div>
 
         <div className="flex-1 overflow-y-auto p-3">
           {isLoading ? (
-            <div className="text-center text-[#636363] py-8 text-sm">Carregando...</div>
+            <div className="text-center text-muted-foreground py-8 text-sm">Carregando...</div>
           ) : tasks.length === 0 ? (
-            <div className="text-center text-[#636363] py-8 text-sm">Nenhuma tarefa para este dia</div>
+            <div className="text-center text-muted-foreground py-8 text-sm">Nenhuma tarefa para este dia</div>
           ) : (
             <div className="flex flex-col gap-1">
               {tasks.map((task) => {
@@ -192,12 +201,13 @@ export function DayDrawer({ onClose, onTaskChange }: DayDrawerProps) {
                 const isExpanded = expandedTasks.has(task.id);
 
                 return (
-                  <div key={task.id} className="bg-[#232323]">
+                  <div key={task.id} className="bg-card">
                     <div className="flex items-center gap-2">
                       {taskSubtasks.length > 0 && (
                         <button
+                          type="button"
                           onClick={() => toggleExpanded(task.id)}
-                          className="pl-2 text-[#636363] hover:text-[#d6d6d6] transition-colors"
+                          className="pl-2 text-muted-foreground hover:text-foreground transition-colors"
                           title={isExpanded ? "Recolher subtasks" : "Expandir subtasks"}
                         >
                           <svg
@@ -210,15 +220,16 @@ export function DayDrawer({ onClose, onTaskChange }: DayDrawerProps) {
                             strokeWidth="2"
                             className={`transition-transform ${isExpanded ? "rotate-90" : ""}`}
                           >
+                            <title>{isExpanded ? "Recolher" : "Expandir"}</title>
                             <path d="m9 18 6-6-6-6" />
                           </svg>
                         </button>
                       )}
                       <div className={`flex-1 ${taskSubtasks.length > 0 ? "" : "pl-2"}`}>
-                        <DayTaskItem task={task} onStatusChange={handleTaskChange} />
+                        <DayTaskItem task={task} taskFull={taskFullCache.get(task.id) || null} onStatusChange={handleTaskChange} />
                       </div>
                       {taskSubtasks.length > 0 && (
-                        <span className="pr-3 text-xs text-[#636363]">
+                        <span className="pr-3 text-xs text-muted-foreground">
                           {doneSubtasks}/{taskSubtasks.length}
                         </span>
                       )}
@@ -232,13 +243,14 @@ export function DayDrawer({ onClose, onTaskChange }: DayDrawerProps) {
                             className={`flex items-center gap-2 text-sm ${subtask.status === "done" ? "opacity-50" : ""}`}
                           >
                             <button
+                              type="button"
                               onClick={() => toggleSubtask(task.id, subtask.id)}
-                              className={`text-xs ${subtask.status === "done" ? "text-[#909d63]" : "text-[#636363] hover:text-[#909d63]"}`}
+                              className={`text-xs ${subtask.status === "done" ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
                             >
                               {subtask.status === "done" ? "[x]" : "[ ]"}
                             </button>
                             <span
-                              className={`text-[#d6d6d6] ${subtask.status === "done" ? "line-through" : ""}`}
+                              className={`text-foreground ${subtask.status === "done" ? "line-through" : ""}`}
                             >
                               {subtask.title}
                             </span>
@@ -253,8 +265,8 @@ export function DayDrawer({ onClose, onTaskChange }: DayDrawerProps) {
           )}
         </div>
 
-        <div className="p-3 border-t border-[#3d3a34] text-xs text-[#636363]">
-          Arraste tarefas para reagendar • Clique para editar
+        <div className="p-3 border-t border-border text-xs text-muted-foreground">
+          Arraste tarefas para reagendar
         </div>
       </div>
     </>

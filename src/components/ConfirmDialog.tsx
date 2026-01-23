@@ -49,13 +49,13 @@ export function ConfirmDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/60" onClick={onCancel} />
-      <div className="relative bg-[#232323] border border-[#3d3a34] p-4 max-w-md w-full mx-4">
-        <h3 className="text-[#d6d6d6] text-lg mb-2">{title}</h3>
-        <p className="text-[#828282] text-sm mb-4">{message}</p>
+      <div className="relative bg-card border border-border p-4 max-w-md w-full mx-4">
+        <h3 className="text-foreground text-lg mb-2">{title}</h3>
+        <p className="text-muted-foreground text-sm mb-4">{message}</p>
         <div className="flex justify-end gap-2">
           <button
             onClick={onCancel}
-            className="px-4 py-2 bg-[#2c2c2c] border border-[#3d3a34] text-[#828282] text-sm hover:text-[#d6d6d6] transition-colors"
+            className="px-4 py-2 bg-popover border border-border text-muted-foreground text-sm hover:text-foreground transition-colors"
           >
             {cancelText}
           </button>
@@ -63,8 +63,8 @@ export function ConfirmDialog({
             onClick={onConfirm}
             className={`px-4 py-2 text-sm transition-colors ${
               danger
-                ? "bg-[#bc5653] text-[#1c1c1c] hover:bg-[#cc6663]"
-                : "bg-[#909d63] text-[#1c1c1c] hover:bg-[#a0ad73]"
+                ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                : "bg-primary text-primary-foreground hover:bg-primary/90"
             }`}
           >
             {confirmText}

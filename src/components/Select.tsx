@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { useDialogStateStore } from "../stores/dialogState";
 
 type Option = {
@@ -16,28 +17,48 @@ type SelectProps = {
 export function Select({ value, onChange, options, placeholder, className = "" }: SelectProps) {
   const openDialog = useDialogStateStore((s) => s.openDialog);
   const closeDialog = useDialogStateStore((s) => s.closeDialog);
+  const isOpenRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (isOpenRef.current) {
+        closeDialog();
+      }
+    };
+  }, [closeDialog]);
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     onChange(e.target.value);
   }
 
-  function handleFocus() {
-    openDialog();
+  function handleMouseDown() {
+    // Open dialog immediately on mousedown (before focus event)
+    // This ensures dialogOpenRef is true before window focus changes
+    if (!isOpenRef.current) {
+      isOpenRef.current = true;
+      openDialog();
+    }
   }
 
   function handleBlur() {
-    setTimeout(() => closeDialog(), 100);
+    // Delay closing to allow for click selection within dropdown
+    setTimeout(() => {
+      if (isOpenRef.current) {
+        isOpenRef.current = false;
+        closeDialog();
+      }
+    }, 200);
   }
 
   return (
     <select
       value={value}
       onChange={handleChange}
-      onFocus={handleFocus}
+      onMouseDown={handleMouseDown}
       onBlur={handleBlur}
-      className={`px-2 py-1 bg-[#1c1c1c] border border-[#3d3a34] text-[#d6d6d6] text-sm focus:outline-none focus:border-[#909d63] appearance-none cursor-pointer ${className}`}
+      className={`px-2 py-1 bg-background border border-border text-foreground text-sm focus:outline-none focus:border-primary appearance-none cursor-pointer ${className}`}
       style={{
-        backgroundImage: `url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23828282%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')`,
+        backgroundImage: `url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27hsl(130 3%25 52%25)%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')`,
         backgroundRepeat: "no-repeat",
         backgroundPosition: "right 0.5rem center",
         backgroundSize: "1em",
@@ -50,7 +71,7 @@ export function Select({ value, onChange, options, placeholder, className = "" }
         </option>
       )}
       {options.map((opt) => (
-        <option key={opt.value} value={opt.value} className="bg-[#1c1c1c] text-[#d6d6d6]">
+        <option key={opt.value} value={opt.value} className="bg-background text-foreground">
           {opt.label}
         </option>
       ))}
