@@ -97,7 +97,7 @@ pub struct AppState {
 | `tasks` | id, project_id, title, description, priority, category, status, due_date, scheduled_date, complexity, initialized, context_*, ai_metadata (JSON), timestamps_*, modified_* |
 | `subtasks` | id, task_id, title, status, order, description, acceptance_criteria (JSON), technical_notes, prompt_context, created_at, completed_at |
 | `logs` | id, project_id, project_name, session_id, summary, files_modified (JSON), tokens_*, raw_json, created_at |
-| `daily_stats` | date, tokens_used, tokens_goal, tasks_completed |
+
 | `settings` | key, value |
 | `operation_logs` | id, entity_type, entity_id, operation, old_data, new_data, source, created_at |
 | `task_executions` | id, task_id, subtask_id, execution_type, status, current_step, total_steps, waiting_for_input, tmux_session, pid, last_heartbeat, error_message, started_at, ended_at |
@@ -314,7 +314,7 @@ Frontend: click "Estruturar"
 |---------|-------|
 | Linhas Rust (src-tauri/src/) | ~4,500 |
 | Linhas TS (packages/cli/src/) | ~2,500 |
-| Tabelas SQLite | 11 |
+| Tabelas SQLite | 10 |
 | Comandos Tauri | 62 |
 | Comandos CLI | 20+ |
 | Status de Task | 7 |
