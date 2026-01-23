@@ -16,8 +16,30 @@ const handlers: Record<string, HandlerFn> = {
   },
 
   'tasks.list': async (sdk, params) => {
-    const filters = params as Parameters<typeof sdk.tasks.list>[0];
+    const { projectId, ...rest } = (params ?? {}) as { projectId?: string } & Record<string, unknown>;
+    const filters: Parameters<typeof sdk.tasks.list>[0] = {
+      ...rest,
+      project_id: projectId,
+    };
     return sdk.tasks.list(filters);
+  },
+
+  'tasks.listFull': async (sdk, params) => {
+    const { projectId, ...rest } = (params ?? {}) as { projectId?: string } & Record<string, unknown>;
+    const filters: Parameters<typeof sdk.tasks.listFull>[0] = {
+      ...rest,
+      project_id: projectId,
+    };
+    return sdk.tasks.listFull(filters);
+  },
+
+  'tasks.listFullPaginated': async (sdk, params) => {
+    const { projectId, ...rest } = (params ?? {}) as { projectId?: string } & Record<string, unknown>;
+    const filters: Parameters<typeof sdk.tasks.listFullPaginated>[0] = {
+      ...rest,
+      project_id: projectId,
+    };
+    return sdk.tasks.listFullPaginated(filters);
   },
 
   'tasks.listUrgent': async (sdk) => {

@@ -6,6 +6,7 @@ import type {
   UpdateTaskInput,
   TaskStatus,
   TaskListFilters,
+  PaginatedResult,
 } from '@workopilot/core';
 
 export class TasksModule {
@@ -21,6 +22,14 @@ export class TasksModule {
 
   async list(filters?: TaskListFilters): Promise<Task[]> {
     return this.core.tasks.findAll(filters);
+  }
+
+  async listFull(filters?: TaskListFilters): Promise<TaskFull[]> {
+    return this.core.tasks.findAllFull(filters);
+  }
+
+  async listFullPaginated(filters?: TaskListFilters): Promise<PaginatedResult<TaskFull>> {
+    return this.core.tasks.findAllFullPaginated(filters);
   }
 
   async listUrgent(): Promise<Task[]> {
