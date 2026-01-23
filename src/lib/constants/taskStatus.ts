@@ -1,129 +1,179 @@
 import type { TaskFull } from "../../types";
+import {
+	type TaskProgressState,
+	TASK_PROGRESS_STATES,
+	PROGRESS_STATE_LABELS,
+	PROGRESS_STATE_COLORS,
+	PROGRESS_STATE_BADGE_VARIANTS,
+	PROGRESS_STATE_CONTAINER_CLASSES,
+	PROGRESS_STATE_INDICATORS,
+	getProgressStateLabel,
+	getProgressStateColor,
+	getProgressStateBadgeVariant,
+	getProgressStateContainerClass,
+	getProgressStateIndicator,
+	getProgressStateFilterOptions,
+	requiresUserAttention,
+	isAiWorking,
+	isCompleted,
+} from "./taskProgressState";
 
-export type TaskStatus =
-	| "pending"
-	| "structuring"
-	| "structured"
-	| "working"
-	| "standby"
-	| "ready_to_review"
-	| "completed";
-
-export const ALL_TASK_STATUSES: TaskStatus[] = [
-	"pending",
-	"structuring",
-	"structured",
-	"working",
-	"standby",
-	"ready_to_review",
-	"completed",
-];
-
-export const statusColors: Record<TaskStatus, string> = {
-	pending: "#636363",
-	structuring: "#c678dd",
-	structured: "#e5c07b",
-	working: "#61afef",
-	standby: "#d19a66",
-	ready_to_review: "#98c379",
-	completed: "#909d63",
+export type { TaskProgressState };
+export {
+	TASK_PROGRESS_STATES,
+	PROGRESS_STATE_LABELS,
+	PROGRESS_STATE_COLORS,
+	PROGRESS_STATE_BADGE_VARIANTS,
+	PROGRESS_STATE_CONTAINER_CLASSES,
+	PROGRESS_STATE_INDICATORS,
+	getProgressStateLabel,
+	getProgressStateColor,
+	getProgressStateBadgeVariant,
+	getProgressStateContainerClass,
+	getProgressStateIndicator,
+	getProgressStateFilterOptions,
+	requiresUserAttention,
+	isAiWorking,
+	isCompleted,
 };
 
-export const statusLabels: Record<TaskStatus, string> = {
-	pending: "Pendente",
-	structuring: "Estruturando",
-	structured: "Estruturada",
-	working: "Trabalhando",
-	standby: "Standby",
-	ready_to_review: "Revisão",
-	completed: "Concluída",
-};
+export function deriveProgressState(task: TaskFull | null): TaskProgressState {
+	if (!task) return "idle";
 
-export const statusHighlight: Record<TaskStatus, "none" | "border-l" | "ring"> =
-	{
-		pending: "none",
-		structuring: "border-l",
-		structured: "ring",
-		working: "border-l",
-		standby: "ring",
-		ready_to_review: "ring",
-		completed: "border-l",
-	};
+	const rawStatus = task.status?.toLowerCase() ?? "pending";
+	const subtasks = task.subtasks ?? [];
+	const description = task.context?.description ?? null;
 
-export const statusActor: Record<TaskStatus, "ai" | "user" | null> = {
-	pending: "user",
-	structuring: "ai",
-	structured: "user",
-	working: "ai",
-	standby: "user",
-	ready_to_review: "user",
-	completed: null,
-};
-
-export function getTaskStatus(status: string): TaskStatus {
-	if (ALL_TASK_STATUSES.includes(status as TaskStatus)) {
-		return status as TaskStatus;
+	if (rawStatus === "done") {
+		return "done";
 	}
-	if (status === "done") return "completed";
-	if (status === "active" || status === "in_progress") return "working";
-	return "pending";
+
+	if (rawStatus === "in_progress") {
+		return "ai-working";
+	}
+
+	const subtaskCount = subtasks.length;
+	const doneSubtaskCount = subtasks.filter((s) => s.status === "done").length;
+
+	if (subtaskCount > 0 && doneSubtaskCount === subtaskCount) {
+		return "ready-to-review";
+	}
+
+	if (subtaskCount > 0 && doneSubtaskCount > 0) {
+		return "in-execution";
+	}
+
+	if (subtaskCount > 0) {
+		return "ready-to-start";
+	}
+
+	if (description && description.trim().length > 0) {
+		return "started";
+	}
+
+	return "idle";
 }
 
-export function getTaskStatusFromTask(task: TaskFull | null): TaskStatus {
-	if (!task) return "pending";
-	return getTaskStatus(task.status);
+export function getTaskProgressState(task: TaskFull | null): TaskProgressState {
+	return deriveProgressState(task);
 }
 
-export function getStatusColor(status: string): string {
-	const taskStatus = getTaskStatus(status);
-	return statusColors[taskStatus];
+export function getTaskProgressStateLabel(task: TaskFull | null): string {
+	return getProgressStateLabel(deriveProgressState(task));
 }
 
-export function getTaskStatusColor(task: TaskFull | null): string {
-	const taskStatus = getTaskStatusFromTask(task);
-	return statusColors[taskStatus];
+export function getTaskProgressStateColor(task: TaskFull | null): string {
+	return getProgressStateColor(deriveProgressState(task));
 }
 
-export function getStatusLabel(status: string): string {
-	const taskStatus = getTaskStatus(status);
-	return statusLabels[taskStatus];
+export function getTaskProgressStateBadgeVariant(task: TaskFull | null) {
+	return getProgressStateBadgeVariant(deriveProgressState(task));
 }
 
-export function getTaskStatusLabel(task: TaskFull | null): string {
-	const taskStatus = getTaskStatusFromTask(task);
-	return statusLabels[taskStatus];
+export function getTaskProgressStateContainerClass(task: TaskFull | null): string {
+	return getProgressStateContainerClass(deriveProgressState(task));
 }
 
-export function isUserActionRequired(status: string): boolean {
-	const taskStatus = getTaskStatus(status);
-	return statusActor[taskStatus] === "user";
+export function getTaskProgressStateIndicator(task: TaskFull | null) {
+	return getProgressStateIndicator(deriveProgressState(task));
 }
 
-export function isTaskUserActionRequired(task: TaskFull | null): boolean {
-	if (!task) return false;
-	return isUserActionRequired(task.status);
+export function isTaskAwaitingUserAction(task: TaskFull | null): boolean {
+	return requiresUserAttention(deriveProgressState(task));
 }
 
-export function isAIWorking(status: string): boolean {
-	const taskStatus = getTaskStatus(status);
-	return taskStatus === "structuring" || taskStatus === "working";
+export function isTaskAiWorking(task: TaskFull | null): boolean {
+	return isAiWorking(deriveProgressState(task));
 }
 
-export function isTaskAIWorking(task: TaskFull | null): boolean {
-	if (!task) return false;
-	return isAIWorking(task.status);
+export function isTaskCompleted(task: TaskFull | null): boolean {
+	return isCompleted(deriveProgressState(task));
 }
 
-export type HighlightType = "none" | "border-l" | "ring";
+export type SuggestedAction =
+	| "structure"
+	| "execute_all"
+	| "execute_subtask"
+	| "review"
+	| "focus_terminal"
+	| null;
 
-export function getStatusHighlight(status: string): HighlightType {
-	const taskStatus = getTaskStatus(status);
-	return statusHighlight[taskStatus];
+export function getSuggestedAction(task: TaskFull | null): SuggestedAction {
+	if (!task) return null;
+
+	const progressState = deriveProgressState(task);
+
+	switch (progressState) {
+		case "idle":
+		case "started":
+			return "structure";
+
+		case "ai-working":
+			return "focus_terminal";
+
+		case "ready-to-start": {
+			const subtaskCount = task.subtasks?.length ?? 0;
+			return subtaskCount <= 3 ? "execute_all" : "execute_subtask";
+		}
+
+		case "in-execution":
+			return "execute_subtask";
+
+		case "ready-to-review":
+			return "review";
+
+		case "done":
+			return null;
+
+		default:
+			return null;
+	}
 }
 
-export function getTaskStatusHighlight(task: TaskFull | null): HighlightType {
-	if (!task) return "none";
-	return getStatusHighlight(task.status);
+export const SUGGESTED_ACTION_LABELS: Record<Exclude<SuggestedAction, null>, string> = {
+	structure: "Estruturar",
+	execute_all: "Executar tudo",
+	execute_subtask: "Executar subtask",
+	review: "Revisar",
+	focus_terminal: "Ver terminal",
+};
+
+export const SUGGESTED_ACTION_COLORS: Record<Exclude<SuggestedAction, null>, string> = {
+	structure: "#e5c07b",
+	execute_all: "#909d63",
+	execute_subtask: "#61afef",
+	review: "#98c379",
+	focus_terminal: "#c678dd",
+};
+
+export function getSuggestedActionLabel(action: SuggestedAction): string | null {
+	if (!action) return null;
+	return SUGGESTED_ACTION_LABELS[action];
+}
+
+export function getSuggestedActionColor(action: SuggestedAction): string | null {
+	if (!action) return null;
+	return SUGGESTED_ACTION_COLORS[action];
 }
 
 export function getComplexityColor(complexity: string | null): string {
@@ -142,88 +192,54 @@ export function getComplexityColor(complexity: string | null): string {
 export function getComplexityLabel(complexity: string | null): string {
 	const map: Record<string, string> = {
 		simple: "Simples",
-		medium: "Média",
+		medium: "Media",
 		complex: "Complexa",
 		S: "Simples",
-		M: "Média",
+		M: "Media",
 		L: "Complexa",
-		XL: "Muito Complexa",
+		XL: "Muito complexa",
 	};
 	return complexity ? map[complexity] || complexity : "-";
 }
 
-export function getStatusFilterOptions() {
-	return ALL_TASK_STATUSES.map((status) => ({
-		value: status,
-		label: statusLabels[status],
-	}));
-}
+/**
+ * Backend task status values (persisted in DB)
+ * @deprecated Use TaskProgressState for UI display
+ */
+export type TaskStatus = "pending" | "in_progress" | "done";
 
-export type SuggestedAction =
-	| "structure"
-	| "execute_all"
-	| "execute_subtask"
-	| "review"
-	| null;
+export const ALL_TASK_STATUSES: TaskStatus[] = ["pending", "in_progress", "done"];
 
-export function getSuggestedAction(task: TaskFull | null): SuggestedAction {
-	if (!task) return null;
-
-	const taskStatus = getTaskStatus(task.status);
-
-	if (taskStatus === "completed") return null;
-	if (taskStatus === "structuring" || taskStatus === "working") return null;
-
-	if (taskStatus === "pending") return "structure";
-	if (taskStatus === "ready_to_review") return "review";
-
-	if (taskStatus === "structured") {
-		const subtaskCount = task.subtasks.length;
-		if (subtaskCount <= 3) return "execute_all";
-		return "execute_subtask";
-	}
-
-	if (taskStatus === "standby") return "execute_subtask";
-
-	return null;
-}
-
-export const suggestedActionLabels: Record<SuggestedAction & string, string> = {
-	structure: "Estruturar",
-	execute_all: "Executar Tudo",
-	execute_subtask: "Executar Subtask",
-	review: "Revisar",
+export const statusLabels: Record<TaskStatus, string> = {
+	pending: "Pendente",
+	in_progress: "Em progresso",
+	done: "Concluida",
 };
 
-export const suggestedActionColors: Record<SuggestedAction & string, string> = {
-	structure: "#e5c07b",
-	execute_all: "#909d63",
-	execute_subtask: "#61afef",
-	review: "#e5c07b",
+export const statusColors: Record<TaskStatus, string> = {
+	pending: "#636363",
+	in_progress: "#61afef",
+	done: "#909d63",
 };
 
-export function getSuggestedActionLabel(
-	action: SuggestedAction,
-): string | null {
-	if (!action) return null;
-	return suggestedActionLabels[action];
+/**
+ * For legacy compatibility - maps task to a TaskStatus
+ * @deprecated Use deriveProgressState for accurate UI state
+ */
+export function getTaskStatusFromTask(task: TaskFull | null): TaskStatus {
+	if (!task) return "pending";
+	const status = task.status?.toLowerCase();
+	if (status === "done") return "done";
+	if (status === "in_progress") return "in_progress";
+	return "pending";
 }
 
-export function getSuggestedActionColor(
-	action: SuggestedAction,
-): string | null {
-	if (!action) return null;
-	return suggestedActionColors[action];
+/** @deprecated Use getSuggestedAction instead */
+export function getSuggestedActionByProgress(task: TaskFull | null): SuggestedAction {
+	return getSuggestedAction(task);
 }
 
-export type DerivedStatus = TaskStatus;
-export const getDerivedStatus = getTaskStatus;
-export const getTaskDerivedStatus = getTaskStatusFromTask;
-export type FullStatus = TaskStatus;
-export const getFullStatus = getTaskStatus;
-export const getTaskFullStatus = getTaskStatusFromTask;
-export const stateLabels = statusLabels;
-export const stateColors = statusColors;
-export const getTaskState = getTaskStatusFromTask;
-export const getStateLabel = getStatusLabel;
-export const getStateColor = getStatusColor;
+export function getTaskProgressStateHighlight(task: TaskFull | null): "pulse" | "none" {
+	const state = deriveProgressState(task);
+	return state === "ai-working" ? "pulse" : "none";
+}
