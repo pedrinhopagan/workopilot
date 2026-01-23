@@ -4,6 +4,7 @@ export interface Project {
   description?: string;
   display_order: number;
   created_at: string;
+  color?: string;
 }
 
 export interface ProjectRoute {
@@ -36,9 +37,10 @@ export interface ProjectWithConfig {
   business_rules: string;
   tmux_configured: boolean;
   created_at: string;
+  color?: string;
 }
 
-export type TaskStatus = "pending" | "in_progress" | "done" | "active";
+export type TaskStatus = "pending" | "in_progress" | "done";
 
 export interface Task {
   id: string;
@@ -99,6 +101,9 @@ export interface TaskFull {
   ai_metadata: AIMetadata;
   timestamps: TaskTimestamps;
   modified_at?: string | null;
+  project_id?: string | null;
+  due_date?: string | null;
+  scheduled_date?: string | null;
   // Legacy fields (kept for backwards compatibility, but no longer used)
   schema_version?: number;
   initialized?: boolean;
@@ -109,20 +114,6 @@ export interface TaskUpdatedPayload {
   task_id: string;
   project_path: string;
   source: "user" | "ai";
-}
-
-export interface SessionLog {
-  id: string;
-  project_name: string;
-  summary: string;
-  tokens_total: number;
-  created_at: string;
-  files_modified: FileModified[];
-}
-
-export interface FileModified {
-  path: string;
-  action: string;
 }
 
 export interface CalendarTask {
@@ -179,16 +170,6 @@ export interface TaskImage {
 	mime_type: string;
 	file_name: string;
 	created_at: string | null;
-}
-
-export interface ActivityLog {
-	id: string;
-	event_type: string;
-	entity_type: string | null;
-	entity_id: string | null;
-	project_id: string | null;
-	metadata: string | null;
-	created_at: string;
 }
 
 export interface UserSession {

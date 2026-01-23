@@ -23,6 +23,9 @@ type AgendaActions = {
   setCurrentMonth: (month: { year: number; month: number }) => void;
   setDraggedTask: (task: DraggedTask | null) => void;
   setDrawerCollapsed: (collapsed: boolean) => void;
+  // Drawer global actions
+  openDrawer: (date: string) => void;
+  closeDrawer: () => void;
   // AI Distribution actions
   toggleTaskSelection: (taskId: string) => void;
   selectAllTasks: (taskIds: string[]) => void;
@@ -53,6 +56,9 @@ export const useAgendaStore = create<AgendaStore>((set) => ({
   setCurrentMonth: (month) => set({ currentMonth: month }),
   setDraggedTask: (task) => set({ draggedTask: task }),
   setDrawerCollapsed: (collapsed) => set({ drawerCollapsed: collapsed }),
+  
+  openDrawer: (date) => set({ selectedDate: date, drawerCollapsed: false }),
+  closeDrawer: () => set({ selectedDate: null, drawerCollapsed: true }),
   
   // AI Distribution actions
   toggleTaskSelection: (taskId) => set((state) => {

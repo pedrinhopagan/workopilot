@@ -1,8 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { safeInvoke } from "../services/tauri";
-import type { TaskFull } from "../types";
-
-type TaskStatus = "pending" | "in_progress" | "done";
+import type { TaskFull, TaskStatus } from "../types";
 
 interface UpdateTaskStatusParams {
 	taskId: string;
