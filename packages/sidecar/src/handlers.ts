@@ -44,7 +44,11 @@ const handlers: Record<string, HandlerFn> = {
   },
 
   'tasks.create': async (sdk, params) => {
-    return sdk.tasks.create(params as Parameters<typeof sdk.tasks.create>[0]);
+    const { projectId, project_id, ...rest } = params as { projectId?: string; project_id?: string } & Record<string, unknown>;
+    return sdk.tasks.create({
+      project_id: project_id ?? projectId ?? null,
+      ...rest,
+    } as Parameters<typeof sdk.tasks.create>[0]);
   },
 
   'tasks.update': async (sdk, params) => {
