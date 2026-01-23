@@ -483,10 +483,15 @@ function getStatusColor(status: string): string {
     case "completed":
       return "bg-[#909d63]/20 text-[#909d63]";
     case "in_progress":
+    case "working":
+    case "structuring":
       return "bg-[#7daea3]/20 text-[#7daea3]";
     case "pending":
+    case "structured":
+    case "standby":
       return "bg-[#636363]/20 text-[#636363]";
     case "awaiting_review":
+    case "ready_to_review":
       return "bg-[#ebc17a]/20 text-[#ebc17a]";
     default:
       return "bg-[#636363]/20 text-[#636363]";

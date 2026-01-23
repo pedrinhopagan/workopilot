@@ -65,7 +65,7 @@ export function getTaskStatus(status: string): TaskStatus {
 		return status as TaskStatus;
 	}
 	if (status === "done") return "completed";
-	if (status === "active") return "working";
+	if (status === "active" || status === "in_progress") return "working";
 	return "pending";
 }
 
