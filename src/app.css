@@ -1,26 +1,93 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 
 /* ============================================================================
-   WorkOpilot Theme - Terminal-like aesthetic
-   Baseado nas cores do Alacritty + tmux
+   WorkoPilot Theme - Terminal-like aesthetic with shadcn/ui compatibility
+   Baseado nas cores do Alacritty + tmux + tema terroso (verde musgo, neon)
    ============================================================================ */
 
-@theme {
-  /* Custom breakpoints */
-  --breakpoint-xs: 720px;
+/* Custom dark variant for shadcn components */
+@custom-variant dark (&:is(.dark *));
 
-  /* Background - escuro como terminal */
+/* ============================================================================
+   CSS Variables - Semantic tokens for shadcn/ui
+   Dark theme as default (terminal aesthetic)
+   ============================================================================ */
+
+:root {
+  /* Radius - 0 for sharp edges (no rounded borders) */
+  --radius: 0rem;
+
+  /* Background colors - dark terminal palette */
+  --background: #1c1c1c;
+  --foreground: #d6d6d6;
+
+  /* Card - slightly elevated background */
+  --card: #232323;
+  --card-foreground: #d6d6d6;
+
+  /* Popover - elevated surfaces */
+  --popover: #2c2c2c;
+  --popover-foreground: #d6d6d6;
+
+  /* Primary - verde musgo (moss green) */
+  --primary: #909d63;
+  --primary-foreground: #1c1c1c;
+
+  /* Secondary - neutral dark */
+  --secondary: #333333;
+  --secondary-foreground: #d6d6d6;
+
+  /* Muted - subtle elements */
+  --muted: #2c2c2c;
+  --muted-foreground: #828282;
+
+  /* Accent - yellow/gold for highlights */
+  --accent: #ebc17a;
+  --accent-foreground: #1c1c1c;
+
+  /* Destructive - error red */
+  --destructive: #bc5653;
+  --destructive-foreground: #d6d6d6;
+
+  /* Border and input */
+  --border: #3d3a34;
+  --input: #3d3a34;
+  --ring: #909d63;
+
+  /* Chart colors - earthy palette */
+  --chart-1: #909d63;
+  --chart-2: #ebc17a;
+  --chart-3: #86d3ce;
+  --chart-4: #7eaac7;
+  --chart-5: #aa6292;
+
+  /* Sidebar - slightly different background */
+  --sidebar: #232323;
+  --sidebar-foreground: #d6d6d6;
+  --sidebar-primary: #909d63;
+  --sidebar-primary-foreground: #1c1c1c;
+  --sidebar-accent: #333333;
+  --sidebar-accent-foreground: #d6d6d6;
+  --sidebar-border: #3d3a34;
+  --sidebar-ring: #909d63;
+
+  /* ============================================================================
+     Extended WorkoPilot colors (kept for backward compatibility)
+     ============================================================================ */
+
+  /* Additional background shades */
   --color-bg: #1c1c1c;
   --color-bg-secondary: #232323;
   --color-bg-elevated: #2c2c2c;
   --color-bg-hover: #333333;
 
-  /* Foreground */
+  /* Foreground shades */
   --color-fg: #d6d6d6;
   --color-fg-muted: #828282;
   --color-fg-subtle: #636363;
 
-  /* Primary - verde musgo (mantido do original) */
+  /* Primary variants */
   --color-primary: #909d63;
   --color-primary-hover: #a0ad73;
   --color-primary-muted: #6b7c5e;
@@ -48,48 +115,155 @@
   --font-mono: "JetBrains Mono", "Fira Code", "Consolas", monospace;
 }
 
+/* Light mode (optional - can be triggered by removing .dark class) */
+.light {
+  --background: #f5f5f0;
+  --foreground: #1c1c1c;
+  --card: #ffffff;
+  --card-foreground: #1c1c1c;
+  --popover: #ffffff;
+  --popover-foreground: #1c1c1c;
+  --primary: #6b7c5e;
+  --primary-foreground: #f5f5f0;
+  --secondary: #e8e8e0;
+  --secondary-foreground: #1c1c1c;
+  --muted: #e8e8e0;
+  --muted-foreground: #636363;
+  --accent: #c9a55c;
+  --accent-foreground: #1c1c1c;
+  --destructive: #bc5653;
+  --destructive-foreground: #f5f5f0;
+  --border: #d6d6c8;
+  --input: #d6d6c8;
+  --ring: #6b7c5e;
+  --sidebar: #f0f0e8;
+  --sidebar-foreground: #1c1c1c;
+  --sidebar-primary: #6b7c5e;
+  --sidebar-primary-foreground: #f5f5f0;
+  --sidebar-accent: #e8e8e0;
+  --sidebar-accent-foreground: #1c1c1c;
+  --sidebar-border: #d6d6c8;
+  --sidebar-ring: #6b7c5e;
+}
+
+/* ============================================================================
+   @theme inline - Map CSS variables to Tailwind utilities
+   This enables classes like bg-primary, text-foreground, etc.
+   ============================================================================ */
+
+@theme inline {
+  /* Breakpoints */
+  --breakpoint-xs: 720px;
+
+  /* Colors mapped from CSS variables */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  /* Sidebar colors */
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Radius - all 0 for sharp edges */
+  --radius-sm: 0rem;
+  --radius-md: 0rem;
+  --radius-lg: 0rem;
+  --radius-xl: 0rem;
+
+  /* Font */
+  --font-mono: var(--font-mono);
+}
+
 /* ============================================================================
    Base Styles
    ============================================================================ */
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-  font-family: var(--font-mono);
-  background-color: #1c1c1c !important;
-  color: var(--color-fg);
-  overflow: hidden;
-  font-size: 13px;
-  line-height: 1.4;
-}
+@layer base {
+  * {
+    @apply border-border;
+  }
 
-select {
-  color: #d6d6d6 !important;
-  background-color: #232323 !important;
-}
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    font-family: var(--font-mono);
+    @apply bg-background text-foreground;
+    overflow: hidden;
+    font-size: 13px;
+    line-height: 1.4;
+  }
 
-select option {
-  background-color: #232323 !important;
-  color: #d6d6d6 !important;
-}
+  /* Form elements */
+  select {
+    @apply text-foreground bg-card;
+  }
 
-select:focus option:checked,
-select option:checked {
-  background-color: #909d63 !important;
-  color: #1c1c1c !important;
-}
+  select option {
+    @apply bg-card text-foreground;
+  }
 
-::selection {
-  background-color: #909d63 !important;
-  color: #1c1c1c !important;
-}
+  select:focus option:checked,
+  select option:checked {
+    @apply bg-primary text-primary-foreground;
+  }
 
-input::selection,
-textarea::selection {
-  background-color: #909d63 !important;
-  color: #1c1c1c !important;
+  /* Selection */
+  ::selection {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  input::selection,
+  textarea::selection {
+    @apply bg-primary text-primary-foreground;
+  }
+
+  /* Focus styles */
+  :focus-visible {
+    @apply outline-1 outline-ring outline-offset-1;
+  }
+
+  /* Form elements base */
+  input,
+  select,
+  textarea,
+  button {
+    font-family: inherit;
+    font-size: inherit;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-muted-foreground;
+  }
 }
 
 /* ============================================================================
@@ -102,50 +276,15 @@ textarea::selection {
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--color-bg);
+  @apply bg-background;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--color-border);
+  @apply bg-border;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--color-fg-subtle);
-}
-
-/* ============================================================================
-   Selection
-   ============================================================================ */
-
-::selection {
-  background: var(--color-primary-muted);
-  color: var(--color-bg);
-}
-
-/* ============================================================================
-   Focus styles
-   ============================================================================ */
-
-:focus-visible {
-  outline: 1px solid var(--color-primary);
-  outline-offset: 1px;
-}
-
-/* ============================================================================
-   Form elements base
-   ============================================================================ */
-
-input,
-select,
-textarea,
-button {
-  font-family: inherit;
-  font-size: inherit;
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: var(--color-fg-subtle);
+  @apply bg-muted-foreground;
 }
 
 /* ============================================================================
