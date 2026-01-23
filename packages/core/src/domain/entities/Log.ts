@@ -41,13 +41,6 @@ export interface OperationLog {
   created_at: string;
 }
 
-export interface DailyStats {
-  date: string;
-  tokens_used: number;
-  tokens_goal: number;
-  tasks_completed: number;
-}
-
 export interface CreateActivityLogInput {
   event_type: string;
   entity_type?: string | null;

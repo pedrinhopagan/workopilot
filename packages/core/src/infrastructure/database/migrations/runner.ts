@@ -45,11 +45,22 @@ async function ensureProjectsTable(db: Kysely<Database>): Promise<MigrationResul
       business_rules TEXT DEFAULT '',
       tmux_configured INTEGER DEFAULT 0,
       display_order INTEGER DEFAULT 0,
+      color TEXT,
       created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `.execute(db);
 
   return { name: 'create_projects_table', success: true, message: 'Table created' };
+}
+
+async function migrateProjectsColor(db: Kysely<Database>): Promise<MigrationResult> {
+  const hasColor = await columnExists(db, 'projects', 'color');
+  if (hasColor) {
+    return { name: 'migrate_projects_color', success: true, message: 'Column already exists' };
+  }
+
+  await sql`ALTER TABLE projects ADD COLUMN color TEXT`.execute(db);
+  return { name: 'migrate_projects_color', success: true, message: 'Added color column' };
 }
 
 async function ensureTasksTable(db: Kysely<Database>): Promise<MigrationResult> {
@@ -171,23 +182,7 @@ async function ensureLogsTable(db: Kysely<Database>): Promise<MigrationResult> {
   return { name: 'create_logs_table', success: true, message: 'Table created' };
 }
 
-async function ensureDailyStatsTable(db: Kysely<Database>): Promise<MigrationResult> {
-  const exists = await tableExists(db, 'daily_stats');
-  if (exists) {
-    return { name: 'ensure_daily_stats_table', success: true, message: 'Table already exists' };
-  }
 
-  await sql`
-    CREATE TABLE daily_stats (
-      date TEXT PRIMARY KEY,
-      tokens_used INTEGER DEFAULT 0,
-      tokens_goal INTEGER DEFAULT 100000,
-      tasks_completed INTEGER DEFAULT 0
-    )
-  `.execute(db);
-
-  return { name: 'create_daily_stats_table', success: true, message: 'Table created' };
-}
 
 async function ensureSettingsTable(db: Kysely<Database>): Promise<MigrationResult> {
   const exists = await tableExists(db, 'settings');
@@ -462,7 +457,6 @@ export async function runMigrations(db: Kysely<Database>): Promise<MigrationResu
     results.push(await ensureTasksTable(db));
     results.push(await ensureSubtasksTable(db));
     results.push(await ensureLogsTable(db));
-    results.push(await ensureDailyStatsTable(db));
     results.push(await ensureSettingsTable(db));
     results.push(await ensureOperationLogsTable(db));
     results.push(await ensureTaskExecutionsTable(db));
@@ -472,6 +466,7 @@ export async function runMigrations(db: Kysely<Database>): Promise<MigrationResu
     results.push(await ensureUserSessionsTable(db));
     results.push(await migrateTaskStatusValues(db));
     results.push(await migrateTasksSchemaV2(db));
+    results.push(await migrateProjectsColor(db));
   } catch (error) {
     results.push({
       name: 'migration_error',

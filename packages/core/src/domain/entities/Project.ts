@@ -28,6 +28,7 @@ export interface Project {
   business_rules: string;
   tmux_configured: boolean;
   display_order: number;
+  color: string | null;
   created_at: string;
 }
 
@@ -49,4 +50,5 @@ export interface UpdateProjectInput {
   business_rules?: string;
   tmux_configured?: boolean;
   display_order?: number;
+  color?: string | null;
 }

@@ -3,7 +3,6 @@ import type {
   ActivityLog, 
   UserSession, 
   OperationLog, 
-  DailyStats,
   CreateActivityLogInput, 
   CreateOperationLogInput 
 } from '../../domain/entities/Log';
@@ -29,7 +28,4 @@ export interface LogRepository {
   findUserSessions(limit?: number): Promise<UserSession[]>;
   startUserSession(appVersion?: string): Promise<UserSession>;
   endUserSession(id: string): Promise<UserSession>;
-  
-  getDailyStats(date: string): Promise<DailyStats | null>;
-  updateDailyStats(date: string, updates: Partial<DailyStats>): Promise<DailyStats>;
 }

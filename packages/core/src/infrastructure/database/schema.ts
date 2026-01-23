@@ -10,6 +10,7 @@ export interface ProjectsTable {
   business_rules: string;
   tmux_configured: number;
   display_order: number;
+  color: string | null;
   created_at: Generated<string>;
 }
 
@@ -60,13 +61,6 @@ export interface LogsTable {
   tokens_total: number;
   raw_json: string | null;
   created_at: Generated<string>;
-}
-
-export interface DailyStatsTable {
-  date: string;
-  tokens_used: number;
-  tokens_goal: number;
-  tasks_completed: number;
 }
 
 export interface SettingsTable {
@@ -144,7 +138,6 @@ export interface Database {
   tasks: TasksTable;
   subtasks: SubtasksTable;
   logs: LogsTable;
-  daily_stats: DailyStatsTable;
   settings: SettingsTable;
   operation_logs: OperationLogsTable;
   task_executions: TaskExecutionsTable;

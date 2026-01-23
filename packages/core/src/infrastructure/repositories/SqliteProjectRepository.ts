@@ -27,6 +27,7 @@ function rowToProject(row: ProjectRow): Project {
     business_rules: row.business_rules,
     tmux_configured: Boolean(row.tmux_configured),
     display_order: row.display_order,
+    color: row.color,
     created_at: row.created_at,
   };
 }
@@ -99,6 +100,7 @@ export class SqliteProjectRepository implements ProjectRepository {
     if (input.business_rules !== undefined) updates.business_rules = input.business_rules;
     if (input.tmux_configured !== undefined) updates.tmux_configured = input.tmux_configured ? 1 : 0;
     if (input.display_order !== undefined) updates.display_order = input.display_order;
+    if (input.color !== undefined) updates.color = input.color;
 
     if (Object.keys(updates).length > 0) {
       await this.db

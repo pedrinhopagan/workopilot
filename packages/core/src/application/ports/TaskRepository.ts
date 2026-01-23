@@ -1,18 +1,40 @@
 import type { Task, TaskFull, CreateTaskInput, UpdateTaskInput } from '../../domain/entities/Task';
 import type { TaskStatus } from '../../domain/value-objects/TaskStatus';
+import type { TaskPriority } from '../../domain/value-objects/TaskPriority';
+import type { TaskCategory } from '../../domain/value-objects/TaskCategory';
+
+export type TaskSortBy = 'priority' | 'created_at' | 'title' | 'progress_state';
+export type SortOrder = 'asc' | 'desc';
 
 export interface TaskListFilters {
   project_id?: string;
   status?: TaskStatus | TaskStatus[];
+  priority?: TaskPriority;
+  category?: TaskCategory;
   scheduled_date?: string;
   due_date?: string;
-  limit?: number;
+  q?: string;
+  page?: number;
+  perPage?: number;
+  sortBy?: TaskSortBy;
+  sortOrder?: SortOrder;
+  excludeDone?: boolean;
+}
+
+export interface PaginatedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  perPage: number;
+  totalPages: number;
 }
 
 export interface TaskRepository {
   findById(id: string): Promise<Task | null>;
   findFullById(id: string): Promise<TaskFull | null>;
   findAll(filters?: TaskListFilters): Promise<Task[]>;
+  findAllFull(filters?: TaskListFilters): Promise<TaskFull[]>;
+  findAllFullPaginated(filters?: TaskListFilters): Promise<PaginatedResult<TaskFull>>;
   findUrgent(): Promise<Task[]>;
   findActive(): Promise<Task[]>;
   findForDate(date: string): Promise<Task[]>;

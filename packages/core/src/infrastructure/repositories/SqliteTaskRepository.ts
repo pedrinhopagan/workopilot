@@ -1,6 +1,6 @@
-import { Kysely } from 'kysely';
+import { Kysely, sql } from 'kysely';
 import type { Database, TaskRow } from '../database/schema';
-import type { TaskRepository, TaskListFilters } from '../../application/ports/TaskRepository';
+import type { TaskRepository, TaskListFilters, PaginatedResult } from '../../application/ports/TaskRepository';
 import type { Task, TaskFull, CreateTaskInput, UpdateTaskInput, TaskContext, AIMetadata, TaskTimestamps } from '../../domain/entities/Task';
 import type { Subtask } from '../../domain/entities/Subtask';
 import type { TaskStatus } from '../../domain/value-objects/TaskStatus';
@@ -78,6 +78,34 @@ function rowToTaskFull(row: TaskRow, subtasks: Subtask[]): TaskFull {
   };
 }
 
+function subtaskRowToSubtask(s: {
+  id: string;
+  task_id: string;
+  title: string;
+  status: string;
+  order: number;
+  description: string | null;
+  acceptance_criteria: string | null;
+  technical_notes: string | null;
+  prompt_context: string | null;
+  created_at: string;
+  completed_at: string | null;
+}): Subtask {
+  return {
+    id: s.id,
+    task_id: s.task_id,
+    title: s.title,
+    status: s.status as Subtask['status'],
+    order: s.order,
+    description: s.description,
+    acceptance_criteria: parseJsonSafe(s.acceptance_criteria, null),
+    technical_notes: s.technical_notes,
+    prompt_context: s.prompt_context,
+    created_at: s.created_at,
+    completed_at: s.completed_at,
+  };
+}
+
 export class SqliteTaskRepository implements TaskRepository {
   constructor(private db: Kysely<Database>) {}
 
@@ -107,20 +135,7 @@ export class SqliteTaskRepository implements TaskRepository {
       .orderBy('order', 'asc')
       .execute();
 
-    const subtasks: Subtask[] = subtaskRows.map((s) => ({
-      id: s.id,
-      task_id: s.task_id,
-      title: s.title,
-      status: s.status as Subtask['status'],
-      order: s.order,
-      description: s.description,
-      acceptance_criteria: parseJsonSafe(s.acceptance_criteria, null),
-      technical_notes: s.technical_notes,
-      prompt_context: s.prompt_context,
-      created_at: s.created_at as string,
-      completed_at: s.completed_at,
-    }));
-
+    const subtasks: Subtask[] = subtaskRows.map(subtaskRowToSubtask);
     return rowToTaskFull(row, subtasks);
   }
 
@@ -139,6 +154,18 @@ export class SqliteTaskRepository implements TaskRepository {
       }
     }
 
+    if (filters?.excludeDone) {
+      query = query.where('status', '!=', 'done');
+    }
+
+    if (filters?.priority) {
+      query = query.where('priority', '=', filters.priority);
+    }
+
+    if (filters?.category) {
+      query = query.where('category', '=', filters.category);
+    }
+
     if (filters?.scheduled_date) {
       query = query.where('scheduled_date', '=', filters.scheduled_date);
     }
@@ -147,14 +174,236 @@ export class SqliteTaskRepository implements TaskRepository {
       query = query.where('due_date', '=', filters.due_date);
     }
 
-    if (filters?.limit) {
-      query = query.limit(filters.limit);
+    if (filters?.q) {
+      const searchTerm = `%${filters.q}%`;
+      query = query.where((eb) =>
+        eb.or([
+          eb('title', 'like', searchTerm),
+          eb('description', 'like', searchTerm),
+        ])
+      );
     }
 
     query = query.orderBy('priority', 'asc').orderBy('created_at', 'desc');
 
     const rows = await query.execute();
     return rows.map(rowToTask);
+  }
+
+  async findAllFull(filters?: TaskListFilters): Promise<TaskFull[]> {
+    const result = await this.findAllFullPaginated(filters);
+    return result.items;
+  }
+
+  async findAllFullPaginated(filters?: TaskListFilters): Promise<PaginatedResult<TaskFull>> {
+    const page = filters?.page ?? 1;
+    const perPage = Math.min(filters?.perPage ?? 20, 100);
+    const offset = (page - 1) * perPage;
+
+    let baseQuery = this.db.selectFrom('tasks');
+
+    if (filters?.project_id) {
+      baseQuery = baseQuery.where('project_id', '=', filters.project_id);
+    }
+
+    if (filters?.status) {
+      if (Array.isArray(filters.status)) {
+        baseQuery = baseQuery.where('status', 'in', filters.status);
+      } else {
+        baseQuery = baseQuery.where('status', '=', filters.status);
+      }
+    }
+
+    if (filters?.excludeDone) {
+      baseQuery = baseQuery.where('status', '!=', 'done');
+    }
+
+    if (filters?.priority) {
+      baseQuery = baseQuery.where('priority', '=', filters.priority);
+    }
+
+    if (filters?.category) {
+      baseQuery = baseQuery.where('category', '=', filters.category);
+    }
+
+    if (filters?.scheduled_date) {
+      baseQuery = baseQuery.where('scheduled_date', '=', filters.scheduled_date);
+    }
+
+    if (filters?.due_date) {
+      baseQuery = baseQuery.where('due_date', '=', filters.due_date);
+    }
+
+    if (filters?.q) {
+      const searchTerm = `%${filters.q}%`;
+      baseQuery = baseQuery.where((eb) =>
+        eb.or([
+          eb('title', 'like', searchTerm),
+          eb('description', 'like', searchTerm),
+        ])
+      );
+    }
+
+    const countResult = await baseQuery
+      .select((eb) => eb.fn.count<number>('id').as('count'))
+      .executeTakeFirst();
+    const total = Number(countResult?.count ?? 0);
+
+    const taskIds = await baseQuery
+      .select('tasks.id')
+      .execute();
+
+    if (taskIds.length === 0) {
+      return {
+        items: [],
+        total: 0,
+        page,
+        perPage,
+        totalPages: 0,
+      };
+    }
+
+    const allTaskIds = taskIds.map((t) => t.id);
+
+    const subtaskAggQuery = await this.db
+      .selectFrom('subtasks')
+      .select([
+        'task_id',
+        (eb) => eb.fn.count<number>('id').as('subtask_count'),
+        (eb) => sql<number>`SUM(CASE WHEN ${eb.ref('status')} = 'done' THEN 1 ELSE 0 END)`.as('done_count'),
+      ])
+      .where('task_id', 'in', allTaskIds)
+      .groupBy('task_id')
+      .execute();
+
+    const subtaskStats = new Map<string, { subtask_count: number; done_count: number }>();
+    for (const row of subtaskAggQuery) {
+      subtaskStats.set(row.task_id, {
+        subtask_count: Number(row.subtask_count),
+        done_count: Number(row.done_count),
+      });
+    }
+
+    let taskQuery = baseQuery.selectAll();
+
+    const sortBy = filters?.sortBy ?? 'progress_state';
+    const sortOrder = filters?.sortOrder ?? 'asc';
+
+    if (sortBy === 'progress_state') {
+      taskQuery = taskQuery.orderBy(
+        sql`
+          CASE 
+            WHEN status = 'done' THEN 7
+            WHEN status = 'in_progress' THEN 4
+            ELSE 6
+          END
+        `,
+        'asc'
+      );
+      taskQuery = taskQuery.orderBy('priority', 'asc');
+    } else if (sortBy === 'priority') {
+      taskQuery = taskQuery.orderBy('priority', sortOrder);
+    } else if (sortBy === 'created_at') {
+      taskQuery = taskQuery.orderBy('created_at', sortOrder);
+    } else if (sortBy === 'title') {
+      taskQuery = taskQuery.orderBy('title', sortOrder);
+    }
+
+    taskQuery = taskQuery.limit(perPage).offset(offset);
+
+    const taskRows = await taskQuery.execute();
+
+    if (taskRows.length === 0) {
+      return {
+        items: [],
+        total,
+        page,
+        perPage,
+        totalPages: Math.ceil(total / perPage),
+      };
+    }
+
+    const pageTaskIds = taskRows.map((t) => t.id);
+    const subtaskRows = await this.db
+      .selectFrom('subtasks')
+      .selectAll()
+      .where('task_id', 'in', pageTaskIds)
+      .orderBy('order', 'asc')
+      .execute();
+
+    const subtasksByTaskId = new Map<string, Subtask[]>();
+    for (const s of subtaskRows) {
+      const subtask = subtaskRowToSubtask(s);
+      const list = subtasksByTaskId.get(s.task_id) || [];
+      list.push(subtask);
+      subtasksByTaskId.set(s.task_id, list);
+    }
+
+    const items = taskRows.map((row) => {
+      const subtasks = subtasksByTaskId.get(row.id) || [];
+      return rowToTaskFull(row, subtasks);
+    });
+
+    const sortedItems = this.sortByProgressState(items, subtaskStats);
+
+    return {
+      items: sortedItems,
+      total,
+      page,
+      perPage,
+      totalPages: Math.ceil(total / perPage),
+    };
+  }
+
+  private sortByProgressState(
+    items: TaskFull[],
+    subtaskStats: Map<string, { subtask_count: number; done_count: number }>
+  ): TaskFull[] {
+    return items.sort((a, b) => {
+      const rankA = this.getProgressStateRank(a, subtaskStats);
+      const rankB = this.getProgressStateRank(b, subtaskStats);
+
+      if (rankA !== rankB) {
+        return rankA - rankB;
+      }
+
+      return a.priority - b.priority;
+    });
+  }
+
+  private getProgressStateRank(
+    task: TaskFull,
+    subtaskStats: Map<string, { subtask_count: number; done_count: number }>
+  ): number {
+    if (task.status === 'done') {
+      return 7;
+    }
+
+    if (task.status === 'in_progress') {
+      return 4;
+    }
+
+    const stats = subtaskStats.get(task.id) || { subtask_count: 0, done_count: 0 };
+    const { subtask_count, done_count } = stats;
+
+    if (subtask_count > 0 && done_count === subtask_count) {
+      return 3;
+    }
+
+    if (subtask_count > 0 && done_count > 0) {
+      return 1;
+    }
+
+    if (subtask_count > 0) {
+      return 2;
+    }
+
+    const hasDescription = task.context?.description && task.context.description.trim().length > 0;
+    if (hasDescription) {
+      return 5;
+    }
+
+    return 6;
   }
 
   async findUrgent(): Promise<Task[]> {
