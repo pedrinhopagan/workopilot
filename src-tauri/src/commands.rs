@@ -38,6 +38,7 @@ pub struct Project {
     #[serde(default)]
     pub tmux_configured: bool,
     pub created_at: Option<String>,
+    pub color: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -257,6 +258,19 @@ pub fn update_project_business_rules(
 }
 
 #[tauri::command]
+pub fn update_project_color(
+    state: State<AppState>,
+    project_id: String,
+    color: Option<String>,
+) -> Result<(), String> {
+    sidecar_call!(state, "projects.update", json!({
+        "id": project_id,
+        "color": color
+    }))?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn update_projects_order(
     state: State<AppState>,
     project_orders: Vec<(String, i32)>,
@@ -296,6 +310,64 @@ pub fn get_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
 #[tauri::command]
 pub fn get_all_tasks_full(state: State<AppState>) -> Result<Vec<TaskFull>, String> {
     let result = sidecar_call!(state, "tasks.listFull")?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct PaginatedTasksResult {
+    pub items: Vec<TaskFull>,
+    pub total: i64,
+    pub page: i32,
+    #[serde(rename = "perPage")]
+    pub per_page: i32,
+    #[serde(rename = "totalPages")]
+    pub total_pages: i32,
+}
+
+#[tauri::command]
+pub fn tasks_list_full_paginated(
+    state: State<AppState>,
+    project_id: Option<String>,
+    q: Option<String>,
+    priority: Option<i32>,
+    category: Option<String>,
+    page: Option<i32>,
+    per_page: Option<i32>,
+    sort_by: Option<String>,
+    sort_order: Option<String>,
+    exclude_done: Option<bool>,
+) -> Result<PaginatedTasksResult, String> {
+    let mut params = json!({});
+    
+    if let Some(pid) = project_id {
+        params["projectId"] = json!(pid);
+    }
+    if let Some(search) = q {
+        params["q"] = json!(search);
+    }
+    if let Some(p) = priority {
+        params["priority"] = json!(p);
+    }
+    if let Some(c) = category {
+        params["category"] = json!(c);
+    }
+    if let Some(pg) = page {
+        params["page"] = json!(pg);
+    }
+    if let Some(pp) = per_page {
+        params["perPage"] = json!(pp);
+    }
+    if let Some(sb) = sort_by {
+        params["sortBy"] = json!(sb);
+    }
+    if let Some(so) = sort_order {
+        params["sortOrder"] = json!(so);
+    }
+    if let Some(ed) = exclude_done {
+        params["excludeDone"] = json!(ed);
+    }
+    
+    let result = sidecar_call!(state, "tasks.listFullPaginated", params)?;
     serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
 }
 
@@ -854,27 +926,6 @@ pub fn get_ai_suggestion(tasks: Vec<Task>) -> Result<String, String> {
     suggestion.push_str(&format!("Total de {} tarefas pendentes.", pending_count));
 
     Ok(suggestion)
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct FileModified {
-    pub path: String,
-    pub action: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct SessionLog {
-    pub id: String,
-    pub project_name: String,
-    pub summary: String,
-    pub tokens_total: i32,
-    pub files_modified: Vec<FileModified>,
-    pub created_at: String,
-}
-
-#[tauri::command]
-pub fn get_session_logs(_state: State<AppState>) -> Result<Vec<SessionLog>, String> {
-    Ok(vec![])
 }
 
 fn generate_loading_animation_script(
@@ -1471,8 +1522,9 @@ SESSION="{session_name}"
 if tmux has-session -t "$SESSION" 2>/dev/null; then
     tmux attach-session -t "$SESSION"
 else
-    echo "Session $SESSION not found"
-    sleep 2
+    # Create new session if it doesn't exist
+    tmux new-session -d -s "$SESSION" -c "$HOME"
+    tmux attach-session -t "$SESSION"
 fi
 "#
     );
@@ -1721,105 +1773,6 @@ pub fn add_task_image_from_path(
 
     db.add_task_image(&task_id, &data, mime_type, &file_name)
         .map_err(|e| e.to_string())
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ActivityLog {
-    pub id: String,
-    pub event_type: String,
-    pub entity_type: Option<String>,
-    pub entity_id: Option<String>,
-    pub project_id: Option<String>,
-    pub metadata: Option<String>,
-    pub created_at: String,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ActivityLogWithContext {
-    pub id: String,
-    pub event_type: String,
-    pub entity_type: Option<String>,
-    pub entity_id: Option<String>,
-    pub project_id: Option<String>,
-    pub metadata: Option<String>,
-    pub created_at: String,
-    pub project_name: Option<String>,
-    pub task_title: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct ActivityLogSearchResult {
-    pub logs: Vec<ActivityLogWithContext>,
-    pub total: i32,
-    pub next_cursor: Option<String>,
-    pub has_more: bool,
-}
-
-#[tauri::command]
-pub fn get_activity_logs(
-    state: State<AppState>,
-    event_type: Option<String>,
-    entity_type: Option<String>,
-    project_id: Option<String>,
-    limit: Option<i32>,
-) -> Result<Vec<ActivityLog>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let logs = db.get_activity_logs(
-        event_type.as_deref(),
-        entity_type.as_deref(),
-        project_id.as_deref(),
-        limit,
-    ).map_err(|e| e.to_string())?;
-    
-    Ok(logs.into_iter().map(|l| ActivityLog {
-        id: l.id,
-        event_type: l.event_type,
-        entity_type: l.entity_type,
-        entity_id: l.entity_id,
-        project_id: l.project_id,
-        metadata: l.metadata,
-        created_at: l.created_at,
-    }).collect())
-}
-
-#[tauri::command]
-pub fn search_activity_logs(
-    state: State<AppState>,
-    query: Option<String>,
-    event_types: Option<Vec<String>>,
-    project_id: Option<String>,
-    from_date: Option<String>,
-    to_date: Option<String>,
-    cursor: Option<String>,
-    limit: Option<i32>,
-) -> Result<ActivityLogSearchResult, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let result = db.search_activity_logs(
-        query.as_deref(),
-        event_types,
-        project_id.as_deref(),
-        from_date.as_deref(),
-        to_date.as_deref(),
-        cursor.as_deref(),
-        limit.unwrap_or(30),
-    ).map_err(|e| e.to_string())?;
-    
-    Ok(ActivityLogSearchResult {
-        logs: result.logs.into_iter().map(|l| ActivityLogWithContext {
-            id: l.id,
-            event_type: l.event_type,
-            entity_type: l.entity_type,
-            entity_id: l.entity_id,
-            project_id: l.project_id,
-            metadata: l.metadata,
-            created_at: l.created_at,
-            project_name: l.project_name,
-            task_title: l.task_title,
-        }).collect(),
-        total: result.total,
-        next_cursor: result.next_cursor,
-        has_more: result.has_more,
-    })
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

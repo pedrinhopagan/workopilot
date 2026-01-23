@@ -54,27 +54,6 @@ impl Database {
                 completed_at TEXT
             );
             
-            CREATE TABLE IF NOT EXISTS logs (
-                id TEXT PRIMARY KEY,
-                project_id TEXT REFERENCES projects(id),
-                project_name TEXT,
-                session_id TEXT,
-                summary TEXT,
-                files_modified TEXT,
-                tokens_input INTEGER DEFAULT 0,
-                tokens_output INTEGER DEFAULT 0,
-                tokens_total INTEGER DEFAULT 0,
-                raw_json TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
-            
-            CREATE TABLE IF NOT EXISTS daily_stats (
-                date TEXT PRIMARY KEY,
-                tokens_used INTEGER DEFAULT 0,
-                tokens_goal INTEGER DEFAULT 100000,
-                tasks_completed INTEGER DEFAULT 0
-            );
-            
             CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
@@ -92,11 +71,11 @@ impl Database {
         self.migrate_operation_logs_table()?;
         self.migrate_task_executions_table()?;
         self.migrate_task_images_table()?;
-        self.migrate_activity_logs_table()?;
         self.migrate_user_sessions_table()?;
         self.migrate_projects_display_order()?;
         self.migrate_tasks_substatus()?;
         self.migrate_task_status_values()?;
+        self.migrate_projects_color()?;
 
         Ok(())
     }
@@ -349,27 +328,6 @@ impl Database {
         Ok(())
     }
 
-    fn migrate_activity_logs_table(&self) -> Result<()> {
-        self.conn.execute_batch(
-            "
-            CREATE TABLE IF NOT EXISTS activity_logs (
-                id TEXT PRIMARY KEY,
-                event_type TEXT NOT NULL,
-                entity_type TEXT,
-                entity_id TEXT,
-                project_id TEXT REFERENCES projects(id),
-                metadata TEXT,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE INDEX IF NOT EXISTS idx_activity_logs_event_type ON activity_logs(event_type);
-            CREATE INDEX IF NOT EXISTS idx_activity_logs_entity ON activity_logs(entity_type, entity_id);
-            CREATE INDEX IF NOT EXISTS idx_activity_logs_project_id ON activity_logs(project_id);
-            CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);
-            ",
-        )?;
-        Ok(())
-    }
-
     fn migrate_user_sessions_table(&self) -> Result<()> {
         self.conn.execute_batch(
             "
@@ -440,10 +398,25 @@ impl Database {
         Ok(())
     }
 
+    fn migrate_projects_color(&self) -> Result<()> {
+        let columns: Vec<String> = self
+            .conn
+            .prepare("PRAGMA table_info(projects)")?
+            .query_map([], |row| row.get::<_, String>(1))?
+            .collect::<Result<Vec<_>>>()?;
+
+        if !columns.contains(&"color".to_string()) {
+            self.conn
+                .execute("ALTER TABLE projects ADD COLUMN color TEXT", [])?;
+        }
+
+        Ok(())
+    }
+
     pub fn get_projects(&self) -> Result<Vec<Project>> {
         let mut stmt = self
             .conn
-            .prepare("SELECT id, name, path, description, display_order FROM projects ORDER BY display_order, name")?;
+            .prepare("SELECT id, name, path, description, display_order, color FROM projects ORDER BY display_order, name")?;
 
         let projects = stmt
             .query_map([], |row| {
@@ -453,6 +426,7 @@ impl Database {
                     path: row.get(2)?,
                     description: row.get(3)?,
                     display_order: row.get::<_, Option<i32>>(4)?.unwrap_or(0),
+                    color: row.get(5)?,
                 })
             })?
             .collect::<Result<Vec<_>>>()?;
@@ -462,7 +436,7 @@ impl Database {
 
     pub fn get_project_with_config(&self, project_id: &str) -> Result<ProjectWithConfig> {
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, path, description, routes, tmux_config, business_rules, created_at, tmux_configured
+            "SELECT id, name, path, description, routes, tmux_config, business_rules, created_at, tmux_configured, color
              FROM projects WHERE id = ?1"
         )?;
 
@@ -493,6 +467,7 @@ impl Database {
                 business_rules,
                 tmux_configured,
                 created_at: row.get(7)?,
+                color: row.get(9)?,
             })
         })
     }
@@ -573,6 +548,14 @@ impl Database {
         self.conn.execute(
             "UPDATE projects SET business_rules = ?1 WHERE id = ?2",
             (rules, project_id),
+        )?;
+        Ok(())
+    }
+
+    pub fn update_project_color(&self, project_id: &str, color: Option<&str>) -> Result<()> {
+        self.conn.execute(
+            "UPDATE projects SET color = ?1 WHERE id = ?2",
+            (color, project_id),
         )?;
         Ok(())
     }
@@ -952,34 +935,6 @@ impl Database {
             .collect::<Result<Vec<_>>>()?;
 
         Ok(tasks)
-    }
-
-    pub fn get_session_logs(&self) -> Result<Vec<SessionLog>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, project_name, summary, tokens_total, files_modified, created_at
-             FROM logs 
-             ORDER BY created_at DESC
-             LIMIT 50",
-        )?;
-
-        let logs = stmt
-            .query_map([], |row| {
-                let files_json: String = row.get(4)?;
-                let files: Vec<FileModified> =
-                    serde_json::from_str(&files_json).unwrap_or_default();
-
-                Ok(SessionLog {
-                    id: row.get(0)?,
-                    project_name: row.get(1)?,
-                    summary: row.get(2)?,
-                    tokens_total: row.get(3)?,
-                    files_modified: files,
-                    created_at: row.get(5)?,
-                })
-            })?
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok(logs)
     }
 
     pub fn get_setting(&self, key: &str) -> Result<Option<String>> {
@@ -1501,192 +1456,6 @@ impl Database {
     }
 
     // ============================================
-    // Activity Logs CRUD
-    // ============================================
-
-    pub fn insert_activity_log(
-        &self,
-        event_type: &str,
-        entity_type: Option<&str>,
-        entity_id: Option<&str>,
-        project_id: Option<&str>,
-        metadata: Option<&str>,
-    ) -> Result<String> {
-        let id = uuid::Uuid::new_v4().to_string();
-        self.conn.execute(
-            "INSERT INTO activity_logs (id, event_type, entity_type, entity_id, project_id, metadata) 
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            params![id, event_type, entity_type, entity_id, project_id, metadata],
-        )?;
-        Ok(id)
-    }
-
-    pub fn get_activity_logs(
-        &self,
-        event_type: Option<&str>,
-        entity_type: Option<&str>,
-        project_id: Option<&str>,
-        limit: Option<i32>,
-    ) -> Result<Vec<ActivityLog>> {
-        let mut query =
-            "SELECT id, event_type, entity_type, entity_id, project_id, metadata, created_at 
-                         FROM activity_logs WHERE 1=1"
-                .to_string();
-        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![];
-
-        if event_type.is_some() {
-            query.push_str(&format!(" AND event_type = ?{}", params_vec.len() + 1));
-            params_vec.push(Box::new(event_type.unwrap().to_string()));
-        }
-        if entity_type.is_some() {
-            query.push_str(&format!(" AND entity_type = ?{}", params_vec.len() + 1));
-            params_vec.push(Box::new(entity_type.unwrap().to_string()));
-        }
-        if project_id.is_some() {
-            query.push_str(&format!(" AND project_id = ?{}", params_vec.len() + 1));
-            params_vec.push(Box::new(project_id.unwrap().to_string()));
-        }
-
-        query.push_str(" ORDER BY created_at DESC");
-
-        if let Some(lim) = limit {
-            query.push_str(&format!(" LIMIT {}", lim));
-        }
-
-        let params_ref: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
-        let mut stmt = self.conn.prepare(&query)?;
-
-        let logs = stmt
-            .query_map(rusqlite::params_from_iter(params_ref), |row| {
-                Ok(ActivityLog {
-                    id: row.get(0)?,
-                    event_type: row.get(1)?,
-                    entity_type: row.get(2)?,
-                    entity_id: row.get(3)?,
-                    project_id: row.get(4)?,
-                    metadata: row.get(5)?,
-                    created_at: row.get(6)?,
-                })
-            })?
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok(logs)
-    }
-
-    pub fn search_activity_logs(
-        &self,
-        query: Option<&str>,
-        event_types: Option<Vec<String>>,
-        project_id: Option<&str>,
-        from_date: Option<&str>,
-        to_date: Option<&str>,
-        cursor: Option<&str>,
-        limit: i32,
-    ) -> Result<ActivityLogSearchResult> {
-        let mut sql = String::from(
-            "SELECT al.id, al.event_type, al.entity_type, al.entity_id, al.project_id, 
-                    al.metadata, al.created_at, p.name as project_name
-             FROM activity_logs al
-             LEFT JOIN projects p ON al.project_id = p.id
-             WHERE 1=1",
-        );
-
-        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![];
-
-        if let Some(q) = query {
-            if !q.is_empty() {
-                sql.push_str(&format!(
-                    " AND (al.event_type LIKE ?{0} OR p.name LIKE ?{0} OR al.metadata LIKE ?{0})",
-                    params_vec.len() + 1
-                ));
-                params_vec.push(Box::new(format!("%{}%", q)));
-            }
-        }
-
-        if let Some(types) = &event_types {
-            if !types.is_empty() {
-                let placeholders: Vec<String> = types
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| format!("?{}", params_vec.len() + i + 1))
-                    .collect();
-                sql.push_str(&format!(
-                    " AND al.event_type IN ({})",
-                    placeholders.join(",")
-                ));
-                for t in types {
-                    params_vec.push(Box::new(t.clone()));
-                }
-            }
-        }
-
-        if let Some(pid) = project_id {
-            sql.push_str(&format!(" AND al.project_id = ?{}", params_vec.len() + 1));
-            params_vec.push(Box::new(pid.to_string()));
-        }
-
-        if let Some(from) = from_date {
-            sql.push_str(&format!(" AND al.created_at >= ?{}", params_vec.len() + 1));
-            params_vec.push(Box::new(from.to_string()));
-        }
-
-        if let Some(to) = to_date {
-            sql.push_str(&format!(" AND al.created_at <= ?{}", params_vec.len() + 1));
-            let to_end = format!("{}T23:59:59", to);
-            params_vec.push(Box::new(to_end));
-        }
-
-        if let Some(c) = cursor {
-            sql.push_str(&format!(" AND al.created_at < ?{}", params_vec.len() + 1));
-            params_vec.push(Box::new(c.to_string()));
-        }
-
-        sql.push_str(" ORDER BY al.created_at DESC");
-        sql.push_str(&format!(" LIMIT {}", limit + 1));
-
-        let params_ref: Vec<&dyn rusqlite::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
-        let mut stmt = self.conn.prepare(&sql)?;
-
-        let mut logs: Vec<ActivityLogWithContext> = stmt
-            .query_map(rusqlite::params_from_iter(params_ref), |row| {
-                Ok(ActivityLogWithContext {
-                    id: row.get(0)?,
-                    event_type: row.get(1)?,
-                    entity_type: row.get(2)?,
-                    entity_id: row.get(3)?,
-                    project_id: row.get(4)?,
-                    metadata: row.get(5)?,
-                    created_at: row.get(6)?,
-                    project_name: row.get(7)?,
-                    task_title: None,
-                })
-            })?
-            .collect::<Result<Vec<_>>>()?;
-
-        let has_more = logs.len() > limit as usize;
-        if has_more {
-            logs.pop();
-        }
-
-        let next_cursor = if has_more {
-            logs.last().map(|l| l.created_at.clone())
-        } else {
-            None
-        };
-
-        let total: i32 = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM activity_logs", [], |row| row.get(0))?;
-
-        Ok(ActivityLogSearchResult {
-            logs,
-            total,
-            next_cursor,
-            has_more,
-        })
-    }
-
-    // ============================================
     // User Sessions CRUD
     // ============================================
 
@@ -1769,17 +1538,6 @@ impl Database {
         Ok(sessions)
     }
 
-    pub fn increment_daily_tokens(&self, tokens: i64) -> Result<()> {
-        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-
-        self.conn.execute(
-            "INSERT INTO daily_stats (date, tokens_used) VALUES (?1, ?2)
-             ON CONFLICT(date) DO UPDATE SET tokens_used = tokens_used + ?2",
-            params![today, tokens],
-        )?;
-        Ok(())
-    }
-
     pub fn add_task_tokens(&self, task_id: &str, tokens: i64, session_id: &str) -> Result<()> {
         let current_metadata: Option<String> = self
             .conn
@@ -1809,27 +1567,6 @@ impl Database {
         )?;
         Ok(())
     }
-
-    pub fn get_daily_stats(&self, date: &str) -> Result<Option<DailyStats>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT date, tokens_used, tokens_goal, tasks_completed FROM daily_stats WHERE date = ?1"
-        )?;
-
-        let result = stmt.query_row([date], |row| {
-            Ok(DailyStats {
-                date: row.get(0)?,
-                tokens_used: row.get(1)?,
-                tokens_goal: row.get(2)?,
-                tasks_completed: row.get(3)?,
-            })
-        });
-
-        match result {
-            Ok(stats) => Ok(Some(stats)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e),
-        }
-    }
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -1839,6 +1576,7 @@ pub struct Project {
     pub path: String,
     pub description: Option<String>,
     pub display_order: i32,
+    pub color: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -1875,6 +1613,7 @@ pub struct ProjectWithConfig {
     pub business_rules: String,
     pub tmux_configured: bool,
     pub created_at: String,
+    pub color: Option<String>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -1908,22 +1647,6 @@ pub struct CalendarTask {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
-pub struct FileModified {
-    pub path: String,
-    pub action: String,
-}
-
-#[derive(serde::Serialize, Clone)]
-pub struct SessionLog {
-    pub id: String,
-    pub project_name: String,
-    pub summary: String,
-    pub tokens_total: i32,
-    pub files_modified: Vec<FileModified>,
-    pub created_at: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct TaskExecution {
     pub id: String,
     pub task_id: String,
@@ -1943,52 +1666,12 @@ pub struct TaskExecution {
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
-pub struct ActivityLog {
-    pub id: String,
-    pub event_type: String,
-    pub entity_type: Option<String>,
-    pub entity_id: Option<String>,
-    pub project_id: Option<String>,
-    pub metadata: Option<String>,
-    pub created_at: String,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
-pub struct ActivityLogWithContext {
-    pub id: String,
-    pub event_type: String,
-    pub entity_type: Option<String>,
-    pub entity_id: Option<String>,
-    pub project_id: Option<String>,
-    pub metadata: Option<String>,
-    pub created_at: String,
-    pub project_name: Option<String>,
-    pub task_title: Option<String>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
-pub struct ActivityLogSearchResult {
-    pub logs: Vec<ActivityLogWithContext>,
-    pub total: i32,
-    pub next_cursor: Option<String>,
-    pub has_more: bool,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
 pub struct UserSession {
     pub id: String,
     pub started_at: String,
     pub ended_at: Option<String>,
     pub duration_seconds: Option<i32>,
     pub app_version: Option<String>,
-}
-
-#[derive(serde::Serialize, serde::Deserialize, Clone)]
-pub struct DailyStats {
-    pub date: String,
-    pub tokens_used: i64,
-    pub tokens_goal: i64,
-    pub tasks_completed: i32,
 }
 
 // ============================================

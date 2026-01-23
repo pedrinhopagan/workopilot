@@ -55,7 +55,7 @@ Seu objetivo e dialogar com o usuario para coletar todas as informacoes necessar
 
 ### 0. Marcar task como ATIVA (OBRIGATORIO - PRIMEIRO PASSO)
 ```bash
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status active
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status in_progress
 ```
 **IMPORTANTE**: Este comando DEVE ser o primeiro a executar. Isso sinaliza ao WorkoPilot que a IA esta trabalhando ativamente nesta task.
 
