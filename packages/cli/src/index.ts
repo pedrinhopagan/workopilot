@@ -149,6 +149,9 @@ program
   .option("--title <title>", "Set title")
   .option("--complexity <complexity>", "Set complexity (trivial, simple, moderate, complex, epic)")
   .option("--description <description>", "Set context description")
+  .option("--acceptance-criteria <criteria>", "Set acceptance criteria (JSON array or comma-separated values)")
+  .option("--business-rules <rules>", "Set business rules (JSON array or comma-separated values)")
+  .option("--technical-notes <notes>", "Set technical notes")
   .option("--structuring-complete <bool>", "Set structuring_complete (true/false)")
   .option("--scheduled-date <date>", "Set scheduled date (YYYY-MM-DD format, or 'null' to unschedule)")
   .action(
@@ -159,6 +162,9 @@ program
         title?: string;
         complexity?: string;
         description?: string;
+        acceptanceCriteria?: string;
+        businessRules?: string;
+        technicalNotes?: string;
         structuringComplete?: string;
         scheduledDate?: string;
       }
@@ -213,12 +219,59 @@ program
           updateInput.complexity = options.complexity as "trivial" | "simple" | "moderate" | "complex" | "epic";
           updates.complexity = options.complexity;
         }
+        const contextUpdates: Record<string, unknown> = {};
+        
         if (options.description) {
-          updateInput.context = {
-            description: options.description,
-          };
+          contextUpdates.description = options.description;
           updates.context_description = options.description;
         }
+        
+        if (options.acceptanceCriteria !== undefined) {
+          let criteria: string[] | null;
+          if (options.acceptanceCriteria === "null" || options.acceptanceCriteria === "") {
+            criteria = null;
+          } else {
+            try {
+              criteria = JSON.parse(options.acceptanceCriteria);
+              if (!Array.isArray(criteria)) {
+                criteria = [options.acceptanceCriteria];
+              }
+            } catch {
+              criteria = options.acceptanceCriteria.split(",").map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+            }
+          }
+          contextUpdates.acceptance_criteria = criteria;
+          updates.acceptance_criteria = criteria;
+        }
+        
+        if (options.businessRules !== undefined) {
+          let rules: string[];
+          if (options.businessRules === "null" || options.businessRules === "") {
+            rules = [];
+          } else {
+            try {
+              rules = JSON.parse(options.businessRules);
+              if (!Array.isArray(rules)) {
+                rules = [options.businessRules];
+              }
+            } catch {
+              rules = options.businessRules.split(",").map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+            }
+          }
+          contextUpdates.business_rules = rules;
+          updates.business_rules = rules;
+        }
+        
+        if (options.technicalNotes !== undefined) {
+          const notes = options.technicalNotes === "null" || options.technicalNotes === "" ? null : options.technicalNotes;
+          contextUpdates.technical_notes = notes;
+          updates.technical_notes = notes;
+        }
+        
+        if (Object.keys(contextUpdates).length > 0) {
+          updateInput.context = contextUpdates as Parameters<typeof sdk.tasks.update>[1]["context"];
+        }
+        
         if (options.structuringComplete !== undefined) {
           updateInput.ai_metadata = {
             structuring_complete: options.structuringComplete === "true",
@@ -320,6 +373,9 @@ program
   .option("--title <title>", "Set title")
   .option("--description <description>", "Set description")
   .option("--order <order>", "Set order position")
+  .option("--acceptance-criteria <criteria>", "Set acceptance criteria (JSON array or comma-separated values)")
+  .option("--technical-notes <notes>", "Set technical notes")
+  .option("--prompt-context <context>", "Set prompt context for AI")
   .action(
     async (
       subtaskId: string,
@@ -328,6 +384,9 @@ program
         title?: string;
         description?: string;
         order?: string;
+        acceptanceCriteria?: string;
+        technicalNotes?: string;
+        promptContext?: string;
       }
     ) => {
       try {
@@ -363,13 +422,44 @@ program
           updateInput.title = options.title;
           updates.title = options.title;
         }
-        if (options.description) {
-          updateInput.description = options.description;
-          updates.description = options.description;
+        if (options.description !== undefined) {
+          const desc = options.description === "null" || options.description === "" ? null : options.description;
+          updateInput.description = desc;
+          updates.description = desc;
         }
         if (options.order) {
           updateInput.order = parseInt(options.order, 10);
           updates.order = parseInt(options.order, 10);
+        }
+        
+        if (options.acceptanceCriteria !== undefined) {
+          let criteria: string[] | null;
+          if (options.acceptanceCriteria === "null" || options.acceptanceCriteria === "") {
+            criteria = null;
+          } else {
+            try {
+              criteria = JSON.parse(options.acceptanceCriteria);
+              if (!Array.isArray(criteria)) {
+                criteria = [options.acceptanceCriteria];
+              }
+            } catch {
+              criteria = options.acceptanceCriteria.split(",").map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+            }
+          }
+          updateInput.acceptance_criteria = criteria;
+          updates.acceptance_criteria = criteria;
+        }
+        
+        if (options.technicalNotes !== undefined) {
+          const notes = options.technicalNotes === "null" || options.technicalNotes === "" ? null : options.technicalNotes;
+          updateInput.technical_notes = notes;
+          updates.technical_notes = notes;
+        }
+        
+        if (options.promptContext !== undefined) {
+          const context = options.promptContext === "null" || options.promptContext === "" ? null : options.promptContext;
+          updateInput.prompt_context = context;
+          updates.prompt_context = context;
         }
 
         if (Object.keys(updateInput).length > 0) {
@@ -971,5 +1061,125 @@ program
       }
     }
   );
+
+program
+  .command("sync-skills")
+  .description("Sync WorkoPilot skills and plugin to OpenCode user config (~/.config/opencode/)")
+  .option("--dry-run", "Show what would be synced without making changes")
+  .action(async (options: { dryRun?: boolean }) => {
+    try {
+      const os = await import("os");
+      const fs = await import("fs");
+      const path = await import("path");
+
+      const homeDir = os.homedir();
+      const skillsDestDir = path.join(homeDir, ".config", "opencode", "skills");
+      const pluginDestDir = path.join(homeDir, ".config", "opencode", "plugin");
+
+      const cliDir = path.dirname(new URL(import.meta.url).pathname);
+      const projectRoot = path.resolve(cliDir, "..", "..", "..");
+      const skillsSourceDir = path.join(projectRoot, "src-tauri", "resources", "opencode-skills");
+      const pluginSourceDir = path.join(projectRoot, "src-tauri", "resources", "opencode-plugin");
+
+      if (!fs.existsSync(skillsSourceDir)) {
+        console.error(
+          JSON.stringify({
+            error: "Skills source directory not found",
+            path: skillsSourceDir,
+            hint: "Run this command from within the WorkoPilot project",
+          })
+        );
+        process.exit(1);
+      }
+
+      const skillNames = [
+        "workopilot-structure",
+        "workopilot-execute-all",
+        "workopilot-execute-subtask",
+        "workopilot-review",
+        "workopilot-quickfix",
+      ];
+
+      if (options.dryRun) {
+        const pluginSource = path.join(pluginSourceDir, "workopilot.js");
+        console.log(
+          JSON.stringify(
+            {
+              dryRun: true,
+              skills: {
+                source: skillsSourceDir,
+                destination: skillsDestDir,
+                items: skillNames,
+              },
+              plugin: {
+                source: pluginSource,
+                destination: path.join(pluginDestDir, "workopilot.js"),
+                exists: fs.existsSync(pluginSource),
+              },
+            },
+            null,
+            2
+          )
+        );
+        return;
+      }
+
+      fs.mkdirSync(skillsDestDir, { recursive: true });
+
+      let syncedCount = 0;
+      const synced: string[] = [];
+
+      for (const skillName of skillNames) {
+        const sourceFile = path.join(skillsSourceDir, skillName, "SKILL.md");
+        const destDir = path.join(skillsDestDir, skillName);
+        const destFile = path.join(destDir, "SKILL.md");
+
+        if (!fs.existsSync(sourceFile)) {
+          console.error(`[WARN] Source skill not found: ${sourceFile}`);
+          continue;
+        }
+
+        fs.mkdirSync(destDir, { recursive: true });
+        fs.copyFileSync(sourceFile, destFile);
+        synced.push(skillName);
+        syncedCount++;
+      }
+
+      let pluginSynced = false;
+      const pluginSource = path.join(pluginSourceDir, "workopilot.js");
+      if (fs.existsSync(pluginSource)) {
+        fs.mkdirSync(pluginDestDir, { recursive: true });
+        fs.copyFileSync(pluginSource, path.join(pluginDestDir, "workopilot.js"));
+        pluginSynced = true;
+      }
+
+      console.log(
+        JSON.stringify(
+          {
+            success: true,
+            skills: {
+              syncedCount,
+              synced,
+              destination: skillsDestDir,
+            },
+            plugin: {
+              synced: pluginSynced,
+              destination: pluginDestDir,
+            },
+          },
+          null,
+          2
+        )
+      );
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          error: "Failed to sync skills",
+          message: error instanceof Error ? error.message : String(error),
+        })
+      );
+      process.exit(1);
+    }
+  });
 
 program.parse();

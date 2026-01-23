@@ -294,6 +294,12 @@ pub fn get_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
 }
 
 #[tauri::command]
+pub fn get_all_tasks_full(state: State<AppState>) -> Result<Vec<TaskFull>, String> {
+    let result = sidecar_call!(state, "tasks.listFull")?;
+    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
+}
+
+#[tauri::command]
 pub fn get_urgent_tasks(
     state: State<AppState>,
     project_id: String,
@@ -1163,6 +1169,35 @@ fn get_opencode_skills_dir() -> Result<std::path::PathBuf, String> {
         .join("skills"))
 }
 
+fn get_opencode_plugin_dir() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME")
+        .map_err(|_| "Could not determine HOME directory".to_string())?;
+    Ok(std::path::Path::new(&home)
+        .join(".config")
+        .join("opencode")
+        .join("plugin"))
+}
+
+fn get_plugin_resource_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    app_handle
+        .path()
+        .resource_dir()
+        .map(|p| p.join("resources").join("opencode-plugin"))
+        .ok()
+        .filter(|p| p.exists())
+        .or_else(|| {
+            let dev_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("resources")
+                .join("opencode-plugin");
+            if dev_path.exists() {
+                Some(dev_path)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| "Could not find plugin resource directory".to_string())
+}
+
 fn sync_skills_to_opencode(app_handle: &tauri::AppHandle) -> Result<u32, String> {
     let resource_dir = get_skills_resource_dir(app_handle)?;
     let skills_base_dir = get_opencode_skills_dir()?;
@@ -1191,6 +1226,24 @@ fn sync_skills_to_opencode(app_handle: &tauri::AppHandle) -> Result<u32, String>
             .map_err(|e| format!("Failed to copy skill {} from {:?}: {}", skill_name, skill_source, e))?;
         
         synced_count += 1;
+    }
+
+    if let Ok(plugin_resource_dir) = get_plugin_resource_dir(app_handle) {
+        if let Ok(plugin_dest_dir) = get_opencode_plugin_dir() {
+            let plugin_source = plugin_resource_dir.join("workopilot.js");
+            if plugin_source.exists() {
+                if let Err(e) = std::fs::create_dir_all(&plugin_dest_dir) {
+                    eprintln!("[WorkoPilot] Failed to create plugin directory: {}", e);
+                } else {
+                    let plugin_dest = plugin_dest_dir.join("workopilot.js");
+                    if let Err(e) = std::fs::copy(&plugin_source, &plugin_dest) {
+                        eprintln!("[WorkoPilot] Failed to copy plugin: {}", e);
+                    } else {
+                        eprintln!("[WorkoPilot] Synced plugin to {:?}", plugin_dest);
+                    }
+                }
+            }
+        }
     }
 
     eprintln!("[WorkoPilot] Synced {} skills to OpenCode", synced_count);
