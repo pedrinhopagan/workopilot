@@ -107,8 +107,8 @@ impl ActivityLogger {
         project_id: Option<&str>,
     ) -> Result<(), String> {
         let event_type = match new_status {
-            "in_progress" => "task_started",
-            "done" | "completed" => "task_completed",
+            "structuring" | "working" => "task_started",
+            "completed" => "task_completed",
             _ => "task_status_changed",
         };
 

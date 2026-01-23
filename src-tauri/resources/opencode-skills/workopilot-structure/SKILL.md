@@ -53,6 +53,12 @@ Seu objetivo e dialogar com o usuario para coletar todas as informacoes necessar
 
 ## Fluxo OBRIGATORIO
 
+### 0. Marcar task como ATIVA (OBRIGATORIO - PRIMEIRO PASSO)
+```bash
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status active
+```
+**IMPORTANTE**: Este comando DEVE ser o primeiro a executar. Isso sinaliza ao WorkoPilot que a IA esta trabalhando ativamente nesta task.
+
 ### 1. Ler a task via CLI
 ```bash
 cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts get-task {taskId}
@@ -90,10 +96,12 @@ cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.t
 
 ### 6. Finalizar estruturacao
 ```bash
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --structuring-complete true --initialized true
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --structuring-complete true --initialized true --status pending
 ```
 
-**IMPORTANTE**: O flag `--initialized true` marca a task como "pronta para executar" no WorkoPilot.
+**IMPORTANTE**: 
+- O flag `--initialized true` marca a task como "pronta para executar" no WorkoPilot.
+- O flag `--status pending` sinaliza ao WorkoPilot que a IA terminou e o usuario pode agir.
 
 ---
 
@@ -108,6 +116,8 @@ cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.t
 | `update-task {id} --complexity {level}` | Atualiza complexidade (simple, medium, complex) |
 | `update-task {id} --structuring-complete true` | Marca estruturacao como completa |
 | `update-task {id} --initialized true` | Marca task como pronta para executar |
+| `update-task {id} --status active` | Marca que IA esta trabalhando (inicio) |
+| `update-task {id} --status pending` | Marca que IA terminou (fim) |
 | `create-subtask {taskId} --title {t} [--description {d}] [--order {n}]` | Cria nova subtask |
 | `list-tasks [--project {id}] [--status {s}]` | Lista tasks |
 
@@ -148,6 +158,7 @@ Apos atualizar via CLI com sucesso, diga:
 ## Checklist Final
 
 Antes de encerrar, verifique:
+- [ ] Marquei task como `--status active` NO INICIO?
 - [ ] Li a task via CLI (`get-task`)?
 - [ ] Dialoguei com o usuario para coletar informacoes?
 - [ ] Atualizei descricao via CLI?
@@ -155,5 +166,6 @@ Antes de encerrar, verifique:
 - [ ] Criei subtasks via CLI (se necessario)?
 - [ ] Setei `--structuring-complete true`?
 - [ ] Setei `--initialized true` para marcar como pronta para executar?
+- [ ] Setei `--status pending` para sinalizar que IA terminou?
 
 **A CLI GRAVA DIRETAMENTE NO SQLITE - NAO USE ARQUIVOS JSON!**

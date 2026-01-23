@@ -38,8 +38,7 @@ export interface ProjectWithConfig {
   created_at: string;
 }
 
-export type TaskStatus = "pending" | "active" | "done";
-export type TaskSubstatus = "structuring" | "executing" | "awaiting_user" | "awaiting_review" | null;
+export type TaskStatus = "pending" | "in_progress" | "done" | "active";
 
 export interface Task {
   id: string;
@@ -49,9 +48,7 @@ export interface Task {
   priority: number;
   category: string;
   status: string;
-  substatus: string | null;
   due_date: string | null;
-  json_path: string | null;
   created_at: string | null;
   scheduled_date: string | null;
 }
@@ -91,12 +88,9 @@ export interface TaskTimestamps {
 }
 
 export interface TaskFull {
-  schema_version: number;
-  initialized: boolean;
   id: string;
   title: string;
   status: string;
-  substatus: string | null;
   priority: number;
   category: string;
   complexity: string | null;
@@ -105,6 +99,9 @@ export interface TaskFull {
   ai_metadata: AIMetadata;
   timestamps: TaskTimestamps;
   modified_at?: string | null;
+  // Legacy fields (kept for backwards compatibility, but no longer used)
+  schema_version?: number;
+  initialized?: boolean;
   modified_by?: "user" | "ai" | null;
 }
 
@@ -136,7 +133,6 @@ export interface CalendarTask {
   priority: number;
   category: string;
   status: string;
-  substatus: string | null;
   scheduled_date: string;
   due_date: string | null;
   is_overdue: boolean;

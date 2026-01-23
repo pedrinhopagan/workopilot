@@ -5,10 +5,19 @@ All notable changes to WorkoPilot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.0] - 2026-01-21
+## [0.4.1] - 2026-01-22
 
 ### Changes
-- chore: bump version to v0.2.0
+- release: v0.4.0
+- Cleanup + rework back
+- feat(agenda): add AI-powered task distribution across selected dates
+- feat(tasks): add collapsible images section to task detail page
+- refactor(tasks): extract ImageThumbnail component with confirmation dialog
+- feat(cli): add --scheduled-date option to update-task command
+- refactor(skills): centralize skills in ~/.config/opencode/skills/ and fix substatus updates
+- feat(components): add SelectFolderKDE and SelectImageKDE with dialog state management
+- feat(opencode): improve prompt format for better OpenCode session titles
+- feat: add manual status update with chip-styled dropdown
 - feat: add AUR publish script with auto version bump and changelog
 - chore: cleanup - update build artifacts
 - chore: update build artifacts
@@ -19,41 +28,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - configs para deploy
 - feat(logs): UI - Pagina de Logs com Timeline
 - Setup logs + publishing AUR
-- port
-- resize textarea
-- port
-- react
-- Better edit task
-- Image input + fix task stats
-- UI/UX página de tarefas
-- Quickfix + better task tools UX
-- WorkOpilot launch
-
-## [0.2.0] - 2026-01-21
-
-### Added
-- Substatus system for granular task state tracking (structuring/executing/awaiting_user/awaiting_review)
-- Task page UI with conditional buttons based on task state
-- Color-coded status indicators throughout the app
-- AUR publish script with auto version bump
-- CHANGELOG.md for tracking releases
-
-### Changed
-- Migrated from Svelte to React with TanStack Router
-- Redesigned logs page with optimized SQLite-based pagination
-- Improved task list ordering (non-pending tasks first)
-
-### Fixed
-- "Executar Tudo" button now disabled when all subtasks are complete
-- Task status transitions are now consistent
-
-## [0.1.0] - 2026-01-20
-
-### Added
-- Initial release
-- Project and task management
-- AI-powered task structuring and execution
-- Tmux integration for terminal sessions
-- Calendar view for task scheduling
-- Global shortcut (Alt+P)
-- System tray support

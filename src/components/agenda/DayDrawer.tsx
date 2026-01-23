@@ -103,11 +103,10 @@ export function DayDrawer({ onClose, onTaskChange }: DayDrawerProps) {
       ...taskFull,
       subtasks: newSubtasks,
       modified_at: new Date().toISOString(),
-      modified_by: "user",
     };
 
     if (newSubtasks.every((s) => s.status === "done") && newSubtasks.length > 0) {
-      updatedTask.status = "awaiting_review";
+      updatedTask.status = "done";
     }
 
     await safeInvoke("update_task_and_sync", { projectPath: project.path, task: updatedTask }).catch((e) =>

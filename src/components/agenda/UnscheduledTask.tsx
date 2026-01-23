@@ -22,12 +22,20 @@ function formatDueDate(date: string | null): string {
 export function UnscheduledTask({ task }: UnscheduledTaskProps) {
   const navigate = useNavigate();
   const setDraggedTask = useAgendaStore((s) => s.setDraggedTask);
+  const isDistributionMode = useAgendaStore((s) => s.isDistributionMode);
+  const selectedTaskIds = useAgendaStore((s) => s.selectedTaskIds);
+  const toggleTaskSelection = useAgendaStore((s) => s.toggleTaskSelection);
   const [isDragging, setIsDragging] = useState(false);
 
   const priorityColor = priorityColors[task.priority] ?? "#909d63";
   const isOverdue = task.due_date ? new Date(task.due_date) < new Date() : false;
+  const isSelected = selectedTaskIds.has(task.id);
 
   function handleDragStart(e: React.DragEvent) {
+    if (isDistributionMode) {
+      e.preventDefault();
+      return;
+    }
     setIsDragging(true);
     setDraggedTask({ id: task.id, title: task.title, fromDate: null });
     if (e.dataTransfer) {
@@ -42,15 +50,26 @@ export function UnscheduledTask({ task }: UnscheduledTaskProps) {
   }
 
   function handleClick() {
+    if (isDistributionMode) {
+      toggleTaskSelection(task.id);
+      return;
+    }
     navigate({ to: "/tasks/$taskId", params: { taskId: task.id } });
+  }
+
+  function handleCheckboxChange(e: React.ChangeEvent<HTMLInputElement>) {
+    e.stopPropagation();
+    toggleTaskSelection(task.id);
   }
 
   return (
     <div
-      draggable="true"
+      draggable={!isDistributionMode}
       role="button"
       tabIndex={0}
-      className={`flex items-center gap-2 px-2 py-1.5 bg-[#232323] cursor-grab transition-all hover:bg-[#2a2a2a] ${isDragging ? "opacity-50 cursor-grabbing" : ""}`}
+      className={`flex items-center gap-2 px-2 py-1.5 bg-[#232323] transition-all hover:bg-[#2a2a2a] ${
+        isDragging ? "opacity-50 cursor-grabbing" : isDistributionMode ? "cursor-pointer" : "cursor-grab"
+      } ${isSelected ? "ring-1 ring-[#909d63] bg-[#2a2a2a]" : ""}`}
       style={{
         borderLeftColor: isOverdue ? "#bc5653" : "#909d63",
         borderLeftWidth: "3px",
@@ -61,6 +80,15 @@ export function UnscheduledTask({ task }: UnscheduledTaskProps) {
       onClick={handleClick}
       onKeyDown={(e) => e.key === "Enter" && handleClick()}
     >
+      {isDistributionMode && (
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={handleCheckboxChange}
+          className="w-4 h-4 accent-[#909d63] cursor-pointer"
+          onClick={(e) => e.stopPropagation()}
+        />
+      )}
       <span className="flex-1 text-sm text-[#d6d6d6] truncate">{task.title}</span>
       {task.due_date && (
         <span className={`text-xs ${isOverdue ? "text-[#bc5653]" : "text-[#636363]"}`}>

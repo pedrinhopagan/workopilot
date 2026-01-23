@@ -10,14 +10,14 @@ metadata:
 
 ## When to use me
 - Quando o prompt mencionar "revisar" a task
-- Quando `status === 'awaiting_review'`
-- Quando todas as subtasks estao com status "done"
+- Quando `status === 'pending'` e todas as subtasks estao com status "done"
+- Quando o usuario quer verificar a implementacao antes de finalizar
 
 ## What I do
 - Verifico se todos os criterios de aceite foram atendidos
 - Rodo verificacoes tecnicas (build, lint, tests)
 - Apresento um resumo da revisao ao usuario
-- Se aprovado, marco a task como "done" via CLI
+- Se aprovado, marco a task como "completed" via CLI
 - Se reprovado, informo os problemas encontrados
 
 ---
@@ -32,8 +32,8 @@ Use os comandos da CLI WorkoPilot para ler e atualizar dados:
 # Ler task completa (inclui subtasks)
 cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts get-task {taskId}
 
-# Aprovar task (marcar como done)
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status done
+# Aprovar task (marcar como completed)
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status completed
 ```
 
 **IMPORTANTE**: A CLI grava diretamente no SQLite. O WorkoPilot detecta mudancas automaticamente.
@@ -56,7 +56,7 @@ cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.t
 O JSON retornado inclui todas as subtasks e metadados.
 
 ### 2. Verificar pre-requisitos
-- `status` deve ser "awaiting_review" ou todas subtasks "done"
+- `status` deve ser "pending" e todas subtasks "done" (status visual: "Aguardando revisao")
 - `ai_metadata.structuring_complete` deve ser `true`
 
 ### 3. Analisar a task
@@ -114,8 +114,10 @@ Pergunte ao usuario: "A revisao foi positiva. Deseja marcar a task como concluid
 
 Se sim:
 ```bash
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status done
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status completed
 ```
+
+**NOTA**: O status `completed` marca a task como finalizada no sistema.
 
 **Se REPROVADO:**
 Informe os problemas encontrados e pergunte como proceder:
@@ -129,8 +131,9 @@ Informe os problemas encontrados e pergunte como proceder:
 | Comando | Descricao |
 |---------|-----------|
 | `get-task {id}` | Retorna JSON completo da task com subtasks |
-| `update-task {id} --status done` | Marca task como concluida |
-| `update-task {id} --status in_progress` | Volta task para em progresso |
+| `update-task {id} --status completed` | Marca task como concluida |
+| `update-task {id} --status active` | Marca que IA esta trabalhando |
+| `update-task {id} --status pending` | Marca que IA terminou (usuario pode agir) |
 | `get-logs --entity-id {id}` | Ver historico de operacoes |
 
 ---
@@ -145,7 +148,7 @@ Informe os problemas encontrados e pergunte como proceder:
 > - {N} subtasks implementadas com sucesso
 > - Verificacoes tecnicas passaram
 > 
-> A task foi marcada como 'done'. Parabens!"
+> A task foi marcada como 'completed'. Parabens!"
 
 **Se reprovado:**
 > "Task '{titulo}' revisada - encontrados {N} problemas.
@@ -187,6 +190,6 @@ Antes de encerrar, verifique:
 - [ ] Verifiquei todos os criterios de aceite?
 - [ ] Rodei verificacoes tecnicas?
 - [ ] Apresentei resumo ao usuario?
-- [ ] Se aprovado, atualizei status para done via CLI?
+- [ ] Se aprovado, atualizei status para completed via CLI?
 
 **A CLI GRAVA DIRETAMENTE NO SQLITE - NAO USE ARQUIVOS JSON!**

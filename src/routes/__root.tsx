@@ -10,11 +10,14 @@ import {
   checkForStructuringChanges,
   checkAllInProgressTasks,
 } from "../services/structuringMonitor";
+import { useDbChangedListener } from "../hooks/useDbChangedListener";
 
 function RootLayout() {
   const navigate = useNavigate();
   const openDialogCount = useDialogStateStore((s) => s.openDialogCount);
   const dialogOpenRef = useRef(openDialogCount > 0);
+
+  useDbChangedListener();
 
   useEffect(() => {
     dialogOpenRef.current = openDialogCount > 0;

@@ -57,6 +57,14 @@ pub fn handle_run_event(app_handle: &tauri::AppHandle, event: RunEvent) {
         }
         RunEvent::ExitRequested { .. } => {
             let state = app_handle.state::<AppState>();
+
+            if let Ok(mut ipc_socket) = state.ipc_socket.lock() {
+                if let Some(ref mut server) = *ipc_socket {
+                    server.shutdown();
+                }
+                *ipc_socket = None;
+            }
+
             let db_guard = state.db.lock();
             if let Ok(db) = db_guard {
                 if let Err(e) = state.activity_logger.log_user_session_end(&db) {
