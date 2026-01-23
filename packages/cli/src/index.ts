@@ -79,7 +79,7 @@ program
         const sdk = await getSDK();
 
         const tasks = await sdk.tasks.list({
-          projectId: options.project,
+          project_id: options.project,
           status: options.status as TaskStatus | undefined,
         });
 
@@ -147,9 +147,8 @@ program
   .description("Update a task field")
   .option("--status <status>", `Set status: ${TASK_STATUSES.join(", ")}`)
   .option("--title <title>", "Set title")
-  .option("--complexity <complexity>", "Set complexity (simple, medium, complex)")
+  .option("--complexity <complexity>", "Set complexity (trivial, simple, moderate, complex, epic)")
   .option("--description <description>", "Set context description")
-  .option("--initialized <bool>", "Set initialized (true/false)")
   .option("--structuring-complete <bool>", "Set structuring_complete (true/false)")
   .option("--scheduled-date <date>", "Set scheduled date (YYYY-MM-DD format, or 'null' to unschedule)")
   .action(
@@ -160,7 +159,6 @@ program
         title?: string;
         complexity?: string;
         description?: string;
-        initialized?: string;
         structuringComplete?: string;
         scheduledDate?: string;
       }
@@ -212,7 +210,7 @@ program
           updates.title = options.title;
         }
         if (options.complexity) {
-          updateInput.complexity = options.complexity as "simple" | "medium" | "complex";
+          updateInput.complexity = options.complexity as "trivial" | "simple" | "moderate" | "complex" | "epic";
           updates.complexity = options.complexity;
         }
         if (options.description) {
@@ -221,13 +219,9 @@ program
           };
           updates.context_description = options.description;
         }
-        if (options.initialized !== undefined) {
-          updateInput.initialized = options.initialized === "true";
-          updates.initialized = options.initialized === "true";
-        }
         if (options.structuringComplete !== undefined) {
-          updateInput.aiMetadata = {
-            structuringComplete: options.structuringComplete === "true",
+          updateInput.ai_metadata = {
+            structuring_complete: options.structuringComplete === "true",
           };
           updates.structuring_complete = options.structuringComplete === "true";
         }
@@ -481,11 +475,12 @@ program
         }
 
         const execution = await sdk.executions.start({
-          taskId,
-          subtaskId: options.subtask,
-          tmuxSession: options.tmux,
+          task_id: taskId,
+          subtask_id: options.subtask,
+          execution_type: options.subtask ? 'subtask' : 'full',
+          tmux_session: options.tmux,
           pid: options.pid ? parseInt(options.pid, 10) : undefined,
-          totalSteps: parseInt(options.totalSteps, 10),
+          total_steps: parseInt(options.totalSteps, 10),
         });
 
         await notifyApp("execution", execution.id, "create");
