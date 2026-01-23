@@ -41,8 +41,6 @@ export interface Task {
 }
 
 export interface TaskFull {
-  schema_version: number;
-  initialized: boolean;
   id: string;
   title: string;
   status: TaskStatus;
@@ -54,7 +52,6 @@ export interface TaskFull {
   ai_metadata: AIMetadata;
   timestamps: TaskTimestamps;
   modified_at: string | null;
-  modified_by: 'user' | 'ai' | 'cli' | null;
   project_id: string | null;
   due_date: string | null;
   scheduled_date: string | null;
@@ -82,5 +79,4 @@ export interface UpdateTaskInput {
   scheduled_date?: string | null;
   context?: Partial<TaskContext>;
   ai_metadata?: Partial<AIMetadata>;
-  modified_by?: 'user' | 'ai' | 'cli';
 }

@@ -21,23 +21,17 @@ export interface TasksTable {
   priority: number;
   category: string;
   status: string;
-  estimated_minutes: number | null;
   due_date: string | null;
-  json_path: string | null;
   scheduled_date: string | null;
   created_at: Generated<string>;
   completed_at: string | null;
   complexity: string | null;
-  initialized: number | null;
-  schema_version: number | null;
-  context_description: string | null;
-  context_business_rules: string | null;
-  context_technical_notes: string | null;
-  context_acceptance_criteria: string | null;
+  business_rules: string | null;
+  technical_notes: string | null;
+  acceptance_criteria: string | null;
   ai_metadata: string | null;
   timestamps_started_at: string | null;
   modified_at: string | null;
-  modified_by: string | null;
 }
 
 export interface SubtasksTable {

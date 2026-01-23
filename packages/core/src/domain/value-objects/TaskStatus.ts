@@ -1,11 +1,7 @@
 export const TASK_STATUSES = [
   'pending',
-  'structuring',
-  'structured',
-  'working',
-  'standby',
-  'ready_to_review',
-  'completed',
+  'in_progress',
+  'done',
 ] as const;
 
 export type TaskStatus = (typeof TASK_STATUSES)[number];

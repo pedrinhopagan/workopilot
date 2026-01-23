@@ -4,24 +4,20 @@ import { isValidTaskStatus, TASK_STATUSES } from '../../../../src/domain/value-o
 
 describe('TaskStatus Value Object', () => {
   describe('TASK_STATUSES', () => {
-    it('should contain 7 valid statuses', () => {
-      expect(TASK_STATUSES.length).toBe(7)
+    it('should contain 3 valid statuses', () => {
+      expect(TASK_STATUSES.length).toBe(3)
     })
 
     it('should include all workflow statuses', () => {
       expect(TASK_STATUSES).toContain('pending')
-      expect(TASK_STATUSES).toContain('structuring')
-      expect(TASK_STATUSES).toContain('structured')
-      expect(TASK_STATUSES).toContain('working')
-      expect(TASK_STATUSES).toContain('standby')
-      expect(TASK_STATUSES).toContain('ready_to_review')
-      expect(TASK_STATUSES).toContain('completed')
+      expect(TASK_STATUSES).toContain('in_progress')
+      expect(TASK_STATUSES).toContain('done')
     })
   })
 
   describe('isValidTaskStatus', () => {
     it('should return true for valid statuses', () => {
-      const validStatuses: TaskStatus[] = ['pending', 'structuring', 'structured', 'working', 'standby', 'ready_to_review', 'completed']
+      const validStatuses: TaskStatus[] = ['pending', 'in_progress', 'done']
       for (const status of validStatuses) {
         expect(isValidTaskStatus(status)).toBe(true)
       }

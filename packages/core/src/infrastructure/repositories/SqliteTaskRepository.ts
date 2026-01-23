@@ -1,5 +1,5 @@
 import { Kysely } from 'kysely';
-import type { Database, TaskRow, SubtaskRow } from '../database/schema';
+import type { Database, TaskRow } from '../database/schema';
 import type { TaskRepository, TaskListFilters } from '../../application/ports/TaskRepository';
 import type { Task, TaskFull, CreateTaskInput, UpdateTaskInput, TaskContext, AIMetadata, TaskTimestamps } from '../../domain/entities/Task';
 import type { Subtask } from '../../domain/entities/Subtask';
@@ -9,7 +9,7 @@ import type { TaskCategory } from '../../domain/value-objects/TaskCategory';
 import type { TaskComplexity } from '../../domain/value-objects/TaskComplexity';
 
 function generateId(): string {
-  return crypto.randomUUID();
+  return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 }
 
 function parseJsonSafe<T>(json: string | null, defaultValue: T): T {
@@ -40,10 +40,10 @@ function rowToTask(row: TaskRow): Task {
 
 function rowToTaskFull(row: TaskRow, subtasks: Subtask[]): TaskFull {
   const context: TaskContext = {
-    description: row.context_description,
-    business_rules: parseJsonSafe(row.context_business_rules, []),
-    technical_notes: row.context_technical_notes,
-    acceptance_criteria: parseJsonSafe(row.context_acceptance_criteria, null),
+    description: row.description,
+    business_rules: parseJsonSafe(row.business_rules, []),
+    technical_notes: row.technical_notes,
+    acceptance_criteria: parseJsonSafe(row.acceptance_criteria, null),
   };
 
   const aiMetadata: AIMetadata = parseJsonSafe(row.ai_metadata, {
@@ -61,8 +61,6 @@ function rowToTaskFull(row: TaskRow, subtasks: Subtask[]): TaskFull {
   };
 
   return {
-    schema_version: row.schema_version ?? 2,
-    initialized: Boolean(row.initialized),
     id: row.id,
     title: row.title,
     status: row.status as TaskStatus,
@@ -74,7 +72,6 @@ function rowToTaskFull(row: TaskRow, subtasks: Subtask[]): TaskFull {
     ai_metadata: aiMetadata,
     timestamps,
     modified_at: row.modified_at,
-    modified_by: row.modified_by as 'user' | 'ai' | 'cli' | null,
     project_id: row.project_id,
     due_date: row.due_date,
     scheduled_date: row.scheduled_date,
@@ -164,7 +161,7 @@ export class SqliteTaskRepository implements TaskRepository {
     const rows = await this.db
       .selectFrom('tasks')
       .selectAll()
-      .where('status', 'not in', ['completed'])
+      .where('status', 'not in', ['done'])
       .where('priority', '=', 1)
       .orderBy('due_date', 'asc')
       .execute();
@@ -176,7 +173,7 @@ export class SqliteTaskRepository implements TaskRepository {
     const rows = await this.db
       .selectFrom('tasks')
       .selectAll()
-      .where('status', 'in', ['working', 'structuring'])
+      .where('status', '=', 'in_progress')
       .orderBy('modified_at', 'desc')
       .execute();
 
@@ -214,7 +211,7 @@ export class SqliteTaskRepository implements TaskRepository {
       .selectFrom('tasks')
       .selectAll()
       .where('scheduled_date', 'is', null)
-      .where('status', 'not in', ['completed']);
+      .where('status', 'not in', ['done']);
 
     if (projectId) {
       query = query.where('project_id', '=', projectId);
@@ -249,11 +246,8 @@ export class SqliteTaskRepository implements TaskRepository {
         complexity: input.complexity ?? null,
         due_date: input.due_date ?? null,
         scheduled_date: input.scheduled_date ?? null,
-        initialized: 1,
-        schema_version: 2,
         ai_metadata: JSON.stringify(aiMetadata),
         modified_at: now,
-        modified_by: 'user',
       })
       .execute();
 
@@ -272,20 +266,19 @@ export class SqliteTaskRepository implements TaskRepository {
     if (input.category !== undefined) updates.category = input.category;
     if (input.status !== undefined) {
       updates.status = input.status;
-      if (input.status === 'completed') {
+      if (input.status === 'done') {
         updates.completed_at = now;
       }
     }
     if (input.complexity !== undefined) updates.complexity = input.complexity;
     if (input.due_date !== undefined) updates.due_date = input.due_date;
     if (input.scheduled_date !== undefined) updates.scheduled_date = input.scheduled_date;
-    if (input.modified_by !== undefined) updates.modified_by = input.modified_by;
 
     if (input.context) {
-      if (input.context.description !== undefined) updates.context_description = input.context.description;
-      if (input.context.business_rules !== undefined) updates.context_business_rules = JSON.stringify(input.context.business_rules);
-      if (input.context.technical_notes !== undefined) updates.context_technical_notes = input.context.technical_notes;
-      if (input.context.acceptance_criteria !== undefined) updates.context_acceptance_criteria = JSON.stringify(input.context.acceptance_criteria);
+      if (input.context.description !== undefined) updates.description = input.context.description;
+      if (input.context.business_rules !== undefined) updates.business_rules = JSON.stringify(input.context.business_rules);
+      if (input.context.technical_notes !== undefined) updates.technical_notes = input.context.technical_notes;
+      if (input.context.acceptance_criteria !== undefined) updates.acceptance_criteria = JSON.stringify(input.context.acceptance_criteria);
     }
 
     if (input.ai_metadata) {
@@ -305,19 +298,18 @@ export class SqliteTaskRepository implements TaskRepository {
     return this.findFullById(id) as Promise<TaskFull>;
   }
 
-  async updateStatus(id: string, status: TaskStatus, modifiedBy: 'user' | 'ai' | 'cli'): Promise<TaskFull> {
+  async updateStatus(id: string, status: TaskStatus, _modifiedBy: 'user' | 'ai' | 'cli'): Promise<TaskFull> {
     const now = new Date().toISOString();
     const updates: Record<string, unknown> = {
       status,
       modified_at: now,
-      modified_by: modifiedBy,
     };
 
-    if (status === 'completed') {
+    if (status === 'done') {
       updates.completed_at = now;
     }
 
-    if (status === 'working' || status === 'structuring') {
+    if (status === 'in_progress') {
       const existing = await this.findById(id);
       if (existing && !existing.completed_at) {
         updates.timestamps_started_at = now;
@@ -374,19 +366,16 @@ export class SqliteTaskRepository implements TaskRepository {
         priority: task.priority,
         category: task.category,
         complexity: task.complexity,
-        context_description: task.context.description,
-        context_business_rules: JSON.stringify(task.context.business_rules),
-        context_technical_notes: task.context.technical_notes,
-        context_acceptance_criteria: task.context.acceptance_criteria ? JSON.stringify(task.context.acceptance_criteria) : null,
+        description: task.context.description,
+        business_rules: JSON.stringify(task.context.business_rules),
+        technical_notes: task.context.technical_notes,
+        acceptance_criteria: task.context.acceptance_criteria ? JSON.stringify(task.context.acceptance_criteria) : null,
         ai_metadata: JSON.stringify(task.ai_metadata),
         timestamps_started_at: task.timestamps.started_at,
         completed_at: task.timestamps.completed_at,
         due_date: task.due_date,
         scheduled_date: task.scheduled_date,
         modified_at: now,
-        modified_by: task.modified_by,
-        initialized: task.initialized ? 1 : 0,
-        schema_version: task.schema_version,
       })
       .where('id', '=', task.id)
       .execute();

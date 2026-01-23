@@ -353,14 +353,104 @@ async function ensureUserSessionsTable(db: Kysely<Database>): Promise<MigrationR
   return { name: 'create_user_sessions_table', success: true, message: 'Table created' };
 }
 
-async function migrateTaskStatusValues(db: Kysely<Database>): Promise<MigrationResult> {
-  const doneCount = await sql`UPDATE tasks SET status = 'completed' WHERE status = 'done'`.execute(db);
-  const activeCount = await sql`UPDATE tasks SET status = 'working' WHERE status = 'active'`.execute(db);
-  
+async function migrateTaskStatusValues(_db: Kysely<Database>): Promise<MigrationResult> {
   return {
     name: 'migrate_task_status_values',
     success: true,
-    message: `Migrated ${doneCount.numAffectedRows || 0} done->completed, ${activeCount.numAffectedRows || 0} active->working`,
+    message: 'Deprecated - replaced by migrateTasksSchemaV2',
+  };
+}
+
+/**
+ * Migration v2: Simplify tasks table schema
+ * 
+ * Changes:
+ * 1. Migrate status values: pending, structuring, structured, working, standby, ready_to_review, completed
+ *    → pending, in_progress, done
+ * 2. Rename context_* columns to direct names (SQLite doesn't support RENAME COLUMN in older versions,
+ *    but we keep the data and create new columns if needed)
+ * 3. Remove legacy columns: json_path, estimated_minutes, initialized, substatus, schema_version, modified_by
+ *    (SQLite doesn't support DROP COLUMN, so we just stop using them)
+ * 
+ * Status mapping:
+ * - pending → pending
+ * - structuring → in_progress (AI working)
+ * - structured → pending (user action needed)
+ * - working → in_progress (AI working)
+ * - standby → pending (user action needed)
+ * - ready_to_review → pending (user action needed)
+ * - completed → done
+ */
+async function migrateTasksSchemaV2(db: Kysely<Database>): Promise<MigrationResult> {
+  const changes: string[] = [];
+  
+  const settings = await sql<{ value: string }>`
+    SELECT value FROM settings WHERE key = 'migration_tasks_schema_v2'
+  `.execute(db);
+  
+  if (settings.rows.length > 0 && settings.rows[0].value === 'applied') {
+    return {
+      name: 'migrate_tasks_schema_v2',
+      success: true,
+      message: 'Already applied',
+    };
+  }
+
+  const inProgressCount = await sql`
+    UPDATE tasks 
+    SET status = 'in_progress' 
+    WHERE status IN ('structuring', 'working')
+  `.execute(db);
+  changes.push(`${inProgressCount.numAffectedRows || 0} tasks → in_progress`);
+  
+  const pendingCount = await sql`
+    UPDATE tasks 
+    SET status = 'pending' 
+    WHERE status IN ('structured', 'standby', 'ready_to_review')
+  `.execute(db);
+  changes.push(`${pendingCount.numAffectedRows || 0} tasks → pending`);
+  
+  const doneCount = await sql`
+    UPDATE tasks 
+    SET status = 'done' 
+    WHERE status = 'completed'
+  `.execute(db);
+  changes.push(`${doneCount.numAffectedRows || 0} tasks → done`);
+
+  const hasBusinessRules = await columnExists(db, 'tasks', 'business_rules');
+  if (!hasBusinessRules) {
+    await sql`ALTER TABLE tasks ADD COLUMN business_rules TEXT`.execute(db);
+    await sql`UPDATE tasks SET business_rules = context_business_rules WHERE context_business_rules IS NOT NULL`.execute(db);
+    changes.push('Added business_rules column');
+  }
+
+  const hasTechnicalNotes = await columnExists(db, 'tasks', 'technical_notes');
+  if (!hasTechnicalNotes) {
+    await sql`ALTER TABLE tasks ADD COLUMN technical_notes TEXT`.execute(db);
+    await sql`UPDATE tasks SET technical_notes = context_technical_notes WHERE context_technical_notes IS NOT NULL`.execute(db);
+    changes.push('Added technical_notes column');
+  }
+
+  const hasAcceptanceCriteria = await columnExists(db, 'tasks', 'acceptance_criteria');
+  if (!hasAcceptanceCriteria) {
+    await sql`ALTER TABLE tasks ADD COLUMN acceptance_criteria TEXT`.execute(db);
+    await sql`UPDATE tasks SET acceptance_criteria = context_acceptance_criteria WHERE context_acceptance_criteria IS NOT NULL`.execute(db);
+    changes.push('Added acceptance_criteria column');
+  }
+
+  await sql`
+    UPDATE tasks 
+    SET description = context_description 
+    WHERE (description IS NULL OR description = '') AND context_description IS NOT NULL
+  `.execute(db);
+  changes.push('Merged context_description into description');
+
+  await sql`INSERT OR REPLACE INTO settings (key, value) VALUES ('migration_tasks_schema_v2', 'applied')`.execute(db);
+  
+  return {
+    name: 'migrate_tasks_schema_v2',
+    success: true,
+    message: changes.join('; '),
   };
 }
 
@@ -381,6 +471,7 @@ export async function runMigrations(db: Kysely<Database>): Promise<MigrationResu
     results.push(await ensureActivityLogsTable(db));
     results.push(await ensureUserSessionsTable(db));
     results.push(await migrateTaskStatusValues(db));
+    results.push(await migrateTasksSchemaV2(db));
   } catch (error) {
     results.push({
       name: 'migration_error',

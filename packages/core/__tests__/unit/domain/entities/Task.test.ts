@@ -41,12 +41,8 @@ describe('Task Entity', () => {
     it('should have valid status values', () => {
       const validStatuses: TaskStatus[] = [
         'pending',
-        'structuring',
-        'structured',
-        'working',
-        'standby',
-        'ready_to_review',
-        'completed',
+        'in_progress',
+        'done',
       ]
       
       const task = createValidTask()
