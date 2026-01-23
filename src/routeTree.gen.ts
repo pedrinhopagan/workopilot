@@ -13,10 +13,13 @@ import { Route as TasksRouteImport } from './routes/tasks'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as LogsRouteImport } from './routes/logs'
+import { Route as HomeRouteImport } from './routes/home'
 import { Route as AgendaRouteImport } from './routes/agenda'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as TasksIndexRouteImport } from './routes/tasks/index'
 import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
+import { Route as HomeIndexRouteImport } from './routes/home/index'
+import { Route as AgendaIndexRouteImport } from './routes/agenda/index'
 import { Route as TasksTaskIdRouteImport } from './routes/tasks/$taskId'
 import { Route as ProjectsSettingsRouteImport } from './routes/projects/settings'
 
@@ -40,6 +43,11 @@ const LogsRoute = LogsRouteImport.update({
   path: '/logs',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HomeRoute = HomeRouteImport.update({
+  id: '/home',
+  path: '/home',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AgendaRoute = AgendaRouteImport.update({
   id: '/agenda',
   path: '/agenda',
@@ -60,6 +68,16 @@ const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => ProjectsRoute,
 } as any)
+const HomeIndexRoute = HomeIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => HomeRoute,
+} as any)
+const AgendaIndexRoute = AgendaIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AgendaRoute,
+} as any)
 const TasksTaskIdRoute = TasksTaskIdRouteImport.update({
   id: '/$taskId',
   path: '/$taskId',
@@ -73,36 +91,43 @@ const ProjectsSettingsRoute = ProjectsSettingsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/agenda': typeof AgendaRoute
+  '/agenda': typeof AgendaRouteWithChildren
+  '/home': typeof HomeRouteWithChildren
   '/logs': typeof LogsRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRoute
   '/tasks': typeof TasksRouteWithChildren
   '/projects/settings': typeof ProjectsSettingsRoute
   '/tasks/$taskId': typeof TasksTaskIdRoute
+  '/agenda/': typeof AgendaIndexRoute
+  '/home/': typeof HomeIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/tasks/': typeof TasksIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/agenda': typeof AgendaRoute
   '/logs': typeof LogsRoute
   '/settings': typeof SettingsRoute
   '/projects/settings': typeof ProjectsSettingsRoute
   '/tasks/$taskId': typeof TasksTaskIdRoute
+  '/agenda': typeof AgendaIndexRoute
+  '/home': typeof HomeIndexRoute
   '/projects': typeof ProjectsIndexRoute
   '/tasks': typeof TasksIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/agenda': typeof AgendaRoute
+  '/agenda': typeof AgendaRouteWithChildren
+  '/home': typeof HomeRouteWithChildren
   '/logs': typeof LogsRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRoute
   '/tasks': typeof TasksRouteWithChildren
   '/projects/settings': typeof ProjectsSettingsRoute
   '/tasks/$taskId': typeof TasksTaskIdRoute
+  '/agenda/': typeof AgendaIndexRoute
+  '/home/': typeof HomeIndexRoute
   '/projects/': typeof ProjectsIndexRoute
   '/tasks/': typeof TasksIndexRoute
 }
@@ -111,41 +136,49 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/agenda'
+    | '/home'
     | '/logs'
     | '/projects'
     | '/settings'
     | '/tasks'
     | '/projects/settings'
     | '/tasks/$taskId'
+    | '/agenda/'
+    | '/home/'
     | '/projects/'
     | '/tasks/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/agenda'
     | '/logs'
     | '/settings'
     | '/projects/settings'
     | '/tasks/$taskId'
+    | '/agenda'
+    | '/home'
     | '/projects'
     | '/tasks'
   id:
     | '__root__'
     | '/'
     | '/agenda'
+    | '/home'
     | '/logs'
     | '/projects'
     | '/settings'
     | '/tasks'
     | '/projects/settings'
     | '/tasks/$taskId'
+    | '/agenda/'
+    | '/home/'
     | '/projects/'
     | '/tasks/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  AgendaRoute: typeof AgendaRoute
+  AgendaRoute: typeof AgendaRouteWithChildren
+  HomeRoute: typeof HomeRouteWithChildren
   LogsRoute: typeof LogsRoute
   ProjectsRoute: typeof ProjectsRouteWithChildren
   SettingsRoute: typeof SettingsRoute
@@ -182,6 +215,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LogsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/home': {
+      id: '/home'
+      path: '/home'
+      fullPath: '/home'
+      preLoaderRoute: typeof HomeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/agenda': {
       id: '/agenda'
       path: '/agenda'
@@ -210,6 +250,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsIndexRouteImport
       parentRoute: typeof ProjectsRoute
     }
+    '/home/': {
+      id: '/home/'
+      path: '/'
+      fullPath: '/home/'
+      preLoaderRoute: typeof HomeIndexRouteImport
+      parentRoute: typeof HomeRoute
+    }
+    '/agenda/': {
+      id: '/agenda/'
+      path: '/'
+      fullPath: '/agenda/'
+      preLoaderRoute: typeof AgendaIndexRouteImport
+      parentRoute: typeof AgendaRoute
+    }
     '/tasks/$taskId': {
       id: '/tasks/$taskId'
       path: '/$taskId'
@@ -226,6 +280,27 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface AgendaRouteChildren {
+  AgendaIndexRoute: typeof AgendaIndexRoute
+}
+
+const AgendaRouteChildren: AgendaRouteChildren = {
+  AgendaIndexRoute: AgendaIndexRoute,
+}
+
+const AgendaRouteWithChildren =
+  AgendaRoute._addFileChildren(AgendaRouteChildren)
+
+interface HomeRouteChildren {
+  HomeIndexRoute: typeof HomeIndexRoute
+}
+
+const HomeRouteChildren: HomeRouteChildren = {
+  HomeIndexRoute: HomeIndexRoute,
+}
+
+const HomeRouteWithChildren = HomeRoute._addFileChildren(HomeRouteChildren)
 
 interface ProjectsRouteChildren {
   ProjectsSettingsRoute: typeof ProjectsSettingsRoute
@@ -255,7 +330,8 @@ const TasksRouteWithChildren = TasksRoute._addFileChildren(TasksRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  AgendaRoute: AgendaRoute,
+  AgendaRoute: AgendaRouteWithChildren,
+  HomeRoute: HomeRouteWithChildren,
   LogsRoute: LogsRoute,
   ProjectsRoute: ProjectsRouteWithChildren,
   SettingsRoute: SettingsRoute,

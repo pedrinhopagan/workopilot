@@ -1,5 +1,13 @@
-import type { Task, TaskExecution, TaskFull, Subtask } from "../../../types";
+import { Loader2 } from "lucide-react";
+import { Pagination } from "@/components/ui/pagination";
+import type { Project, Subtask, Task, TaskExecution, TaskFull } from "../../../types";
 import { TasksListItem } from "./TasksListItem";
+
+type PaginationInfo = {
+	page: number;
+	totalPages: number;
+	total: number;
+};
 
 type TasksListProps = {
 	pendingTasks: Task[];
@@ -8,14 +16,14 @@ type TasksListProps = {
 	activeExecutions: Map<string, TaskExecution>;
 	deleteConfirmId: string | null;
 	isLoading: boolean;
+	projectsList: Project[];
+	pagination: PaginationInfo;
 	getSubtasks: (taskId: string) => Subtask[];
 	onToggleTask: (taskId: string, currentStatus: string) => void;
 	onEditTask: (taskId: string) => void;
-	onCodarTask: (task: Task) => void;
-	onCodarSubtask: (task: Task, subtaskId: string) => void;
 	onToggleSubtask: (taskId: string, subtaskId: string) => void;
-	onReviewTask: (task: Task) => void;
 	onDeleteClick: (taskId: string) => void;
+	onPageChange: (page: number) => void;
 };
 
 export function TasksList({
@@ -25,36 +33,27 @@ export function TasksList({
 	activeExecutions,
 	deleteConfirmId,
 	isLoading,
+	projectsList,
+	pagination,
 	getSubtasks,
 	onToggleTask,
 	onEditTask,
-	onCodarTask,
-	onCodarSubtask,
 	onToggleSubtask,
-	onReviewTask,
 	onDeleteClick,
+	onPageChange,
 }: TasksListProps) {
+	const getProjectColor = (projectId: string | null): string | undefined => {
+		if (!projectId) return undefined;
+		const project = projectsList.find((p) => p.id === projectId);
+		return project?.color;
+	};
 	const hasNoTasks = pendingTasks.length === 0 && doneTasks.length === 0;
 
 	if (isLoading) {
 		return (
 			<div className="flex-1 flex items-center justify-center">
-				<div className="flex items-center gap-2 text-[#636363]">
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						width="16"
-						height="16"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						strokeWidth="2"
-						strokeLinecap="round"
-						strokeLinejoin="round"
-						className="animate-spin"
-						aria-hidden="true"
-					>
-						<path d="M21 12a9 9 0 1 1-6.219-8.56" />
-					</svg>
+				<div className="flex items-center gap-2 text-muted-foreground">
+					<Loader2 size={16} className="animate-spin" aria-hidden="true" />
 					<span className="text-sm">Carregando tarefas...</span>
 				</div>
 			</div>
@@ -64,7 +63,7 @@ export function TasksList({
 	if (hasNoTasks) {
 		return (
 			<div className="flex-1 flex items-center justify-center">
-				<div className="text-center text-[#636363] py-8">
+				<div className="text-center text-muted-foreground py-8">
 					Nenhuma tarefa encontrada. Adicione uma nova!
 				</div>
 			</div>
@@ -72,56 +71,61 @@ export function TasksList({
 	}
 
 	return (
-		<div className="flex-1 overflow-y-auto p-3">
-			{pendingTasks.length > 0 && (
-				<div className="space-y-1">
-					{pendingTasks.map((task) => (
-						<TasksListItem
-							key={task.id}
-							task={task}
-							taskFull={taskFullCache.get(task.id) || null}
-							execution={activeExecutions.get(task.id)}
-							subtasks={getSubtasks(task.id)}
-							isDeleteConfirming={deleteConfirmId === task.id}
-							onToggle={() => onToggleTask(task.id, task.status)}
-							onEdit={() => onEditTask(task.id)}
-							onCodar={() => onCodarTask(task)}
-							onCodarSubtask={(subtaskId) => onCodarSubtask(task, subtaskId)}
-							onToggleSubtask={(subtaskId) => onToggleSubtask(task.id, subtaskId)}
-							onReview={() => onReviewTask(task)}
-							onDelete={() => onDeleteClick(task.id)}
-						/>
-					))}
-				</div>
-			)}
-
-			{doneTasks.length > 0 && (
-				<div className="mt-4">
-					<div className="text-xs text-[#636363] uppercase tracking-wide mb-2">
-						Concluidas ({doneTasks.length})
-					</div>
-					<div className="space-y-1 opacity-50">
-						{doneTasks.map((task) => (
+		<div className="flex-1 flex flex-col overflow-hidden">
+			<div className="flex-1 overflow-y-auto p-3">
+				{pendingTasks.length > 0 && (
+					<div className="space-y-1">
+						{pendingTasks.map((task) => (
 							<TasksListItem
 								key={task.id}
 								task={task}
 								taskFull={taskFullCache.get(task.id) || null}
-								execution={undefined}
-								subtasks={[]}
+								execution={activeExecutions.get(task.id)}
+								subtasks={getSubtasks(task.id)}
 								isDeleteConfirming={deleteConfirmId === task.id}
-								isDone
+								projectColor={getProjectColor(task.project_id)}
 								onToggle={() => onToggleTask(task.id, task.status)}
 								onEdit={() => onEditTask(task.id)}
-								onCodar={() => onCodarTask(task)}
-								onCodarSubtask={() => {}}
-								onToggleSubtask={() => {}}
-								onReview={() => {}}
+								onToggleSubtask={(subtaskId) => onToggleSubtask(task.id, subtaskId)}
 								onDelete={() => onDeleteClick(task.id)}
 							/>
 						))}
 					</div>
-				</div>
-			)}
+				)}
+
+				{doneTasks.length > 0 && (
+					<div className="mt-4">
+						<div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">
+							Concluidas ({doneTasks.length})
+						</div>
+						<div className="space-y-1 opacity-50">
+							{doneTasks.map((task) => (
+								<TasksListItem
+									key={task.id}
+									task={task}
+									taskFull={taskFullCache.get(task.id) || null}
+									execution={undefined}
+									subtasks={[]}
+									isDeleteConfirming={deleteConfirmId === task.id}
+									projectColor={getProjectColor(task.project_id)}
+									isDone
+									onToggle={() => onToggleTask(task.id, task.status)}
+									onEdit={() => onEditTask(task.id)}
+									onToggleSubtask={() => {}}
+									onDelete={() => onDeleteClick(task.id)}
+								/>
+							))}
+						</div>
+					</div>
+				)}
+			</div>
+
+			<Pagination
+				page={pagination.page}
+				totalPages={pagination.totalPages}
+				total={pagination.total}
+				onPageChange={onPageChange}
+			/>
 		</div>
 	);
 }

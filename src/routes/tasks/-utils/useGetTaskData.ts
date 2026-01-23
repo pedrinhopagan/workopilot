@@ -1,24 +1,54 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import {
-	getTaskDerivedStatus,
-} from "../../../lib/constants/taskStatus";
+import { useCallback, useEffect, useMemo } from "react";
 import { safeInvoke, safeListen } from "../../../services/tauri";
+import { useDbRefetchStore } from "../../../stores/dbRefetch";
 import type {
 	ProjectWithConfig,
-	Task,
 	TaskExecution,
 	TaskFull,
 	TaskUpdatedPayload,
 } from "../../../types";
 import type { TaskQueryFilters } from "./useGetTaskQuery";
 
-export const TASKS_QUERY_KEY = ["tasks"] as const;
-export const TASK_FULL_QUERY_KEY = ["taskFull"] as const;
+export const TASKS_FULL_QUERY_KEY = ["tasksFull"] as const;
 export const EXECUTIONS_QUERY_KEY = ["activeExecutions"] as const;
 
-async function fetchTasks(): Promise<Task[]> {
-	return safeInvoke<Task[]>("get_tasks").catch(() => []);
+interface PaginatedTasksResult {
+	items: TaskFull[];
+	total: number;
+	page: number;
+	perPage: number;
+	totalPages: number;
+}
+
+async function fetchTasksFullPaginated(filters: TaskQueryFilters): Promise<PaginatedTasksResult> {
+	const params: Record<string, unknown> = {};
+
+	if (filters.projectId) {
+		params.project_id = filters.projectId;
+	}
+	if (filters.q) {
+		params.q = filters.q;
+	}
+	if (filters.priority) {
+		params.priority = filters.priority;
+	}
+	if (filters.category) {
+		params.category = filters.category;
+	}
+	params.page = filters.page;
+	params.perPage = filters.perPage;
+	params.sortBy = filters.sortBy;
+	params.sortOrder = filters.sortOrder;
+	params.excludeDone = false;
+
+	return safeInvoke<PaginatedTasksResult>("tasks_list_full_paginated", params).catch(() => ({
+		items: [],
+		total: 0,
+		page: 1,
+		perPage: 20,
+		totalPages: 0,
+	}));
 }
 
 async function fetchActiveExecutions(): Promise<Map<string, TaskExecution>> {
@@ -30,111 +60,79 @@ async function fetchActiveExecutions(): Promise<Map<string, TaskExecution>> {
 	return executionMap;
 }
 
-async function fetchTaskFull(taskId: string, projectPath: string): Promise<TaskFull | null> {
-	return safeInvoke<TaskFull>("get_task_full", {
-		projectPath,
-		taskId,
-	}).catch(() => null);
-}
-
 interface UseGetTaskDataOptions {
 	filters: TaskQueryFilters;
 }
 
 interface TaskDataResult {
-	tasks: Task[];
+	tasks: TaskFull[];
 	taskFullCache: Map<string, TaskFull>;
 	activeExecutions: Map<string, TaskExecution>;
 	isLoading: boolean;
 	isError: boolean;
 	refetch: () => void;
 	getSubtasks: (taskId: string) => TaskFull["subtasks"];
-	pendingTasks: Task[];
-	doneTasks: Task[];
+	pagination: {
+		page: number;
+		perPage: number;
+		total: number;
+		totalPages: number;
+		hasNextPage: boolean;
+		hasPrevPage: boolean;
+	};
 }
 
 export function useGetTaskData({ filters }: UseGetTaskDataOptions): TaskDataResult {
 	const queryClient = useQueryClient();
-	const tasksRef = useRef<Task[]>([]);
-	const taskFullCacheRef = useRef<Map<string, TaskFull>>(new Map());
+	
+	const changeCounter = useDbRefetchStore((s) => s.changeCounter);
+	const lastChange = useDbRefetchStore((s) => s.lastChange);
 
 	const tasksQuery = useQuery({
-		queryKey: [...TASKS_QUERY_KEY],
-		queryFn: fetchTasks,
+		queryKey: [...TASKS_FULL_QUERY_KEY, filters],
+		queryFn: () => fetchTasksFullPaginated(filters),
 		staleTime: 30_000,
+		refetchOnMount: "always",
 	});
 
 	const executionsQuery = useQuery({
 		queryKey: [...EXECUTIONS_QUERY_KEY],
 		queryFn: fetchActiveExecutions,
 		staleTime: 5_000,
+		refetchOnMount: "always",
 		refetchInterval: 10_000,
 	});
 
-	const tasks = tasksQuery.data ?? [];
+	const paginatedResult = tasksQuery.data ?? { items: [], total: 0, page: 1, perPage: 20, totalPages: 0 };
 	const activeExecutions = executionsQuery.data ?? new Map<string, TaskExecution>();
 
-	useEffect(() => {
-		tasksRef.current = tasks;
-	}, [tasks]);
-
-	const loadTaskFulls = useCallback(async () => {
-		const newCache = new Map<string, TaskFull>();
-		
-		for (const task of tasks) {
-			if (task.project_id) {
-				const project = await safeInvoke<ProjectWithConfig>(
-					"get_project_with_config",
-					{ projectId: task.project_id },
-				).catch(() => null);
-				
-				if (project) {
-					const full = await fetchTaskFull(task.id, project.path);
-					if (full) {
-						newCache.set(task.id, full);
-					}
-				}
-			}
+	const taskFullCache = useMemo(() => {
+		const cache = new Map<string, TaskFull>();
+		for (const task of paginatedResult.items) {
+			cache.set(task.id, task);
 		}
-		
-		taskFullCacheRef.current = newCache;
-	}, [tasks]);
+		return cache;
+	}, [paginatedResult.items]);
 
 	useEffect(() => {
-		if (tasks.length > 0) {
-			loadTaskFulls();
+		if (changeCounter === 0) return;
+		
+		const shouldRefetch = !lastChange || 
+			lastChange.entity_type === "task" || 
+			lastChange.entity_type === "subtask";
+		
+		if (shouldRefetch) {
+			queryClient.invalidateQueries({ queryKey: TASKS_FULL_QUERY_KEY });
+			queryClient.invalidateQueries({ queryKey: EXECUTIONS_QUERY_KEY });
 		}
-	}, [tasks, loadTaskFulls]);
+	}, [changeCounter, lastChange, queryClient]);
 
 	useEffect(() => {
 		let unlistenTask: (() => void) | null = null;
 		let unlistenExecution: (() => void) | null = null;
 
-		safeListen<TaskUpdatedPayload>("task-updated", async (event) => {
-			if (event.payload.source === "ai") {
-				const taskId = event.payload.task_id;
-				const task = tasksRef.current.find((t) => t.id === taskId);
-				
-				if (task?.project_id) {
-					const project = await safeInvoke<ProjectWithConfig>(
-						"get_project_with_config",
-						{ projectId: task.project_id },
-					).catch(() => null);
-					
-					if (project) {
-						const taskFull = await fetchTaskFull(taskId, project.path);
-						if (taskFull) {
-							await safeInvoke("update_task_and_sync", {
-								projectPath: project.path,
-								task: taskFull,
-							}).catch(() => null);
-							
-							taskFullCacheRef.current = new Map(taskFullCacheRef.current).set(taskId, taskFull);
-							queryClient.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
-						}
-					}
-				}
-			}
+		safeListen<TaskUpdatedPayload>("task-updated", () => {
+			queryClient.invalidateQueries({ queryKey: TASKS_FULL_QUERY_KEY });
 		}).then((fn) => {
 			unlistenTask = fn;
 		});
@@ -151,73 +149,34 @@ export function useGetTaskData({ filters }: UseGetTaskDataOptions): TaskDataResu
 		};
 	}, [queryClient]);
 
-	const filteredTasks = useMemo(() => {
-		let result = filters.projectId
-			? tasks.filter((t) => t.project_id === filters.projectId)
-			: tasks;
-
-		if (filters.priority) {
-			result = result.filter((t) => t.priority === filters.priority);
-		}
-		
-		if (filters.category) {
-			result = result.filter((t) => t.category === filters.category);
-		}
-		
-		if (filters.status) {
-			result = result.filter((t) => {
-				const full = taskFullCacheRef.current.get(t.id);
-				const state = getTaskDerivedStatus(full || null);
-				return state === filters.status;
-			});
-		}
-
-		return result;
-	}, [tasks, filters]);
-
-	const pendingTasks = useMemo(() => {
-		const pending = filteredTasks.filter((t) => t.status !== "done");
-		
-		return pending.sort((a, b) => {
-			const aActive = a.status === "active";
-			const bActive = b.status === "active";
-			if (aActive && !bActive) return -1;
-			if (!aActive && bActive) return 1;
-
-			const aExecuting = activeExecutions.has(a.id);
-			const bExecuting = activeExecutions.has(b.id);
-			if (aExecuting && !bExecuting) return -1;
-			if (!aExecuting && bExecuting) return 1;
-
-			return 0;
-		});
-	}, [filteredTasks, activeExecutions]);
-
-	const doneTasks = useMemo(
-		() => filteredTasks.filter((t) => t.status === "done"),
-		[filteredTasks],
-	);
-
 	const getSubtasks = useCallback(
-		(taskId: string) => taskFullCacheRef.current.get(taskId)?.subtasks || [],
-		[],
+		(taskId: string) => taskFullCache.get(taskId)?.subtasks || [],
+		[taskFullCache],
 	);
 
 	const refetch = useCallback(() => {
-		queryClient.invalidateQueries({ queryKey: TASKS_QUERY_KEY });
+		queryClient.invalidateQueries({ queryKey: TASKS_FULL_QUERY_KEY });
 		queryClient.invalidateQueries({ queryKey: EXECUTIONS_QUERY_KEY });
 	}, [queryClient]);
 
+	const pagination = useMemo(() => ({
+		page: paginatedResult.page,
+		perPage: paginatedResult.perPage,
+		total: paginatedResult.total,
+		totalPages: paginatedResult.totalPages,
+		hasNextPage: paginatedResult.page < paginatedResult.totalPages,
+		hasPrevPage: paginatedResult.page > 1,
+	}), [paginatedResult]);
+
 	return {
-		tasks: filteredTasks,
-		taskFullCache: taskFullCacheRef.current,
+		tasks: paginatedResult.items,
+		taskFullCache,
 		activeExecutions,
 		isLoading: tasksQuery.isLoading,
 		isError: tasksQuery.isError,
 		refetch,
 		getSubtasks,
-		pendingTasks,
-		doneTasks,
+		pagination,
 	};
 }
 

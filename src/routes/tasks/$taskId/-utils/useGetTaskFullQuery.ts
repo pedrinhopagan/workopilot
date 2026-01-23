@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { safeInvoke, safeListen } from "../../../../services/tauri";
+import { useDbRefetchStore } from "../../../../stores/dbRefetch";
 import type {
 	ProjectWithConfig,
 	Task,
@@ -55,12 +56,15 @@ interface TaskFullQueryResult {
 
 export function useGetTaskFullQuery({ taskId }: UseGetTaskFullQueryOptions): TaskFullQueryResult {
 	const queryClient = useQueryClient();
+	const changeCounter = useDbRefetchStore((s) => s.changeCounter);
+	const lastChange = useDbRefetchStore((s) => s.lastChange);
 
 	const taskQuery = useQuery({
 		queryKey: ["task", taskId],
 		queryFn: () => fetchTask(taskId),
 		enabled: !!taskId,
 		staleTime: 30_000,
+		refetchOnMount: "always",
 	});
 
 	const task = taskQuery.data ?? null;
@@ -86,6 +90,7 @@ export function useGetTaskFullQuery({ taskId }: UseGetTaskFullQueryOptions): Tas
 		},
 		enabled: !!taskId && !!projectPath,
 		staleTime: 30_000,
+		refetchOnMount: "always",
 	});
 
 	const executionQuery = useQuery({
@@ -93,6 +98,7 @@ export function useGetTaskFullQuery({ taskId }: UseGetTaskFullQueryOptions): Tas
 		queryFn: () => fetchTaskExecution(taskId),
 		enabled: !!taskId,
 		staleTime: 5_000,
+		refetchOnMount: "always",
 		refetchInterval: 10_000,
 	});
 
@@ -102,6 +108,23 @@ export function useGetTaskFullQuery({ taskId }: UseGetTaskFullQueryOptions): Tas
 		enabled: !!taskId,
 		staleTime: 60_000,
 	});
+
+	useEffect(() => {
+		if (changeCounter === 0) return;
+		
+		const isRelevant = !lastChange || 
+			lastChange.entity_type === "task" || 
+			lastChange.entity_type === "subtask";
+		
+		const isThisTask = !lastChange || 
+			lastChange.entity_id === taskId;
+		
+		if (isRelevant && isThisTask) {
+			queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+			queryClient.invalidateQueries({ queryKey: [...TASK_FULL_QUERY_KEY, taskId] });
+			queryClient.invalidateQueries({ queryKey: [...TASK_EXECUTION_QUERY_KEY, taskId] });
+		}
+	}, [changeCounter, lastChange, taskId, queryClient]);
 
 	useEffect(() => {
 		let unlistenTask: (() => void) | null = null;

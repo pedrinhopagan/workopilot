@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { safeInvoke } from "../../../services/tauri";
 import { useSelectedProjectStore } from "../../../stores/selectedProject";
@@ -12,6 +12,7 @@ import { TasksList } from "./TasksList";
 export function TasksRoot() {
 	const navigate = useNavigate();
 	const selectedProjectId = useSelectedProjectStore((s) => s.selectedProjectId);
+	const projectsList = useSelectedProjectStore((s) => s.projectsList);
 	
 	const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
 	const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -26,9 +27,21 @@ export function TasksRoot() {
 		isLoading,
 		refetch,
 		getSubtasks,
-		pendingTasks,
-		doneTasks,
+		pagination,
 	} = useGetTaskData({ filters: queryState.filters });
+
+	const { pendingTasks, doneTasks } = useMemo(() => {
+		const pending: Task[] = [];
+		const done: Task[] = [];
+		for (const task of tasks) {
+			if (task.status === "done") {
+				done.push(task as unknown as Task);
+			} else {
+				pending.push(task as unknown as Task);
+			}
+		}
+		return { pendingTasks: pending, doneTasks: done };
+	}, [tasks]);
 
 	const handleToggleTask = useCallback(async (taskId: string, currentStatus: string) => {
 		const newStatus = currentStatus === "done" ? "pending" : "done";
@@ -41,24 +54,6 @@ export function TasksRoot() {
 	const handleEditTask = useCallback((taskId: string) => {
 		navigate({ to: "/tasks/$taskId", params: { taskId } });
 	}, [navigate]);
-
-	const handleCodarTask = useCallback(async (task: Task) => {
-		if (!task.project_id) return;
-		await safeInvoke("launch_task_workflow", {
-			projectId: task.project_id,
-			taskId: task.id,
-			subtaskId: null,
-		}).catch((e) => console.error("Failed to launch task workflow:", e));
-	}, []);
-
-	const handleCodarSubtask = useCallback(async (task: Task, subtaskId: string) => {
-		if (!task.project_id) return;
-		await safeInvoke("launch_task_workflow", {
-			projectId: task.project_id,
-			taskId: task.id,
-			subtaskId,
-		}).catch((e) => console.error("Failed to launch subtask workflow:", e));
-	}, []);
 
 	const handleToggleSubtask = useCallback(async (taskId: string, subtaskId: string) => {
 		const taskFull = taskFullCache.get(taskId);
@@ -103,13 +98,7 @@ export function TasksRoot() {
 		refetch();
 	}, [taskFullCache, tasks, refetch]);
 
-	const handleReviewTask = useCallback(async (task: Task) => {
-		if (!task.project_id) return;
-		await safeInvoke("launch_task_review", {
-			projectId: task.project_id,
-			taskId: task.id,
-		}).catch((e) => console.error("Failed to launch task review:", e));
-	}, []);
+
 
 	const handleDeleteTask = useCallback(async (taskId: string) => {
 		const task = tasks.find((t) => t.id === taskId);
@@ -161,14 +150,14 @@ export function TasksRoot() {
 				activeExecutions={activeExecutions}
 				deleteConfirmId={deleteConfirmId}
 				isLoading={isLoading}
+				projectsList={projectsList}
+				pagination={pagination}
 				getSubtasks={getSubtasks}
 				onToggleTask={handleToggleTask}
 				onEditTask={handleEditTask}
-				onCodarTask={handleCodarTask}
-				onCodarSubtask={handleCodarSubtask}
 				onToggleSubtask={handleToggleSubtask}
-				onReviewTask={handleReviewTask}
 				onDeleteClick={handleDeleteClick}
+				onPageChange={queryState.setPage}
 			/>
 
 			{isNewTaskOpen && selectedProjectId && projectPath && (

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { TaskStatus } from "../../../../lib/constants/taskStatus";
-import { isTaskAIWorking } from "../../../../lib/constants/taskStatus";
+import { type TaskStatus } from "../../../../lib/constants/taskStatus";
 import { openCodeService } from "../../../../services/opencode";
 import { safeInvoke, safeListen } from "../../../../services/tauri";
 import type { QuickfixPayload, TaskExecution, TaskUpdatedPayload } from "../../../../types";
@@ -90,8 +89,6 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 		launchQuickfixMutation.isPending ||
 		focusTmuxSessionMutation.isPending;
 
-	const isAIWorkingOnTask = isTaskAIWorking(taskFull);
-
 	const tmuxSessionName = useMemo(() => {
 		if (activeExecution?.tmux_session) return activeExecution.tmux_session;
 		if (!project || !taskId) return null;
@@ -99,8 +96,6 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 		const taskShort = taskId.length > 8 ? taskId.slice(0, 8) : taskId;
 		return `workopilot:${safeName}-${taskShort}`;
 	}, [activeExecution?.tmux_session, project, taskId]);
-
-	const canFocusTerminal = isAIWorkingOnTask && !!tmuxSessionName;
 
 	const pendingSubtasks = useMemo(
 		() =>
@@ -340,15 +335,6 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 		setViewingImageUrl(null);
 	}
 
-	function handleCodarSubtask(id: string) {
-		if (!task?.project_id) return;
-		safeInvoke("launch_task_workflow", {
-			projectId: task.project_id,
-			taskId: task.id,
-			subtaskId: id,
-		}).catch((e) => console.error("Failed to launch subtask workflow:", e));
-	}
-
 	function handleTechnicalNotesSave() {
 		if (localTechnicalNotes !== (taskFull?.context.technical_notes || "")) {
 			saveContextField("technical_notes", localTechnicalNotes || null);
@@ -357,7 +343,7 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 
 	if (isLoading) {
 		return (
-			<div className="flex-1 flex items-center justify-center text-[#636363]">
+			<div className="flex-1 flex items-center justify-center text-muted-foreground">
 				Carregando...
 			</div>
 		);
@@ -365,7 +351,7 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 
 	if (!taskFull) {
 		return (
-			<div className="flex-1 flex flex-col items-center justify-center text-[#636363] gap-4">
+			<div className="flex-1 flex flex-col items-center justify-center text-muted-foreground gap-4">
 				<span>Tarefa não encontrada</span>
 			</div>
 		);
@@ -389,8 +375,6 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 			<ManageTaskStatus
 				taskFull={taskFull}
 				conflictWarning={conflictWarning}
-				isAIWorkingOnTask={isAIWorkingOnTask}
-				canFocusTerminal={canFocusTerminal}
 				canExecuteSubtask={!!canExecuteSubtask}
 				pendingSubtasks={pendingSubtasks}
 				lastAction={taskFull.ai_metadata.last_completed_action}
@@ -429,7 +413,6 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 				onAddSubtask={addSubtask}
 				onToggleSubtask={toggleSubtask}
 				onRemoveSubtask={removeSubtask}
-				onCodarSubtask={handleCodarSubtask}
 				onUpdateSubtask={updateSubtask}
 				onReorderSubtasks={reorderSubtasks}
 				onAddBusinessRule={addBusinessRule}
@@ -444,7 +427,7 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 				onCloseImageModal={handleCloseImageModal}
 			/>
 
-			<div className="p-4 border-t border-[#3d3a34]">
+			<div className="p-4 border-t border-border">
 				<ManageTaskMetadata taskFull={taskFull} />
 			</div>
 		</>

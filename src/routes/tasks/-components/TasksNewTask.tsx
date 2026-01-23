@@ -58,16 +58,16 @@ export function TasksNewTask({ projectId, projectPath, onClose, onCreated }: Tas
 				aria-label="Fechar dialog"
 			/>
 
-			<div className="relative w-full max-w-lg bg-[#1c1c1c] border border-[#3d3a34] shadow-xl animate-fade-in">
-				<header className="flex items-center justify-between p-4 border-b border-[#3d3a34]">
-					<h2 className="text-sm font-medium text-[#d6d6d6]">Nova Tarefa</h2>
+			<div className="relative w-full max-w-lg bg-background border border-border shadow-xl animate-fade-in">
+				<header className="flex items-center justify-between p-4 border-b border-border">
+					<h2 className="text-sm font-medium text-foreground">Nova Tarefa</h2>
 					<button
 						type="button"
 						onClick={onClose}
-						className="p-1 hover:bg-[#2a2a2a] transition-colors"
+						className="p-1 hover:bg-popover transition-colors"
 						aria-label="Fechar"
 					>
-						<X size={16} className="text-[#828282]" />
+						<X size={16} className="text-muted-foreground" />
 					</button>
 				</header>
 
@@ -79,13 +79,13 @@ export function TasksNewTask({ projectId, projectPath, onClose, onCreated }: Tas
 							placeholder="Título da tarefa..."
 							value={title}
 							onChange={(e) => setTitle(e.target.value)}
-							className="w-full px-3 py-2 bg-[#232323] border border-[#3d3a34] text-[#d6d6d6] text-sm focus:border-[#909d63] focus:outline-none"
+							className="w-full px-3 py-2 bg-card border border-border text-foreground text-sm focus:border-primary focus:outline-none"
 						/>
 					</div>
 
 					<div className="flex items-center gap-3">
 						<div className="flex-1">
-							<span className="block text-xs text-[#636363] mb-1">Categoria</span>
+							<span className="block text-xs text-muted-foreground mb-1">Categoria</span>
 							<Select
 								value={category}
 								onChange={(v) => setCategory(v)}
@@ -94,7 +94,7 @@ export function TasksNewTask({ projectId, projectPath, onClose, onCreated }: Tas
 							/>
 						</div>
 						<div className="flex-1">
-							<span className="block text-xs text-[#636363] mb-1">Prioridade</span>
+							<span className="block text-xs text-muted-foreground mb-1">Prioridade</span>
 							<Select
 								value={String(priority)}
 								onChange={(v) => setPriority(parseInt(v))}
@@ -108,14 +108,14 @@ export function TasksNewTask({ projectId, projectPath, onClose, onCreated }: Tas
 						<button
 							type="button"
 							onClick={onClose}
-							className="px-4 py-2 text-sm text-[#636363] hover:text-[#d6d6d6] transition-colors"
+							className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
 						>
 							Cancelar
 						</button>
 						<button
 							type="submit"
 							disabled={!title.trim() || createTask.isPending}
-							className="px-4 py-2 bg-[#909d63] text-[#1c1c1c] text-sm hover:bg-[#a0ad73] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+							className="px-4 py-2 bg-primary text-primary-foreground text-sm hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
 						>
 							{createTask.isPending ? "Criando..." : "Criar Tarefa"}
 						</button>

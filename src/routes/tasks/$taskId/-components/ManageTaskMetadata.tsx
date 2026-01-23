@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
-import type { TaskFull } from "../../../../types";
+import type { TaskFull } from "@/types";
 
 interface ManageTaskMetadataProps {
 	taskFull: TaskFull;
@@ -36,36 +36,36 @@ export function ManageTaskMetadata({ taskFull }: ManageTaskMetadataProps) {
 	}
 
 	return (
-		<section className="border border-[#3d3a34] rounded-lg overflow-hidden">
+		<section className="border border-border rounded-lg overflow-hidden">
 			<button
 				type="button"
 				onClick={() => setIsOpen(!isOpen)}
-				className="w-full flex items-center justify-between px-4 py-3 bg-[#1c1c1c] hover:bg-[#232323] transition-colors"
+				className="w-full flex items-center justify-between px-4 py-3 bg-background hover:bg-card transition-colors"
 			>
 				<div className="flex items-center gap-2">
 					{isOpen ? (
-						<ChevronDown size={16} className="text-[#636363]" />
+						<ChevronDown size={16} className="text-muted-foreground" />
 					) : (
-						<ChevronRight size={16} className="text-[#636363]" />
+						<ChevronRight size={16} className="text-muted-foreground" />
 					)}
-					<span className="text-xs text-[#828282] uppercase tracking-wide">
+					<span className="text-xs text-muted-foreground uppercase tracking-wide">
 						Metadados
 					</span>
 				</div>
-				<span className="text-xs text-[#636363] font-mono">{taskFull.id.slice(0, 8)}...</span>
+				<span className="text-xs text-muted-foreground font-mono">{taskFull.id.slice(0, 8)}...</span>
 			</button>
 
 			{isOpen && (
-				<div className="relative border-t border-[#3d3a34]">
+				<div className="relative border-t border-border">
 					<button
 						type="button"
 						onClick={handleCopy}
-						className="absolute top-2 right-2 p-1.5 text-[#636363] hover:text-[#d6d6d6] hover:bg-[#2a2a2a] rounded transition-colors"
+						className="absolute top-2 right-2 p-1.5 text-muted-foreground hover:text-foreground hover:bg-popover rounded transition-colors"
 						title="Copiar JSON"
 					>
-						{copied ? <Check size={14} className="text-[#909d63]" /> : <Copy size={14} />}
+						{copied ? <Check size={14} className="text-primary" /> : <Copy size={14} />}
 					</button>
-					<pre className="p-4 bg-[#0d0d0d] text-[#d6d6d6] text-xs font-mono overflow-x-auto max-h-96 overflow-y-auto">
+					<pre className="p-4 bg-black text-foreground text-xs font-mono overflow-x-auto max-h-96 overflow-y-auto">
 						<code>{metadataJson}</code>
 					</pre>
 				</div>

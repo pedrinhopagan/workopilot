@@ -1,6 +1,6 @@
 import { useNavigate } from "@tanstack/react-router";
 import { Bot, ChevronLeft } from "lucide-react";
-import { Select } from "../../../../components/Select";
+import { Select } from "@/components/Select";
 
 const CATEGORIES = ["feature", "bug", "refactor", "test", "docs"];
 
@@ -42,11 +42,11 @@ export function ManageTaskHeader({
 	}
 
 	return (
-		<div className="flex items-center gap-3 p-3 border-b border-[#3d3a34] bg-[#1c1c1c]">
+		<div className="flex items-center gap-3 p-3 border-b border-border bg-background">
 			<button
 				type="button"
 				onClick={goBack}
-				className="text-[#636363] hover:text-[#d6d6d6] transition-colors p-1"
+				className="text-muted-foreground hover:text-foreground transition-colors p-1"
 				title="Voltar"
 			>
 				<ChevronLeft size={18} />
@@ -57,7 +57,7 @@ export function ManageTaskHeader({
 				value={title}
 				onChange={(e) => onTitleChange(e.target.value)}
 				onBlur={onTitleBlur}
-				className="flex-1 bg-transparent text-[#d6d6d6] text-base font-medium focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors"
+				className="flex-1 bg-transparent text-foreground text-base font-medium focus:outline-none border-b border-transparent focus:border-primary transition-colors"
 			/>
 
 			<Select
@@ -72,17 +72,17 @@ export function ManageTaskHeader({
 				onChange={(v) => onPriorityChange(Number.parseInt(v))}
 			/>
 
-			{isSaving && <span className="text-xs text-[#636363]">Salvando...</span>}
+			{isSaving && <span className="text-xs text-muted-foreground">Salvando...</span>}
 
 			{aiUpdatedRecently && (
-				<span className="text-xs text-[#909d63] flex items-center gap-1 animate-pulse">
+				<span className="text-xs text-primary flex items-center gap-1 animate-pulse">
 					<Bot size={14} />
 					IA atualizou
 				</span>
 			)}
 
 			<span
-				className={`w-2 h-2 rounded-full ${isOpenCodeConnected ? "bg-[#61afef]" : "bg-[#636363]"}`}
+				className={`w-2 h-2 rounded-full ${isOpenCodeConnected ? "bg-chart-4" : "bg-muted-foreground"}`}
 				title={
 					isOpenCodeConnected
 						? "OpenCode conectado - atualizações em tempo real"

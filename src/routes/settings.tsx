@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import { safeInvoke } from "../services/tauri";
 import { TabBar } from "../components/TabBar";
 import { HotkeyInput, type HotkeyValue } from "../components/HotkeyInput";
-import { Switch } from "../components/Switch";
+import { Switch } from "@/components/ui/switch";
 
 interface ShortcutConfig {
   modifier: string;
@@ -94,36 +94,36 @@ function SettingsPage() {
       <main className="flex-1 overflow-y-auto p-4">
         <div className="max-w-xl">
           <div className="mb-6">
-            <h1 className="text-xl text-[#d6d6d6] mb-1">Configuracoes</h1>
-            <p className="text-sm text-[#636363]">Configuracoes globais da aplicacao</p>
+            <h1 className="text-xl text-foreground mb-1">Configuracoes</h1>
+            <p className="text-sm text-muted-foreground">Configuracoes globais da aplicacao</p>
           </div>
 
-          <div className="bg-[#232323] border border-[#3d3a34] p-4">
-            <h2 className="text-sm text-[#828282] uppercase tracking-wide mb-4">Comportamento da Janela</h2>
+          <div className="bg-card border border-border p-4">
+            <h2 className="text-sm text-muted-foreground uppercase tracking-wide mb-4">Comportamento da Janela</h2>
             
             <div className="flex items-center justify-between mb-4">
               <div>
-                <span className="block text-sm text-[#d6d6d6]">Janela fixa</span>
-                <span className="block text-xs text-[#636363]">
+                <span className="block text-sm text-foreground">Janela fixa</span>
+                <span className="block text-xs text-muted-foreground">
                   Mantem a janela sempre visivel, ignorando o atalho de esconder
                 </span>
               </div>
               <Switch
                 checked={pinnedWindow}
-                onChange={handlePinnedWindowChange}
+                onCheckedChange={handlePinnedWindowChange}
               />
             </div>
           </div>
 
-          <div className="bg-[#232323] border border-[#3d3a34] p-4 mt-4">
-            <h2 className="text-sm text-[#828282] uppercase tracking-wide mb-4">Atalho Global</h2>
-            <p className="text-xs text-[#636363] mb-4">
+          <div className="bg-card border border-border p-4 mt-4">
+            <h2 className="text-sm text-muted-foreground uppercase tracking-wide mb-4">Atalho Global</h2>
+            <p className="text-xs text-muted-foreground mb-4">
               Define o atalho de teclado para abrir/fechar o WorkoPilot de qualquer lugar.
             </p>
 
             <div className="space-y-3">
               <div>
-                <span className="block text-xs text-[#636363] mb-2">Clique para alterar o atalho</span>
+                <span className="block text-xs text-muted-foreground mb-2">Clique para alterar o atalho</span>
                 <HotkeyInput
                   value={hotkeyValue}
                   onChange={handleShortcutChange}
@@ -131,14 +131,14 @@ function SettingsPage() {
                 />
               </div>
 
-              {error && <div className="text-sm text-[#bc5653]">{error}</div>}
-              {success && <div className="text-sm text-[#909d63]">{success}</div>}
+              {error && <div className="text-sm text-destructive">{error}</div>}
+              {success && <div className="text-sm text-primary">{success}</div>}
             </div>
           </div>
 
-          <div className="bg-[#232323] border border-[#3d3a34] p-4 mt-4">
-            <h2 className="text-sm text-[#828282] uppercase tracking-wide mb-4">Skills do OpenCode</h2>
-            <p className="text-xs text-[#636363] mb-4">
+          <div className="bg-card border border-border p-4 mt-4">
+            <h2 className="text-sm text-muted-foreground uppercase tracking-wide mb-4">Skills do OpenCode</h2>
+            <p className="text-xs text-muted-foreground mb-4">
               Sincroniza as skills do WorkoPilot para o OpenCode. As skills sao atualizadas automaticamente ao iniciar a aplicacao.
             </p>
 
@@ -147,13 +147,13 @@ function SettingsPage() {
                 type="button"
                 onClick={handleSyncSkills}
                 disabled={isSyncingSkills}
-                className="px-3 py-1.5 text-sm bg-[#3d3a34] hover:bg-[#4d4a44] disabled:opacity-50 disabled:cursor-not-allowed text-[#d6d6d6] transition-colors"
+                className="px-3 py-1.5 text-sm bg-border hover:bg-secondary disabled:opacity-50 disabled:cursor-not-allowed text-foreground transition-colors"
               >
                 {isSyncingSkills ? "Sincronizando..." : "Sincronizar Skills"}
               </button>
 
               {skillsMessage && (
-                <div className={`text-sm ${skillsMessage.type === "success" ? "text-[#909d63]" : "text-[#bc5653]"}`}>
+                <div className={`text-sm ${skillsMessage.type === "success" ? "text-primary" : "text-destructive"}`}>
                   {skillsMessage.text}
                 </div>
               )}

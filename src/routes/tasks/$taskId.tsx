@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { taskDetailSearchSchema } from "../../lib/searchSchemas";
 import { ManageTaskRoot } from "./$taskId/-components";
 
 function TaskDetailPage() {
@@ -8,4 +9,5 @@ function TaskDetailPage() {
 
 export const Route = createFileRoute("/tasks/$taskId")({
 	component: TaskDetailPage,
+	validateSearch: (search) => taskDetailSearchSchema.parse(search),
 });

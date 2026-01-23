@@ -1,8 +1,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useForm, type UseFormReturn } from "react-hook-form";
+import { type UseFormReturn, useForm } from "react-hook-form";
 import type { Subtask, TaskFull } from "../../../../types";
-import { taskEditFormSchema, type TaskEditFormSchema } from "./taskSchema";
+import { type TaskEditFormSchema, taskEditFormSchema } from "./taskSchema";
 import { useUpdateTaskFullMutation } from "./useTaskMutations";
 
 interface UseTaskFormOptions {
@@ -48,12 +48,17 @@ function taskFullToFormValues(taskFull: TaskFull): TaskEditFormSchema {
 			acceptance_criteria: taskFull.context.acceptance_criteria,
 		},
 		subtasks: taskFull.subtasks,
-		initialized: taskFull.initialized,
+		initialized: taskFull.initialized ?? false,
 	};
 }
 
-export function useTaskForm({ taskFull, projectPath }: UseTaskFormOptions): UseTaskFormReturn {
-	const [lastKnownModifiedAt, setLastKnownModifiedAt] = useState<string | null>(null);
+export function useTaskForm({
+	taskFull,
+	projectPath,
+}: UseTaskFormOptions): UseTaskFormReturn {
+	const [lastKnownModifiedAt, setLastKnownModifiedAt] = useState<string | null>(
+		null,
+	);
 	const [aiUpdatedRecently, setAiUpdatedRecently] = useState(false);
 	const [conflictWarning, setConflictWarning] = useState(false);
 	const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -170,8 +175,12 @@ export function useTaskForm({ taskFull, projectPath }: UseTaskFormOptions): UseT
 	const addAcceptanceCriteria = useCallback(
 		(criteria: string) => {
 			if (!criteria.trim()) return;
-			const currentCriteria = form.getValues("context.acceptance_criteria") ?? [];
-			form.setValue("context.acceptance_criteria", [...currentCriteria, criteria.trim()]);
+			const currentCriteria =
+				form.getValues("context.acceptance_criteria") ?? [];
+			form.setValue("context.acceptance_criteria", [
+				...currentCriteria,
+				criteria.trim(),
+			]);
 			const values = form.getValues();
 			debouncedSave(values);
 		},
@@ -180,7 +189,8 @@ export function useTaskForm({ taskFull, projectPath }: UseTaskFormOptions): UseT
 
 	const removeAcceptanceCriteria = useCallback(
 		(index: number) => {
-			const currentCriteria = form.getValues("context.acceptance_criteria") ?? [];
+			const currentCriteria =
+				form.getValues("context.acceptance_criteria") ?? [];
 			const newCriteria = currentCriteria.filter((_, i) => i !== index);
 			form.setValue(
 				"context.acceptance_criteria",
@@ -230,7 +240,8 @@ export function useTaskForm({ taskFull, projectPath }: UseTaskFormOptions): UseT
 					return {
 						...s,
 						status: newStatus,
-						completed_at: newStatus === "done" ? new Date().toISOString() : null,
+						completed_at:
+							newStatus === "done" ? new Date().toISOString() : null,
 					};
 				}
 				return s;
@@ -253,7 +264,10 @@ export function useTaskForm({ taskFull, projectPath }: UseTaskFormOptions): UseT
 		(id: string) => {
 			const currentSubtasks = form.getValues("subtasks");
 			const filteredSubtasks = currentSubtasks.filter((s) => s.id !== id);
-			const reorderedSubtasks = filteredSubtasks.map((s, i) => ({ ...s, order: i }));
+			const reorderedSubtasks = filteredSubtasks.map((s, i) => ({
+				...s,
+				order: i,
+			}));
 
 			form.setValue("subtasks", reorderedSubtasks);
 			const values = form.getValues();
@@ -289,7 +303,10 @@ export function useTaskForm({ taskFull, projectPath }: UseTaskFormOptions): UseT
 		setConflictWarning(false);
 	}, []);
 
-	const isDirty = useMemo(() => form.formState.isDirty, [form.formState.isDirty]);
+	const isDirty = useMemo(
+		() => form.formState.isDirty,
+		[form.formState.isDirty],
+	);
 	const isSaving = updateMutation.isPending;
 
 	return {

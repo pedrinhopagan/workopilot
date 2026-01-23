@@ -1,108 +1,110 @@
 import { createRootRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
-import { safeInvoke, safeGetCurrentWindow } from "../services/tauri";
-import { useDialogStateStore } from "../stores/dialogState";
 import { StructuringCompleteModal } from "../components/StructuringCompleteModal";
+import { useDbChangedListener } from "../hooks/useDbChangedListener";
 import { openCodeService } from "../services/opencode";
 import {
-  startPolling,
-  stopPolling,
-  checkForStructuringChanges,
-  checkAllInProgressTasks,
+	checkAllInProgressTasks,
+	checkForStructuringChanges,
+	startPolling,
+	stopPolling,
 } from "../services/structuringMonitor";
-import { useDbChangedListener } from "../hooks/useDbChangedListener";
+import { safeGetCurrentWindow, safeInvoke } from "../services/tauri";
+import { useDialogStateStore } from "../stores/dialogState";
 
 function RootLayout() {
-  const navigate = useNavigate();
-  const openDialogCount = useDialogStateStore((s) => s.openDialogCount);
-  const dialogOpenRef = useRef(openDialogCount > 0);
+	const navigate = useNavigate();
+	const openDialogCount = useDialogStateStore((s) => s.openDialogCount);
+	const dialogOpenRef = useRef(openDialogCount > 0);
 
-  useDbChangedListener();
+	useDbChangedListener();
 
-  useEffect(() => {
-    dialogOpenRef.current = openDialogCount > 0;
-  }, [openDialogCount]);
+	useEffect(() => {
+		dialogOpenRef.current = openDialogCount > 0;
+	}, [openDialogCount]);
 
-  useEffect(() => {
-    let unlisten: (() => void) | undefined;
-    let hideTimeout: ReturnType<typeof setTimeout> | null = null;
+	useEffect(() => {
+		let unlisten: (() => void) | undefined;
+		let hideTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    startPolling(5000);
+		startPolling(30000);
 
-    const unsubscribeOpenCode = openCodeService.onSessionIdle(async () => {
-      await checkForStructuringChanges();
-    });
+		const unsubscribeOpenCode = openCodeService.onSessionIdle(async () => {
+			await checkForStructuringChanges();
+		});
 
-    const unsubscribeFileChange = openCodeService.onFileChange(async (filePath) => {
-      if (filePath.includes("workopilot.db")) {
-        await checkAllInProgressTasks();
-      }
-    });
+		const unsubscribeFileChange = openCodeService.onFileChange(
+			async (filePath) => {
+				if (filePath.includes("workopilot.db")) {
+					await checkAllInProgressTasks();
+				}
+			},
+		);
 
-    safeGetCurrentWindow().then((win) => {
-      if (!win) return;
-      win
-        .onFocusChanged(({ payload: focused }: { payload: boolean }) => {
-          if (hideTimeout) {
-            clearTimeout(hideTimeout);
-            hideTimeout = null;
-          }
+		safeGetCurrentWindow().then((win) => {
+			if (!win) return;
+			win
+				.onFocusChanged(({ payload: focused }: { payload: boolean }) => {
+					if (hideTimeout) {
+						clearTimeout(hideTimeout);
+						hideTimeout = null;
+					}
 
-          if (!focused && !dialogOpenRef.current) {
-            hideTimeout = setTimeout(async () => {
-              const currentWin = await safeGetCurrentWindow();
-              if (!currentWin) return;
-              const isFocused = await currentWin.isFocused();
-              if (!isFocused && !dialogOpenRef.current) {
-                safeInvoke("hide_window");
-              }
-            }, 150);
-          }
-        })
-        .then((fn: () => void) => {
-          unlisten = fn;
-        });
-    });
+					if (!focused && !dialogOpenRef.current) {
+						hideTimeout = setTimeout(async () => {
+							const currentWin = await safeGetCurrentWindow();
+							if (!currentWin) return;
+							const isFocused = await currentWin.isFocused();
+							if (!isFocused && !dialogOpenRef.current) {
+								safeInvoke("hide_window");
+							}
+						}, 150);
+					}
+				})
+				.then((fn: () => void) => {
+					unlisten = fn;
+				});
+		});
 
-    return () => {
-      if (hideTimeout) clearTimeout(hideTimeout);
-      unlisten?.();
-      unsubscribeOpenCode();
-      unsubscribeFileChange();
-      stopPolling();
-    };
-  }, []);
+		return () => {
+			if (hideTimeout) clearTimeout(hideTimeout);
+			unlisten?.();
+			unsubscribeOpenCode();
+			unsubscribeFileChange();
+			stopPolling();
+		};
+	}, []);
 
-  useEffect(() => {
-    const handleKeydown = (e: KeyboardEvent) => {
-      if (e.altKey && e.key >= "0" && e.key <= "9") {
-        e.preventDefault();
-        const tabMap: Record<string, string> = {
-          "1": "/projects",
-          "2": "/tasks",
-          "3": "/agenda",
-          "4": "/logs",
-          "0": "/settings",
-        };
-        const path = tabMap[e.key];
-        if (path) {
-          navigate({ to: path });
-        }
-      }
-    };
+	useEffect(() => {
+		const handleKeydown = (e: KeyboardEvent) => {
+			if (e.altKey && e.key >= "0" && e.key <= "9") {
+				e.preventDefault();
+			const tabMap: Record<string, string> = {
+				"1": "/home",
+				"2": "/projects",
+				"3": "/tasks",
+				"4": "/agenda",
+				"0": "/settings",
+			};
+				const path = tabMap[e.key];
+				if (path) {
+					navigate({ to: path });
+				}
+			}
+		};
 
-    window.addEventListener("keydown", handleKeydown);
-    return () => window.removeEventListener("keydown", handleKeydown);
-  }, [navigate]);
+		window.addEventListener("keydown", handleKeydown);
+		return () => window.removeEventListener("keydown", handleKeydown);
+	}, [navigate]);
 
-  return (
-    <div className="h-screen min-w-lg flex flex-col bg-[#1c1c1c] p-3">
-      <Outlet />
-      <StructuringCompleteModal />
-    </div>
-  );
+	return (
+		<div className="h-screen min-w-lg flex flex-col bg-background p-3">
+			<Outlet />
+			<StructuringCompleteModal />
+		</div>
+	);
 }
 
 export const Route = createRootRoute({
-  component: RootLayout,
+	component: RootLayout,
 });

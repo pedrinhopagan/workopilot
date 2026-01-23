@@ -5,6 +5,7 @@ import { useDialogStateStore } from "../../stores/dialogState";
 import { useSelectedProjectStore } from "../../stores/selectedProject";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Select } from "../../components/Select";
+import { ColorPicker } from "../../components/ui/color-picker";
 import type { Project, ProjectWithConfig, ProjectRoute, TmuxTab } from "../../types";
 
 function getRouteNameFromPath(path: string) {
@@ -217,7 +218,7 @@ function SettingsPage() {
       clone.style.position = "absolute";
       clone.style.top = "-9999px";
       clone.style.opacity = "1";
-      clone.style.background = "#1c1c1c";
+      clone.style.background = "var(--background)";
       document.body.appendChild(clone);
       e.dataTransfer.setDragImage(clone, e.nativeEvent.offsetX, e.nativeEvent.offsetY);
       setTimeout(() => clone.remove(), 0);
@@ -261,7 +262,7 @@ function SettingsPage() {
       clone.style.position = "absolute";
       clone.style.top = "-9999px";
       clone.style.opacity = "1";
-      clone.style.background = "#1c1c1c";
+      clone.style.background = "var(--background)";
       document.body.appendChild(clone);
       e.dataTransfer.setDragImage(clone, e.nativeEvent.offsetX, e.nativeEvent.offsetY);
       setTimeout(() => clone.remove(), 0);
@@ -419,6 +420,19 @@ function SettingsPage() {
     }
   }
 
+  async function saveColor(color: string | undefined) {
+    if (!selectedProjectId || !projectConfig) return;
+    setProjectConfig({ ...projectConfig, color });
+    try {
+      await safeInvoke("update_project_color", {
+        projectId: selectedProjectId,
+        color: color || null,
+      });
+    } catch (e) {
+      console.error("Failed to save color:", e);
+    }
+  }
+
   async function handleRoutePathChange(route: ProjectRoute) {
     if (!projectConfig) return;
     await saveRoutes(projectConfig.routes);
@@ -501,13 +515,13 @@ function SettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full text-[#828282]">Carregando...</div>
+      <div className="flex items-center justify-center h-full text-muted-foreground">Carregando...</div>
     );
   }
 
   if (!projectConfig) {
     return (
-      <div className="flex items-center justify-center h-full text-[#828282]">
+      <div className="flex items-center justify-center h-full text-muted-foreground">
         Selecione um projeto
       </div>
     );
@@ -532,11 +546,11 @@ function SettingsPage() {
         danger={true}
       />
 
-      <div className="flex-shrink-0 p-4 pb-2 border-b border-[#3d3a34] bg-[#1c1c1c]">
+      <div className="flex-shrink-0 p-4 pb-2 border-b border-border bg-background">
         <div className="flex items-center gap-3">
           <Link
             to="/projects"
-            className="p-1 text-[#636363] hover:text-[#909d63] hover:bg-[#2c2c2c] transition-colors rounded"
+            className="p-1 text-muted-foreground hover:text-primary hover:bg-popover transition-colors"
             title="Voltar"
           >
             <svg
@@ -554,16 +568,16 @@ function SettingsPage() {
             </svg>
           </Link>
           <div>
-            <h2 className="text-xl text-[#d6d6d6]">Configuracoes: {projectConfig.name}</h2>
-            <p className="text-sm text-[#636363]">{projectConfig.path}</p>
+            <h2 className="text-xl text-foreground">Configuracoes: {projectConfig.name}</h2>
+            <p className="text-sm text-muted-foreground">{projectConfig.path}</p>
           </div>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
         <div className="space-y-4">
-          <div className="bg-[#232323] border border-[#3d3a34] p-4">
-            <h3 className="text-sm text-[#828282] uppercase tracking-wide mb-3">
+          <div className="bg-card border border-border p-4">
+            <h3 className="text-sm text-muted-foreground uppercase tracking-wide mb-3">
               Descricao do Projeto
             </h3>
             <textarea
@@ -574,16 +588,29 @@ function SettingsPage() {
               onBlur={saveDescription}
               placeholder="Breve descricao do projeto..."
               rows={3}
-              className="w-full px-3 py-2 bg-[#1c1c1c] border border-[#3d3a34] text-[#d6d6d6] text-sm resize-y focus:border-[#909d63] focus:outline-none"
+              className="w-full px-3 py-2 bg-background border border-border text-foreground text-sm resize-y focus:border-primary focus:outline-none"
             />
           </div>
 
-          <div className="bg-[#232323] border border-[#3d3a34] p-4">
+          <div className="bg-card border border-border p-4">
+            <h3 className="text-sm text-muted-foreground uppercase tracking-wide mb-3">
+              Cor do Projeto
+            </h3>
+            <p className="text-xs text-muted-foreground mb-3">
+              Escolha uma cor para identificar visualmente este projeto na lista de tarefas.
+            </p>
+            <ColorPicker
+              value={projectConfig.color}
+              onChange={saveColor}
+            />
+          </div>
+
+          <div className="bg-card border border-border p-4">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm text-[#828282] uppercase tracking-wide">Rotas</h3>
+              <h3 className="text-sm text-muted-foreground uppercase tracking-wide">Rotas</h3>
               <button
                 onClick={addRoute}
-                className="text-xs text-[#909d63] hover:text-[#a0ad73] transition-colors"
+                className="text-xs text-primary hover:text-primary/80 transition-colors"
               >
                 + Adicionar
               </button>
@@ -598,13 +625,13 @@ function SettingsPage() {
                   <div
                     key={route.id}
                     role="listitem"
-                    className={`flex items-center gap-2 bg-[#1c1c1c] p-2 border border-[#2d2a24] cursor-grab ${isDragging ? "opacity-10" : ""}`}
+                    className={`flex items-center gap-2 bg-background p-2 border border-muted cursor-grab ${isDragging ? "opacity-10" : ""}`}
                     draggable
                     onDragStart={(e) => handleRouteDragStart(e, index)}
                     onDragOver={(e) => handleRouteDragOver(e, index)}
                     onDragEnd={handleRouteDragEnd}
                   >
-                    <span className="text-[#4a4a4a] cursor-grab select-none">
+                    <span className="text-muted-foreground/50 cursor-grab select-none">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         width="12"
@@ -621,7 +648,7 @@ function SettingsPage() {
                       </svg>
                     </span>
                     <span
-                      className={`w-24 px-2 py-1 text-sm ${isRoot ? "text-[#636363]" : "text-[#d6d6d6]"}`}
+                      className={`w-24 px-2 py-1 text-sm ${isRoot ? "text-muted-foreground" : "text-foreground"}`}
                     >
                       {isRoot ? "root" : routeName}
                     </span>
@@ -631,12 +658,12 @@ function SettingsPage() {
                       onChange={(e) => updateRoutePath(route.id, e.target.value)}
                       onBlur={() => handleRoutePathChange(route)}
                       disabled={isRoot}
-                      className="flex-1 px-2 py-1 bg-transparent border border-transparent text-[#828282] text-sm focus:border-[#3d3a34] focus:outline-none disabled:text-[#636363]"
+                      className="flex-1 px-2 py-1 bg-transparent border border-transparent text-muted-foreground text-sm focus:border-border focus:outline-none disabled:text-muted-foreground"
                     />
                     {route.env_path && (
                       <button
                         onClick={() => route.env_path && openEnvFile(route.env_path)}
-                        className="px-2 py-1 text-xs text-[#636363] hover:text-[#ebc17a] transition-colors"
+                        className="px-2 py-1 text-xs text-muted-foreground hover:text-accent transition-colors"
                       >
                         .env
                       </button>
@@ -644,7 +671,7 @@ function SettingsPage() {
                     {!isRoot && (
                       <button
                         onClick={() => confirmRemoveRoute(route.id)}
-                        className="px-2 py-1 text-[#636363] hover:text-[#bc5653] transition-colors"
+                        className="px-2 py-1 text-muted-foreground hover:text-destructive transition-colors"
                       >
                         x
                       </button>
@@ -655,17 +682,17 @@ function SettingsPage() {
             </div>
           </div>
 
-          <div className="bg-[#232323] border border-[#3d3a34] p-4">
+          <div className="bg-card border border-border p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
-                <h3 className="text-sm text-[#828282] uppercase tracking-wide">Tabs do Tmux</h3>
-                <p className="text-xs text-[#636363]">
+                <h3 className="text-sm text-muted-foreground uppercase tracking-wide">Tabs do Tmux</h3>
+                <p className="text-xs text-muted-foreground">
                   Session: {projectConfig.tmux_config.session_name}
                 </p>
               </div>
               <button
                 onClick={addTmuxTab}
-                className="text-xs text-[#909d63] hover:text-[#a0ad73] transition-colors"
+                className="text-xs text-primary hover:text-primary/80 transition-colors"
               >
                 + Adicionar
               </button>
@@ -679,13 +706,13 @@ function SettingsPage() {
                   <div
                     key={tab.id}
                     role="listitem"
-                    className={`flex items-center gap-2 bg-[#1c1c1c] p-2 border border-[#2d2a24] cursor-grab ${isDragging ? "opacity-10" : ""}`}
+                    className={`flex items-center gap-2 bg-background p-2 border border-muted cursor-grab ${isDragging ? "opacity-10" : ""}`}
                     draggable
                     onDragStart={(e) => handleTabDragStart(e, index)}
                     onDragOver={(e) => handleTabDragOver(e, index)}
                     onDragEnd={handleTabDragEnd}
                   >
-                    <span className="text-[#4a4a4a] cursor-grab select-none">
+                    <span className="text-muted-foreground/50 cursor-grab select-none">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         width="12"
@@ -701,34 +728,34 @@ function SettingsPage() {
                         <circle cx="15" cy="19" r="2"></circle>
                       </svg>
                     </span>
-                    <span className="text-[#636363] text-sm w-6">{index + 1}.</span>
+                    <span className="text-muted-foreground text-sm w-6">{index + 1}.</span>
                     <input
                       type="text"
                       value={tab.name}
                       onChange={(e) => updateTabName(tab.id, e.target.value)}
                       onBlur={() => saveTmuxConfig(projectConfig.tmux_config)}
                       placeholder="nome"
-                      className="w-24 px-2 py-1 bg-transparent border border-transparent text-[#d6d6d6] text-sm focus:border-[#3d3a34] focus:outline-none"
+                      className="w-24 px-2 py-1 bg-transparent border border-transparent text-foreground text-sm focus:border-border focus:outline-none"
                     />
-                    <span className="text-[#636363]">-&gt;</span>
+                    <span className="text-muted-foreground">-&gt;</span>
                     <Select
                       value={tab.route_id}
                       options={getRouteOptions()}
                       onChange={(newRouteId) => handleTabRouteChange(tab, newRouteId)}
                     />
-                    <span className="text-[#636363] text-xs">cmd:</span>
+                    <span className="text-muted-foreground text-xs">cmd:</span>
                     <input
                       type="text"
                       value={tab.startup_command || ""}
                       onChange={(e) => updateTabCommand(tab.id, e.target.value)}
                       onBlur={() => saveTmuxConfig(projectConfig.tmux_config)}
                       placeholder="-"
-                      className="flex-1 px-2 py-1 bg-transparent border border-transparent text-[#828282] text-sm focus:border-[#3d3a34] focus:outline-none"
+                      className="flex-1 px-2 py-1 bg-transparent border border-transparent text-muted-foreground text-sm focus:border-border focus:outline-none"
                     />
                     {!isOcTab && (
                       <button
                         onClick={() => confirmRemoveTmuxTab(tab.id)}
-                        className="px-2 py-1 text-[#636363] hover:text-[#bc5653] transition-colors"
+                        className="px-2 py-1 text-muted-foreground hover:text-destructive transition-colors"
                       >
                         x
                       </button>
@@ -739,8 +766,8 @@ function SettingsPage() {
             </div>
           </div>
 
-          <div className="bg-[#232323] border border-[#3d3a34] p-4">
-            <h3 className="text-sm text-[#828282] uppercase tracking-wide mb-3">
+          <div className="bg-card border border-border p-4">
+            <h3 className="text-sm text-muted-foreground uppercase tracking-wide mb-3">
               Resumo da Aplicacao
             </h3>
             <textarea
@@ -751,19 +778,19 @@ function SettingsPage() {
               onBlur={saveBusinessRules}
               placeholder="Documente aqui o resumo da aplicacao, regras de negocio, arquitetura, etc..."
               rows={8}
-              className="w-full px-3 py-2 bg-[#1c1c1c] border border-[#3d3a34] text-[#d6d6d6] text-sm resize-y focus:border-[#909d63] focus:outline-none"
+              className="w-full px-3 py-2 bg-background border border-border text-foreground text-sm resize-y focus:border-primary focus:outline-none"
             />
           </div>
 
-          <div className="bg-[#232323] border border-[#bc5653]/30 p-4">
-            <h3 className="text-sm text-[#bc5653] uppercase tracking-wide mb-3">Zona de Perigo</h3>
-            <p className="text-xs text-[#636363] mb-4">
+          <div className="bg-card border border-destructive/30 p-4">
+            <h3 className="text-sm text-destructive uppercase tracking-wide mb-3">Zona de Perigo</h3>
+            <p className="text-xs text-muted-foreground mb-4">
               Acao irreversivel. Ao excluir o projeto, todas as tarefas associadas tambem serao
               removidas.
             </p>
             <button
               onClick={confirmDeleteProject}
-              className="px-4 py-2 bg-[#2c2c2c] border border-[#bc5653] text-[#bc5653] text-sm hover:bg-[#bc5653] hover:text-[#1c1c1c] transition-colors"
+              className="px-4 py-2 bg-popover border border-destructive text-destructive text-sm hover:bg-destructive hover:text-background transition-colors"
             >
               Excluir Projeto
             </button>

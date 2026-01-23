@@ -1,13 +1,13 @@
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
-import { DescriptionWithImages } from "../../../../components/tasks/DescriptionWithImages";
-import { ImageModal } from "../../../../components/tasks/ImageModal";
-import { ImageThumbnail } from "../../../../components/tasks/ImageThumbnail";
-import { SubtaskList } from "../../../../components/tasks/SubtaskList";
-import { SelectImageKDE } from "../../../../components/SelectImageKDE";
-import { safeInvoke } from "../../../../services/tauri";
-import type { Subtask, TaskExecution, TaskFull, TaskImageMetadata } from "../../../../types";
-import { getTaskStatusFromTask } from "../../../../lib/constants/taskStatus";
+import { DescriptionWithImages } from "@/components/tasks/DescriptionWithImages";
+import { ImageModal } from "@/components/tasks/ImageModal";
+import { ImageThumbnail } from "@/components/tasks/ImageThumbnail";
+import { SubtaskList } from "@/components/tasks/SubtaskList";
+import { SelectImageKDE } from "@/components/SelectImageKDE";
+import { safeInvoke } from "@/services/tauri";
+import type { Subtask, TaskExecution, TaskFull, TaskImageMetadata } from "@/types";
+import { deriveProgressState } from "@/lib/constants/taskStatus";
 
 interface ManageTaskFormProps {
 	taskId: string;
@@ -30,7 +30,6 @@ interface ManageTaskFormProps {
 	onAddSubtask: (title: string) => void;
 	onToggleSubtask: (id: string) => void;
 	onRemoveSubtask: (id: string) => void;
-	onCodarSubtask: (id: string) => void;
 	onUpdateSubtask: (id: string, field: keyof Subtask, value: unknown) => void;
 	onReorderSubtasks: (newSubtasks: Subtask[]) => void;
 	onAddBusinessRule: (rule: string) => void;
@@ -66,7 +65,6 @@ export function ManageTaskForm({
 	onAddSubtask,
 	onToggleSubtask,
 	onRemoveSubtask,
-	onCodarSubtask,
 	onUpdateSubtask,
 	onReorderSubtasks,
 	onAddBusinessRule,
@@ -94,7 +92,7 @@ export function ManageTaskForm({
 	const [showImages, setShowImages] = useState(taskImages.length > 0);
 	const [isUploadingImage, setIsUploadingImage] = useState(false);
 
-	const taskStatus = getTaskStatusFromTask(taskFull);
+	const progressState = deriveProgressState(taskFull);
 
 	function handleAddRule() {
 		if (!newRule.trim()) return;
@@ -154,13 +152,13 @@ export function ManageTaskForm({
 					onKeyDown={(e) => e.key === "Enter" && onLaunchQuickfix()}
 					placeholder="Quickfix: Descreva uma correção rápida..."
 					disabled={isBlocked}
-					className="flex-1 px-4 py-2 bg-[#1c1c1c] border border-[#3d3a34] rounded-lg text-[#d6d6d6] text-sm focus:border-[#e5c07b] focus:outline-none transition-colors disabled:opacity-50"
+					className="flex-1 px-4 py-2 bg-background border border-border text-foreground text-sm focus:border-accent focus:outline-none transition-colors disabled:opacity-50"
 				/>
 				<button
 					type="button"
 					onClick={onLaunchQuickfix}
 					disabled={!quickfixInput.trim() || isBlocked}
-					className="px-4 py-2 bg-[#e5c07b] text-[#1c1c1c] font-medium text-sm rounded-lg hover:bg-[#f5d08a] disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+					className="px-4 py-2 bg-accent text-accent-foreground font-medium text-sm hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
 				>
 					{isLaunchingQuickfix ? (
 						<Loader2 size={16} className="animate-spin" />
@@ -184,13 +182,12 @@ export function ManageTaskForm({
 				</button>
 			</div>
 
-			{taskStatus !== "pending" && (
-				<SubtaskList
+		{progressState !== "idle" && progressState !== "started" && (
+			<SubtaskList
 					subtasks={taskFull.subtasks}
 					onAdd={onAddSubtask}
 					onToggle={onToggleSubtask}
 					onRemove={onRemoveSubtask}
-					onCodar={onCodarSubtask}
 					onUpdate={onUpdateSubtask}
 					onReorder={onReorderSubtasks}
 					disabled={isBlocked}
@@ -220,7 +217,7 @@ export function ManageTaskForm({
 					<SelectImageKDE
 						onSelect={handleSelectedImages}
 						disabled={isBlocked || isUploadingImage || taskImages.length >= 5}
-						className="flex items-center gap-2 px-3 py-1.5 text-xs bg-[#232323] hover:bg-[#2a2a2a] text-[#d6d6d6] border border-[#3d3a34] rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+						className="flex items-center gap-2 px-3 py-1.5 text-xs bg-card hover:bg-secondary text-foreground border border-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 					>
 						{isUploadingImage ? (
 							<Loader2 size={14} className="animate-spin" />
@@ -272,13 +269,13 @@ export function ManageTaskForm({
 				>
 					{taskFull.context.business_rules.map((rule, i) => (
 						<div key={`rule-${i}`} className="flex items-center gap-2 group">
-							<span className="text-[#636363]">*</span>
-							<span className="flex-1 text-[#d6d6d6] text-sm">{rule}</span>
+							<span className="text-muted-foreground">*</span>
+							<span className="flex-1 text-foreground text-sm">{rule}</span>
 							<button
 								type="button"
 								onClick={() => onRemoveBusinessRule(i)}
 								disabled={isBlocked}
-								className="opacity-0 group-hover:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1 disabled:cursor-not-allowed"
+								className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80 transition-all p-1 disabled:cursor-not-allowed"
 							>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
@@ -298,7 +295,7 @@ export function ManageTaskForm({
 						</div>
 					))}
 					<div className="flex items-center gap-2">
-						<span className="text-[#636363]">+</span>
+						<span className="text-muted-foreground">+</span>
 						<input
 							type="text"
 							value={newRule}
@@ -306,7 +303,7 @@ export function ManageTaskForm({
 							onKeyDown={(e) => e.key === "Enter" && handleAddRule()}
 							placeholder="Adicionar regra..."
 							disabled={isBlocked}
-							className="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a] disabled:opacity-50 disabled:cursor-not-allowed"
+							className="flex-1 bg-transparent text-foreground text-sm focus:outline-none border-b border-transparent focus:border-primary transition-colors placeholder:text-muted-foreground/50 disabled:opacity-50 disabled:cursor-not-allowed"
 						/>
 					</div>
 				</div>
@@ -324,7 +321,7 @@ export function ManageTaskForm({
 					placeholder="Stack, libs, padrões relevantes..."
 					rows={2}
 					disabled={isBlocked}
-					className="w-full px-3 py-2 bg-[#232323] border border-[#3d3a34] text-[#d6d6d6] text-sm focus:border-[#909d63] focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+					className="w-full px-3 py-2 bg-card border border-border text-foreground text-sm focus:border-primary focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
 				/>
 			</CollapsibleSection>
 
@@ -336,12 +333,12 @@ export function ManageTaskForm({
 				<div className="space-y-2">
 					{(taskFull.context.acceptance_criteria || []).map((criteria, i) => (
 						<div key={`criteria-${i}`} className="flex items-center gap-2 group">
-							<span className="text-[#636363]">✓</span>
-							<span className="flex-1 text-[#d6d6d6] text-sm">{criteria}</span>
+							<span className="text-muted-foreground">✓</span>
+							<span className="flex-1 text-foreground text-sm">{criteria}</span>
 							<button
 								type="button"
 								onClick={() => onRemoveAcceptanceCriteria(i)}
-								className="opacity-0 group-hover:opacity-100 text-[#bc5653] hover:text-[#cc6663] transition-all p-1"
+								className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80 transition-all p-1"
 							>
 								<svg
 									xmlns="http://www.w3.org/2000/svg"
@@ -361,7 +358,7 @@ export function ManageTaskForm({
 						</div>
 					))}
 					<div className="flex items-center gap-2">
-						<span className="text-[#636363]">+</span>
+						<span className="text-muted-foreground">+</span>
 						<input
 							type="text"
 							value={newCriteria}
@@ -369,19 +366,18 @@ export function ManageTaskForm({
 							onKeyDown={(e) => e.key === "Enter" && handleAddCriteria()}
 							placeholder="Adicionar critério..."
 							disabled={isBlocked}
-							className="flex-1 bg-transparent text-[#d6d6d6] text-sm focus:outline-none border-b border-transparent focus:border-[#909d63] transition-colors placeholder:text-[#4a4a4a] disabled:opacity-50 disabled:cursor-not-allowed"
+							className="flex-1 bg-transparent text-foreground text-sm focus:outline-none border-b border-transparent focus:border-primary transition-colors placeholder:text-muted-foreground/50 disabled:opacity-50 disabled:cursor-not-allowed"
 						/>
 					</div>
 				</div>
 			</CollapsibleSection>
 
-			{taskStatus === "pending" && (
+			{(progressState === "idle" || progressState === "started") && (
 				<SubtaskList
 					subtasks={taskFull.subtasks}
 					onAdd={onAddSubtask}
 					onToggle={onToggleSubtask}
 					onRemove={onRemoveSubtask}
-					onCodar={onCodarSubtask}
 					onUpdate={onUpdateSubtask}
 					onReorder={onReorderSubtasks}
 					disabled={isBlocked}
@@ -413,7 +409,7 @@ function CollapsibleSection({
 			<button
 				type="button"
 				onClick={onToggle}
-				className="flex items-center gap-2 text-xs text-[#828282] uppercase tracking-wide mb-2 hover:text-[#d6d6d6] transition-colors"
+				className="flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide mb-2 hover:text-foreground transition-colors"
 			>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -447,10 +443,10 @@ function ExecutionProgressCard({
 	onFocusTerminal,
 }: ExecutionProgressCardProps) {
 	return (
-		<div className="p-4 bg-[#1c1c1c] border border-[#909d63] rounded-lg animate-fade-in relative overflow-hidden">
-			<div className="absolute top-0 left-0 w-full h-1 bg-[#232323]">
+		<div className="p-4 bg-background border border-primary animate-fade-in relative overflow-hidden">
+			<div className="absolute top-0 left-0 w-full h-1 bg-card">
 				<div
-					className="h-full bg-[#909d63] transition-all duration-500 ease-out"
+					className="h-full bg-primary transition-all duration-500 ease-out"
 					style={{
 						width: `${(execution.current_step / execution.total_steps) * 100}%`,
 					}}
@@ -458,20 +454,20 @@ function ExecutionProgressCard({
 			</div>
 
 			<div className="flex items-center gap-3 mb-2">
-				<span className="flex items-center justify-center w-6 h-6 rounded-full bg-[#909d63]/20 text-[#909d63] text-xs">
+				<span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/20 text-primary text-xs">
 					<Loader2 size={14} className="animate-spin" />
 				</span>
-				<span className="text-[#909d63] font-medium text-sm">
+				<span className="text-primary font-medium text-sm">
 					Executando: Passo {execution.current_step} de {execution.total_steps}
 				</span>
 				{execution.execution_type === "subtask" && (
-					<span className="text-xs px-2 py-0.5 rounded bg-[#909d63]/10 text-[#909d63] border border-[#909d63]/20">
+					<span className="text-xs px-2 py-0.5 bg-primary/10 text-primary border border-primary/20">
 						Subtask
 					</span>
 				)}
 			</div>
 
-			<div className="pl-9 text-sm text-[#d6d6d6]">
+			<div className="pl-9 text-sm text-foreground">
 				{execution.current_step_description || "Processando..."}
 			</div>
 
@@ -480,7 +476,7 @@ function ExecutionProgressCard({
 					<button
 						type="button"
 						onClick={() => onFocusTerminal(execution.tmux_session ?? "")}
-						className="text-xs flex items-center gap-1.5 text-[#636363] hover:text-[#909d63] transition-colors"
+						className="text-xs flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors"
 					>
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
@@ -511,31 +507,31 @@ interface AdjustingIndicatorProps {
 
 function AdjustingIndicator({ prompt }: AdjustingIndicatorProps) {
 	return (
-		<div className="p-4 bg-[#1c1c1c] border border-[#61afef] rounded-lg animate-fade-in">
+		<div className="p-4 bg-background border border-chart-4 animate-fade-in">
 			<div className="flex items-center gap-4">
 				<div className="flex items-center gap-3">
 					<div className="relative">
-						<div className="w-3 h-3 bg-[#61afef] rounded-full animate-pulse" />
-						<div className="absolute inset-0 w-3 h-3 bg-[#61afef] rounded-full animate-ping opacity-50" />
+						<div className="w-3 h-3 bg-chart-4 rounded-full animate-pulse" />
+						<div className="absolute inset-0 w-3 h-3 bg-chart-4 rounded-full animate-ping opacity-50" />
 					</div>
 					<div>
-						<div className="text-sm font-medium text-[#61afef]">
+						<div className="text-sm font-medium text-chart-4">
 							Agent ajustando tarefa...
 						</div>
-						<div className="text-xs text-[#636363]">
+						<div className="text-xs text-muted-foreground">
 							Os campos estao bloqueados durante o ajuste
 						</div>
 					</div>
 				</div>
 
 				{prompt && (
-					<div className="flex-1 text-sm text-[#d6d6d6] truncate italic">
+					<div className="flex-1 text-sm text-foreground truncate italic">
 						&quot;{prompt}&quot;
 					</div>
 				)}
 
 				<div className="flex items-center gap-2">
-					<Loader2 size={18} className="animate-spin text-[#61afef]" />
+					<Loader2 size={18} className="animate-spin text-chart-4" />
 				</div>
 			</div>
 		</div>
