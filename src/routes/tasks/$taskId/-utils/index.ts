@@ -18,14 +18,12 @@ export {
 export {
 	TASK_EXECUTION_QUERY_KEY,
 	TASK_FULL_QUERY_KEY,
-	TASK_IMAGES_QUERY_KEY,
 	useGetTaskFullQuery,
 } from "./useGetTaskFullQuery";
 export { useTaskForm } from "./useTaskForm";
 export {
-	useAddTaskImageMutation,
-	useDeleteTaskImageMutation,
 	useLaunchQuickfixMutation,
+	useTerminalActionMutation,
 	useUpdateTaskFullMutation,
 	useUpdateTaskStatusMutation,
 } from "./useTaskMutations";

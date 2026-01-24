@@ -1,19 +1,13 @@
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
-import { DescriptionWithImages } from "@/components/tasks/DescriptionWithImages";
-import { ImageModal } from "@/components/tasks/ImageModal";
-import { ImageThumbnail } from "@/components/tasks/ImageThumbnail";
 import { SubtaskList } from "@/components/tasks/SubtaskList";
-import { SelectImageKDE } from "@/components/SelectImageKDE";
 import { safeInvoke } from "@/services/tauri";
-import type { Subtask, TaskExecution, TaskFull, TaskImageMetadata } from "@/types";
+import type { Subtask, TaskExecution, TaskFull } from "@/types";
 import { deriveProgressState } from "@/lib/constants/taskStatus";
 
 interface ManageTaskFormProps {
 	taskId: string;
 	taskFull: TaskFull;
-	taskImages: TaskImageMetadata[];
-	loadedImages: Map<string, { data: string; loading: boolean; error: string | null }>;
 	activeExecution: TaskExecution | null;
 	isBlocked: boolean;
 	isExecuting: boolean;
@@ -24,9 +18,6 @@ interface ManageTaskFormProps {
 	onQuickfixInputChange: (value: string) => void;
 	onLaunchQuickfix: () => void;
 	onDescriptionSave: (value: string | null) => void;
-	onImageUpload: () => Promise<void>;
-	onImageDelete: (imageId: string) => Promise<void>;
-	onImageView: (imageId: string) => Promise<void>;
 	onAddSubtask: (title: string) => void;
 	onToggleSubtask: (id: string) => void;
 	onRemoveSubtask: (id: string) => void;
@@ -39,16 +30,10 @@ interface ManageTaskFormProps {
 	onTechnicalNotesChange: (value: string) => void;
 	onTechnicalNotesSave: () => void;
 	localTechnicalNotes: string;
-	viewingImageId: string | null;
-	viewingImageUrl: string | null;
-	onCloseImageModal: () => void;
 }
 
 export function ManageTaskForm({
-	taskId,
 	taskFull,
-	taskImages,
-	loadedImages,
 	activeExecution,
 	isBlocked,
 	isExecuting,
@@ -59,9 +44,6 @@ export function ManageTaskForm({
 	onQuickfixInputChange,
 	onLaunchQuickfix,
 	onDescriptionSave,
-	onImageUpload,
-	onImageDelete,
-	onImageView,
 	onAddSubtask,
 	onToggleSubtask,
 	onRemoveSubtask,
@@ -74,9 +56,6 @@ export function ManageTaskForm({
 	onTechnicalNotesChange,
 	onTechnicalNotesSave,
 	localTechnicalNotes,
-	viewingImageId,
-	viewingImageUrl,
-	onCloseImageModal,
 }: ManageTaskFormProps) {
 	const [newRule, setNewRule] = useState("");
 	const [newCriteria, setNewCriteria] = useState("");
@@ -89,8 +68,6 @@ export function ManageTaskForm({
 	const [showAcceptanceCriteria, setShowAcceptanceCriteria] = useState(
 		!!taskFull?.context.acceptance_criteria?.length,
 	);
-	const [showImages, setShowImages] = useState(taskImages.length > 0);
-	const [isUploadingImage, setIsUploadingImage] = useState(false);
 
 	const progressState = deriveProgressState(taskFull);
 
@@ -106,31 +83,6 @@ export function ManageTaskForm({
 		setNewCriteria("");
 	}
 
-	async function handleSelectedImages(paths: string[]) {
-		if (isUploadingImage) return;
-
-		const maxImages = 5;
-		const remainingSlots = maxImages - taskImages.length;
-		if (remainingSlots <= 0 || paths.length === 0) return;
-
-		setIsUploadingImage(true);
-		const pathsToUpload = paths.slice(0, remainingSlots);
-
-		for (const filePath of pathsToUpload) {
-			try {
-				await safeInvoke("add_task_image_from_path", {
-					taskId,
-					filePath,
-				});
-			} catch (err) {
-				console.error("Failed to upload image:", err);
-			}
-		}
-
-		await onImageUpload();
-		setIsUploadingImage(false);
-	}
-
 	return (
 		<div className="flex-1 overflow-y-auto p-4 space-y-6">
 			{isExecuting && activeExecution && (
@@ -144,7 +96,7 @@ export function ManageTaskForm({
 
 			{isAdjusting && <AdjustingIndicator prompt={adjustingPrompt} />}
 
-			<div className="flex gap-2">
+			<div className="flex gap-2 animate-slide-up-fade" style={{ animationDelay: "0.05s" }}>
 				<input
 					type="text"
 					value={quickfixInput}
@@ -152,13 +104,13 @@ export function ManageTaskForm({
 					onKeyDown={(e) => e.key === "Enter" && onLaunchQuickfix()}
 					placeholder="Quickfix: Descreva uma correção rápida..."
 					disabled={isBlocked}
-					className="flex-1 px-4 py-2 bg-background border border-border text-foreground text-sm focus:border-accent focus:outline-none transition-colors disabled:opacity-50"
+					className="flex-1 px-4 py-2 bg-background border border-border text-foreground text-sm focus:border-accent focus:outline-none transition-all duration-200 disabled:opacity-50 hover:border-muted-foreground/50"
 				/>
 				<button
 					type="button"
 					onClick={onLaunchQuickfix}
 					disabled={!quickfixInput.trim() || isBlocked}
-					className="px-4 py-2 bg-accent text-accent-foreground font-medium text-sm hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+					className="px-4 py-2 bg-accent text-accent-foreground font-medium text-sm hover:bg-accent/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center gap-2 hover:translate-y-[-1px] active:scale-[0.98]"
 				>
 					{isLaunchingQuickfix ? (
 						<Loader2 size={16} className="animate-spin" />
@@ -182,210 +134,169 @@ export function ManageTaskForm({
 				</button>
 			</div>
 
-		{progressState !== "idle" && progressState !== "started" && (
-			<SubtaskList
-					subtasks={taskFull.subtasks}
-					onAdd={onAddSubtask}
-					onToggle={onToggleSubtask}
-					onRemove={onRemoveSubtask}
-					onUpdate={onUpdateSubtask}
-					onReorder={onReorderSubtasks}
-					disabled={isBlocked}
-				/>
+			{progressState !== "idle" && progressState !== "started" && (
+				<div className="animate-slide-up-fade" style={{ animationDelay: "0.1s" }}>
+					<SubtaskList
+						subtasks={taskFull.subtasks}
+						onAdd={onAddSubtask}
+						onToggle={onToggleSubtask}
+						onRemove={onRemoveSubtask}
+						onUpdate={onUpdateSubtask}
+						onReorder={onReorderSubtasks}
+						disabled={isBlocked}
+					/>
+				</div>
 			)}
 
-			<DescriptionWithImages
-				taskId={taskId}
-				description={taskFull.context.description || ""}
-				images={taskImages}
-				maxImages={5}
-				disabled={isBlocked}
-				onDescriptionSave={onDescriptionSave}
-				onImageUpload={onImageUpload}
-				onImageDelete={onImageDelete}
-				onImageView={onImageView}
-			/>
-
-			<CollapsibleSection
-				title={`Imagens (${taskImages.length}/5)`}
-				isOpen={showImages}
-				onToggle={() => setShowImages(!showImages)}
-			>
-				<div
-					className={`space-y-3 ${isBlocked ? "opacity-50 pointer-events-none" : ""}`}
+			<div className="animate-slide-up-fade" style={{ animationDelay: "0.15s" }}>
+				<CollapsibleSection
+					title="Descrição"
+					isOpen={true}
+					onToggle={() => {}}
 				>
-					<SelectImageKDE
-						onSelect={handleSelectedImages}
-						disabled={isBlocked || isUploadingImage || taskImages.length >= 5}
-						className="flex items-center gap-2 px-3 py-1.5 text-xs bg-card hover:bg-secondary text-foreground border border-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+					<textarea
+						value={taskFull.context.description || ""}
+						onChange={(e) => onDescriptionSave(e.target.value)}
+						onBlur={() => onDescriptionSave(taskFull.context.description || "")}
+						placeholder="Descrição da tarefa..."
+						rows={4}
+						disabled={isBlocked}
+						className="w-full px-3 py-2 bg-card border border-border text-foreground text-sm focus:border-primary focus:outline-none resize-none transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:border-muted-foreground/50"
+					/>
+				</CollapsibleSection>
+			</div>
+
+			<div className="animate-slide-up-fade" style={{ animationDelay: "0.2s" }}>
+				<CollapsibleSection
+					title="Regras de Negocio (opcional)"
+					isOpen={showBusinessRules}
+					onToggle={() => setShowBusinessRules(!showBusinessRules)}
+				>
+					<div
+						className={`space-y-2 ${isBlocked ? "opacity-50 pointer-events-none" : ""}`}
 					>
-						{isUploadingImage ? (
-							<Loader2 size={14} className="animate-spin" />
-						) : (
-							<svg
-								xmlns="http://www.w3.org/2000/svg"
-								width="14"
-								height="14"
-								viewBox="0 0 24 24"
-								fill="none"
-								stroke="currentColor"
-								strokeWidth="2"
-								strokeLinecap="round"
-								strokeLinejoin="round"
-							>
-								<rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
-								<circle cx="9" cy="9" r="2" />
-								<path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
-							</svg>
-						)}
-						Adicionar
-					</SelectImageKDE>
-
-					{taskImages.length > 0 && (
-						<div className="flex items-center gap-2 flex-wrap">
-							{taskImages.map((image) => (
-								<ImageThumbnail
-									key={image.id}
-									imageId={image.id}
-									fileName={image.file_name}
-									imageState={loadedImages.get(image.id)}
+						{taskFull.context.business_rules.map((rule, i) => (
+							<div key={`rule-${i}`} className="flex items-center gap-2 group animate-content-reveal" style={{ animationDelay: `${i * 0.03}s` }}>
+								<span className="text-muted-foreground">*</span>
+								<span className="flex-1 text-foreground text-sm">{rule}</span>
+								<button
+									type="button"
+									onClick={() => onRemoveBusinessRule(i)}
 									disabled={isBlocked}
-									onView={onImageView}
-									onDelete={onImageDelete}
-								/>
-							))}
-						</div>
-					)}
-				</div>
-			</CollapsibleSection>
-
-			<CollapsibleSection
-				title="Regras de Negocio (opcional)"
-				isOpen={showBusinessRules}
-				onToggle={() => setShowBusinessRules(!showBusinessRules)}
-			>
-				<div
-					className={`space-y-2 ${isBlocked ? "opacity-50 pointer-events-none" : ""}`}
-				>
-					{taskFull.context.business_rules.map((rule, i) => (
-						<div key={`rule-${i}`} className="flex items-center gap-2 group">
-							<span className="text-muted-foreground">*</span>
-							<span className="flex-1 text-foreground text-sm">{rule}</span>
-							<button
-								type="button"
-								onClick={() => onRemoveBusinessRule(i)}
+									className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80 transition-all p-1 disabled:cursor-not-allowed"
+								>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="14"
+										height="14"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="2"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									>
+										<path d="M18 6 6 18" />
+										<path d="m6 6 12 12" />
+									</svg>
+								</button>
+							</div>
+						))}
+						<div className="flex items-center gap-2">
+							<span className="text-muted-foreground">+</span>
+							<input
+								type="text"
+								value={newRule}
+								onChange={(e) => setNewRule(e.target.value)}
+								onKeyDown={(e) => e.key === "Enter" && handleAddRule()}
+								placeholder="Adicionar regra..."
 								disabled={isBlocked}
-								className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80 transition-all p-1 disabled:cursor-not-allowed"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="14"
-									height="14"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									strokeWidth="2"
-									strokeLinecap="round"
-									strokeLinejoin="round"
-								>
-									<path d="M18 6 6 18" />
-									<path d="m6 6 12 12" />
-								</svg>
-							</button>
+								className="flex-1 bg-transparent text-foreground text-sm focus:outline-none border-b border-transparent focus:border-primary transition-colors placeholder:text-muted-foreground/50 disabled:opacity-50 disabled:cursor-not-allowed"
+							/>
 						</div>
-					))}
-					<div className="flex items-center gap-2">
-						<span className="text-muted-foreground">+</span>
-						<input
-							type="text"
-							value={newRule}
-							onChange={(e) => setNewRule(e.target.value)}
-							onKeyDown={(e) => e.key === "Enter" && handleAddRule()}
-							placeholder="Adicionar regra..."
-							disabled={isBlocked}
-							className="flex-1 bg-transparent text-foreground text-sm focus:outline-none border-b border-transparent focus:border-primary transition-colors placeholder:text-muted-foreground/50 disabled:opacity-50 disabled:cursor-not-allowed"
-						/>
 					</div>
-				</div>
-			</CollapsibleSection>
+				</CollapsibleSection>
+			</div>
 
-			<CollapsibleSection
-				title="Notas Técnicas (opcional)"
-				isOpen={showTechnicalNotes}
-				onToggle={() => setShowTechnicalNotes(!showTechnicalNotes)}
-			>
-				<textarea
-					value={localTechnicalNotes}
-					onChange={(e) => onTechnicalNotesChange(e.target.value)}
-					onBlur={onTechnicalNotesSave}
-					placeholder="Stack, libs, padrões relevantes..."
-					rows={2}
-					disabled={isBlocked}
-					className="w-full px-3 py-2 bg-card border border-border text-foreground text-sm focus:border-primary focus:outline-none resize-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-				/>
-			</CollapsibleSection>
+			<div className="animate-slide-up-fade" style={{ animationDelay: "0.25s" }}>
+				<CollapsibleSection
+					title="Notas Técnicas (opcional)"
+					isOpen={showTechnicalNotes}
+					onToggle={() => setShowTechnicalNotes(!showTechnicalNotes)}
+				>
+					<textarea
+						value={localTechnicalNotes}
+						onChange={(e) => onTechnicalNotesChange(e.target.value)}
+						onBlur={onTechnicalNotesSave}
+						placeholder="Stack, libs, padrões relevantes..."
+						rows={2}
+						disabled={isBlocked}
+						className="w-full px-3 py-2 bg-card border border-border text-foreground text-sm focus:border-primary focus:outline-none resize-none transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed hover:border-muted-foreground/50"
+					/>
+				</CollapsibleSection>
+			</div>
 
-			<CollapsibleSection
-				title="Critérios de Aceite (opcional)"
-				isOpen={showAcceptanceCriteria}
-				onToggle={() => setShowAcceptanceCriteria(!showAcceptanceCriteria)}
-			>
-				<div className="space-y-2">
-					{(taskFull.context.acceptance_criteria || []).map((criteria, i) => (
-						<div key={`criteria-${i}`} className="flex items-center gap-2 group">
-							<span className="text-muted-foreground">✓</span>
-							<span className="flex-1 text-foreground text-sm">{criteria}</span>
-							<button
-								type="button"
-								onClick={() => onRemoveAcceptanceCriteria(i)}
-								className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80 transition-all p-1"
-							>
-								<svg
-									xmlns="http://www.w3.org/2000/svg"
-									width="14"
-									height="14"
-									viewBox="0 0 24 24"
-									fill="none"
-									stroke="currentColor"
-									strokeWidth="2"
-									strokeLinecap="round"
-									strokeLinejoin="round"
+			<div className="animate-slide-up-fade" style={{ animationDelay: "0.3s" }}>
+				<CollapsibleSection
+					title="Critérios de Aceite (opcional)"
+					isOpen={showAcceptanceCriteria}
+					onToggle={() => setShowAcceptanceCriteria(!showAcceptanceCriteria)}
+				>
+					<div className="space-y-2">
+						{(taskFull.context.acceptance_criteria || []).map((criteria, i) => (
+							<div key={`criteria-${i}`} className="flex items-center gap-2 group animate-content-reveal" style={{ animationDelay: `${i * 0.03}s` }}>
+								<span className="text-muted-foreground">✓</span>
+								<span className="flex-1 text-foreground text-sm">{criteria}</span>
+								<button
+									type="button"
+									onClick={() => onRemoveAcceptanceCriteria(i)}
+									className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80 transition-all p-1"
 								>
-									<path d="M18 6 6 18" />
-									<path d="m6 6 12 12" />
-								</svg>
-							</button>
+									<svg
+										xmlns="http://www.w3.org/2000/svg"
+										width="14"
+										height="14"
+										viewBox="0 0 24 24"
+										fill="none"
+										stroke="currentColor"
+										strokeWidth="2"
+										strokeLinecap="round"
+										strokeLinejoin="round"
+									>
+										<path d="M18 6 6 18" />
+										<path d="m6 6 12 12" />
+									</svg>
+								</button>
+							</div>
+						))}
+						<div className="flex items-center gap-2">
+							<span className="text-muted-foreground">+</span>
+							<input
+								type="text"
+								value={newCriteria}
+								onChange={(e) => setNewCriteria(e.target.value)}
+								onKeyDown={(e) => e.key === "Enter" && handleAddCriteria()}
+								placeholder="Adicionar critério..."
+								disabled={isBlocked}
+								className="flex-1 bg-transparent text-foreground text-sm focus:outline-none border-b border-transparent focus:border-primary transition-colors placeholder:text-muted-foreground/50 disabled:opacity-50 disabled:cursor-not-allowed"
+							/>
 						</div>
-					))}
-					<div className="flex items-center gap-2">
-						<span className="text-muted-foreground">+</span>
-						<input
-							type="text"
-							value={newCriteria}
-							onChange={(e) => setNewCriteria(e.target.value)}
-							onKeyDown={(e) => e.key === "Enter" && handleAddCriteria()}
-							placeholder="Adicionar critério..."
-							disabled={isBlocked}
-							className="flex-1 bg-transparent text-foreground text-sm focus:outline-none border-b border-transparent focus:border-primary transition-colors placeholder:text-muted-foreground/50 disabled:opacity-50 disabled:cursor-not-allowed"
-						/>
 					</div>
-				</div>
-			</CollapsibleSection>
+				</CollapsibleSection>
+			</div>
 
 			{(progressState === "idle" || progressState === "started") && (
-				<SubtaskList
-					subtasks={taskFull.subtasks}
-					onAdd={onAddSubtask}
-					onToggle={onToggleSubtask}
-					onRemove={onRemoveSubtask}
-					onUpdate={onUpdateSubtask}
-					onReorder={onReorderSubtasks}
-					disabled={isBlocked}
-				/>
-			)}
-
-			{viewingImageId && viewingImageUrl && (
-				<ImageModal imageUrl={viewingImageUrl} onClose={onCloseImageModal} />
+				<div className="animate-slide-up-fade" style={{ animationDelay: "0.35s" }}>
+					<SubtaskList
+						subtasks={taskFull.subtasks}
+						onAdd={onAddSubtask}
+						onToggle={onToggleSubtask}
+						onRemove={onRemoveSubtask}
+						onUpdate={onUpdateSubtask}
+						onReorder={onReorderSubtasks}
+						disabled={isBlocked}
+					/>
+				</div>
 			)}
 		</div>
 	);

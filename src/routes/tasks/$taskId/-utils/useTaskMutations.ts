@@ -1,8 +1,7 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { safeInvoke } from "../../../../services/tauri";
 import { trpc } from "../../../../services/trpc";
 import type { TaskFull, TaskStatus } from "../../../../types";
-import { TASK_IMAGES_QUERY_KEY } from "./useGetTaskFullQuery";
 
 interface UpdateTaskFullParams {
 	projectPath: string;
@@ -12,15 +11,6 @@ interface UpdateTaskFullParams {
 interface UpdateTaskStatusParams {
 	taskId: string;
 	status: TaskStatus;
-}
-
-interface AddImageParams {
-	taskId: string;
-	filePath: string;
-}
-
-interface DeleteImageParams {
-	imageId: string;
 }
 
 interface TerminalActionParams {
@@ -90,32 +80,6 @@ export function useUpdateTaskStatusMutation(taskId: string) {
 			return mutation.mutateAsync({ id, status });
 		},
 	};
-}
-
-export function useAddTaskImageMutation(taskId: string) {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async ({ taskId, filePath }: AddImageParams) => {
-			await safeInvoke("add_task_image_from_path", { taskId, filePath });
-		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: [...TASK_IMAGES_QUERY_KEY, taskId] });
-		},
-	});
-}
-
-export function useDeleteTaskImageMutation(taskId: string) {
-	const queryClient = useQueryClient();
-
-	return useMutation({
-		mutationFn: async ({ imageId }: DeleteImageParams) => {
-			await safeInvoke("delete_task_image", { imageId });
-		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: [...TASK_IMAGES_QUERY_KEY, taskId] });
-		},
-	});
 }
 
 export function useTerminalActionMutation() {

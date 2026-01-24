@@ -1,6 +1,5 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { safeInvoke, safeListen } from "../../../../services/tauri";
+import { safeListen } from "../../../../services/tauri";
 import { trpc } from "../../../../services/trpc";
 import { useDbRefetchStore } from "../../../../stores/dbRefetch";
 import type {
@@ -8,19 +7,11 @@ import type {
 	Task,
 	TaskExecution,
 	TaskFull,
-	TaskImageMetadata,
 	TaskUpdatedPayload,
 } from "../../../../types";
 
 export const TASK_FULL_QUERY_KEY = ["taskFull"] as const;
 export const TASK_EXECUTION_QUERY_KEY = ["taskExecution"] as const;
-export const TASK_IMAGES_QUERY_KEY = ["taskImages"] as const;
-
-async function fetchTaskImages(taskId: string): Promise<TaskImageMetadata[]> {
-	return safeInvoke<TaskImageMetadata[]>("get_task_images", { taskId }).catch(
-		() => [],
-	);
-}
 
 interface UseGetTaskFullQueryOptions {
 	taskId: string;
@@ -32,17 +23,14 @@ interface TaskFullQueryResult {
 	project: ProjectWithConfig | null;
 	projectPath: string | null;
 	activeExecution: TaskExecution | null;
-	taskImages: TaskImageMetadata[];
 	isLoading: boolean;
 	isError: boolean;
 	refetch: () => void;
-	refetchImages: () => void;
 }
 
 export function useGetTaskFullQuery({
 	taskId,
 }: UseGetTaskFullQueryOptions): TaskFullQueryResult {
-	const queryClient = useQueryClient();
 	const utils = trpc.useUtils();
 	const changeCounter = useDbRefetchStore((s) => s.changeCounter);
 	const lastChange = useDbRefetchStore((s) => s.lastChange);
@@ -88,13 +76,6 @@ export function useGetTaskFullQuery({
 			refetchInterval: 10_000,
 		},
 	);
-
-	const imagesQuery = useQuery({
-		queryKey: [...TASK_IMAGES_QUERY_KEY, taskId],
-		queryFn: () => fetchTaskImages(taskId),
-		enabled: !!taskId,
-		staleTime: 60_000,
-	});
 
 	useEffect(() => {
 		if (changeCounter === 0) return;
@@ -152,12 +133,6 @@ export function useGetTaskFullQuery({
 		utils.executions.getActiveForTask.invalidate({ taskId });
 	};
 
-	const refetchImages = () => {
-		queryClient.invalidateQueries({
-			queryKey: [...TASK_IMAGES_QUERY_KEY, taskId],
-		});
-	};
-
 	const isLoading =
 		taskQuery.isLoading || projectQuery.isLoading || taskFullQuery.isLoading;
 	const isError =
@@ -169,10 +144,8 @@ export function useGetTaskFullQuery({
 		project,
 		projectPath,
 		activeExecution: executionQuery.data ?? null,
-		taskImages: imagesQuery.data ?? [],
 		isLoading,
 		isError,
 		refetch,
-		refetchImages,
 	};
 }

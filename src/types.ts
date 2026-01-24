@@ -156,22 +156,6 @@ export interface QuickfixPayload {
   error: string | null;
 }
 
-export interface TaskImageMetadata {
-  id: string;
-  file_name: string;
-  mime_type: string;
-  created_at: string | null;
-}
-
-export interface TaskImage {
-	id: string;
-	task_id: string;
-	data: string;
-	mime_type: string;
-	file_name: string;
-	created_at: string | null;
-}
-
 export interface UserSession {
 	id: string;
 	started_at: string;
