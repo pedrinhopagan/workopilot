@@ -17,14 +17,11 @@ const queryClient = new QueryClient({
 });
 
 function App() {
-	const [trpcClient, setTrpcClient] = useState<ReturnType<typeof createTrpcClient> | null>(null);
 	const trpcClientRef = useRef<ReturnType<typeof createTrpcClient> | null>(null);
 	const [clientReady, setClientReady] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
 	useEffect(() => {
-		console.log("[APP] Starting, isTauri:", isTauri());
-		
 		if (!isTauri()) {
 			setError("Not running in Tauri");
 			return;
@@ -32,22 +29,14 @@ function App() {
 
 		getTrpcUrl()
 			.then((url) => {
-				console.log("[APP] Got tRPC URL:", url);
 				const client = createTrpcClient(url);
-				console.log("[APP] Created tRPC client");
 				trpcClientRef.current = client;
-				setTrpcClient(client);
 				setClientReady(true);
 			})
 			.catch((err) => {
-				console.error("[APP] Failed to get tRPC URL:", err);
 				setError(err.message || "Failed to connect to tRPC");
 			});
 	}, []);
-
-	useEffect(() => {
-		console.log("[APP] trpcClient state:", trpcClient ? "ready" : "null", "clientReady:", clientReady);
-	}, [trpcClient, clientReady]);
 
 	if (error) {
 		return (
@@ -58,9 +47,9 @@ function App() {
 		);
 	}
 
-	const activeClient = trpcClient ?? trpcClientRef.current;
+	const activeClient = trpcClientRef.current;
 
-	if (!activeClient) {
+	if (!clientReady || !activeClient) {
 		return (
 			<div style={{ 
 				display: "flex", 
@@ -73,15 +62,10 @@ function App() {
 				<div style={{ textAlign: "center" }}>
 					<div style={{ fontSize: 24, marginBottom: 8 }}>WorkoPilot</div>
 					<div>Connecting to backend...</div>
-					{clientReady && (
-						<div style={{ fontSize: 12, marginTop: 8 }}>Client ready, waiting for render...</div>
-					)}
 				</div>
 			</div>
 		);
 	}
-
-	console.log("[APP] Rendering providers...");
 	return (
 		<trpc.Provider client={activeClient} queryClient={queryClient}>
 			<QueryClientProvider client={queryClient}>
