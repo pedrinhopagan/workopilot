@@ -56,16 +56,16 @@ export const tasksRouter = router({
     .input(
       z
         .object({
-          projectId: z.string().optional(),
-          status: taskStatusSchema.optional(),
-          priority: taskPrioritySchema.optional(),
-          category: taskCategorySchema.optional(),
-          q: z.string().optional(),
-          page: z.number().optional(),
-          perPage: z.number().optional(),
-          sortBy: taskSortBySchema.optional(),
-          sortOrder: z.enum(["asc", "desc"]).optional(),
-          excludeDone: z.boolean().optional(),
+          projectId: z.string().nullish(),
+          status: taskStatusSchema.nullish(),
+          priority: taskPrioritySchema.nullish(),
+          category: taskCategorySchema.nullish(),
+          q: z.string().nullish(),
+          page: z.number().nullish(),
+          perPage: z.number().nullish(),
+          sortBy: taskSortBySchema.nullish(),
+          sortOrder: z.enum(["asc", "desc"]).nullish(),
+          excludeDone: z.boolean().nullish(),
         })
         .optional()
     )
