@@ -26,6 +26,7 @@ function rowToTask(row: TaskRow): Task {
     id: row.id,
     project_id: row.project_id,
     title: row.title,
+    main_prompt: row.main_prompt,
     description: row.description,
     priority: row.priority as TaskPriority,
     category: row.category as TaskCategory,
@@ -63,6 +64,7 @@ function rowToTaskFull(row: TaskRow, subtasks: Subtask[]): TaskFull {
   return {
     id: row.id,
     title: row.title,
+    main_prompt: row.main_prompt,
     status: row.status as TaskStatus,
     priority: row.priority as TaskPriority,
     category: row.category as TaskCategory,
@@ -488,6 +490,7 @@ export class SqliteTaskRepository implements TaskRepository {
         id,
         project_id: input.project_id,
         title: input.title,
+        main_prompt: input.main_prompt ?? null,
         description: input.description ?? null,
         priority: input.priority ?? 2,
         category: input.category ?? 'feature',
@@ -510,6 +513,7 @@ export class SqliteTaskRepository implements TaskRepository {
     };
 
     if (input.title !== undefined) updates.title = input.title;
+    if (input.main_prompt !== undefined) updates.main_prompt = input.main_prompt;
     if (input.description !== undefined) updates.description = input.description;
     if (input.priority !== undefined) updates.priority = input.priority;
     if (input.category !== undefined) updates.category = input.category;

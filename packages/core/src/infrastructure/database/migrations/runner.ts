@@ -112,6 +112,7 @@ async function ensureTasksTable(db: Kysely<Database>): Promise<MigrationResult> 
     { name: 'timestamps_started_at', type: 'TEXT' },
     { name: 'modified_at', type: 'TEXT' },
     { name: 'modified_by', type: 'TEXT' },
+    { name: 'main_prompt', type: 'TEXT' },
   ];
 
   const added: string[] = [];

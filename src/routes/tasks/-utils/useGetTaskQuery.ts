@@ -1,8 +1,8 @@
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useCallback, useMemo } from "react";
-import type { TasksSearch } from "../../../lib/searchSchemas";
-import { updateTasksSearch, cleanSearch } from "../../../lib/searchSchemas";
 import type { TaskProgressState } from "../../../lib/constants/taskProgressState";
+import type { TasksSearch } from "../../../lib/searchSchemas";
+import { cleanSearch, updateTasksSearch } from "../../../lib/searchSchemas";
 
 export interface TaskQueryFilters {
 	projectId: string | null;
@@ -30,52 +30,75 @@ export interface TaskQueryState {
 	updateSearch: (updates: Partial<TasksSearch>) => void;
 }
 
-export function useGetTaskQuery(initialProjectId: string | null = null): TaskQueryState {
+export function useGetTaskQuery(
+	initialProjectId: string | null = null,
+): TaskQueryState {
 	const search = useSearch({ from: "/tasks/" });
 	const navigate = useNavigate();
 
-	const filters: TaskQueryFilters = useMemo(() => ({
-		projectId: initialProjectId,
-		priority: search.priority ?? null,
-		category: search.category ?? null,
-		progressState: search.progressState ?? null,
-		q: search.q ?? null,
-		page: search.page ?? 1,
-		perPage: search.perPage ?? 20,
-		sortBy: search.sortBy ?? "progress_state",
-		sortOrder: search.sortOrder ?? "asc",
-	}), [initialProjectId, search]);
+	const filters: TaskQueryFilters = useMemo(
+		() => ({
+			projectId: initialProjectId,
+			priority: search.priority ?? null,
+			category: search.category ?? null,
+			progressState: search.progressState ?? null,
+			q: search.q ?? null,
+			page: search.page ?? 1,
+			perPage: search.perPage ?? 20,
+			sortBy: search.sortBy ?? "progress_state",
+			sortOrder: search.sortOrder ?? "asc",
+		}),
+		[initialProjectId, search],
+	);
 
-	const updateSearchParams = useCallback((updates: Partial<TasksSearch>) => {
-		const newSearch = updateTasksSearch(search as TasksSearch, updates);
-		navigate({
-			to: "/tasks",
-			search: (prev) => ({ ...prev, ...cleanSearch(newSearch) }),
-			replace: true,
-		});
-	}, [search, navigate]);
+	const updateSearchParams = useCallback(
+		(updates: Partial<TasksSearch>) => {
+			const newSearch = updateTasksSearch(search as TasksSearch, updates);
+			navigate({
+				to: "/tasks",
+				search: (prev) => ({ ...prev, ...cleanSearch(newSearch) }),
+				replace: true,
+			});
+		},
+		[search, navigate],
+	);
 
 	const setProjectFilter = useCallback((_projectId: string | null) => {}, []);
 
-	const setPriorityFilter = useCallback((priority: number | null) => {
-		updateSearchParams({ priority: priority ?? undefined });
-	}, [updateSearchParams]);
+	const setPriorityFilter = useCallback(
+		(priority: number | null) => {
+			updateSearchParams({ priority: priority ?? undefined });
+		},
+		[updateSearchParams],
+	);
 
-	const setCategoryFilter = useCallback((category: string | null) => {
-		updateSearchParams({ category: category as TasksSearch["category"] });
-	}, [updateSearchParams]);
+	const setCategoryFilter = useCallback(
+		(category: string | null) => {
+			updateSearchParams({ category: category as TasksSearch["category"] });
+		},
+		[updateSearchParams],
+	);
 
-	const setProgressStateFilter = useCallback((progressState: TaskProgressState | null) => {
-		updateSearchParams({ progressState: progressState ?? undefined });
-	}, [updateSearchParams]);
+	const setProgressStateFilter = useCallback(
+		(progressState: TaskProgressState | null) => {
+			updateSearchParams({ progressState: progressState ?? undefined });
+		},
+		[updateSearchParams],
+	);
 
-	const setSearchQuery = useCallback((q: string | null) => {
-		updateSearchParams({ q: q ?? undefined });
-	}, [updateSearchParams]);
+	const setSearchQuery = useCallback(
+		(q: string | null) => {
+			updateSearchParams({ q: q ?? undefined });
+		},
+		[updateSearchParams],
+	);
 
-	const setPage = useCallback((page: number) => {
-		updateSearchParams({ page });
-	}, [updateSearchParams]);
+	const setPage = useCallback(
+		(page: number) => {
+			updateSearchParams({ page });
+		},
+		[updateSearchParams],
+	);
 
 	const clearFilters = useCallback(() => {
 		navigate({
@@ -86,10 +109,12 @@ export function useGetTaskQuery(initialProjectId: string | null = null): TaskQue
 	}, [navigate]);
 
 	const hasActiveFilters = useMemo(() => {
-		return search.priority !== undefined || 
-			search.category !== undefined || 
+		return (
+			search.priority !== undefined ||
+			search.category !== undefined ||
 			search.progressState !== undefined ||
-			search.q !== undefined;
+			search.q !== undefined
+		);
 	}, [search.priority, search.category, search.progressState, search.q]);
 
 	return {
@@ -107,7 +132,13 @@ export function useGetTaskQuery(initialProjectId: string | null = null): TaskQue
 	};
 }
 
-export const TASK_CATEGORIES = ["feature", "bug", "refactor", "research", "documentation"] as const;
+export const TASK_CATEGORIES = [
+	"feature",
+	"bug",
+	"refactor",
+	"research",
+	"documentation",
+] as const;
 
 export const TASK_PRIORITIES = [
 	{ value: 1, label: "Alta", color: "bg-[#bc5653]" },
@@ -120,7 +151,10 @@ export function getCategoryOptions() {
 }
 
 export function getPriorityOptions() {
-	return TASK_PRIORITIES.map((p) => ({ value: String(p.value), label: p.label }));
+	return TASK_PRIORITIES.map((p) => ({
+		value: String(p.value),
+		label: p.label,
+	}));
 }
 
 export function getPriorityColor(priority: number): string {

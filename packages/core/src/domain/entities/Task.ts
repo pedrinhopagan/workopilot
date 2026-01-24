@@ -29,6 +29,7 @@ export interface Task {
   id: string;
   project_id: string | null;
   title: string;
+  main_prompt: string | null;
   description: string | null;
   priority: TaskPriority;
   category: TaskCategory;
@@ -43,6 +44,7 @@ export interface Task {
 export interface TaskFull {
   id: string;
   title: string;
+  main_prompt: string | null;
   status: TaskStatus;
   priority: TaskPriority;
   category: TaskCategory;
@@ -60,6 +62,7 @@ export interface TaskFull {
 export interface CreateTaskInput {
   project_id: string | null;
   title: string;
+  main_prompt?: string | null;
   description?: string | null;
   priority?: TaskPriority;
   category?: TaskCategory;
@@ -70,6 +73,7 @@ export interface CreateTaskInput {
 
 export interface UpdateTaskInput {
   title?: string;
+  main_prompt?: string | null;
   description?: string | null;
   priority?: TaskPriority;
   category?: TaskCategory;

@@ -147,6 +147,7 @@ program
   .description("Update a task field")
   .option("--status <status>", `Set status: ${TASK_STATUSES.join(", ")}`)
   .option("--title <title>", "Set title")
+  .option("--main-prompt <prompt>", "Set main prompt (original user request, immutable source of truth)")
   .option("--complexity <complexity>", "Set complexity (trivial, simple, moderate, complex, epic)")
   .option("--description <description>", "Set context description")
   .option("--acceptance-criteria <criteria>", "Set acceptance criteria (JSON array or comma-separated values)")
@@ -160,6 +161,7 @@ program
       options: {
         status?: string;
         title?: string;
+        mainPrompt?: string;
         complexity?: string;
         description?: string;
         acceptanceCriteria?: string;
@@ -214,6 +216,11 @@ program
         if (options.title) {
           updateInput.title = options.title;
           updates.title = options.title;
+        }
+        if (options.mainPrompt !== undefined) {
+          const prompt = options.mainPrompt === "null" || options.mainPrompt === "" ? null : options.mainPrompt;
+          updateInput.main_prompt = prompt;
+          updates.main_prompt = prompt;
         }
         if (options.complexity) {
           updateInput.complexity = options.complexity as "trivial" | "simple" | "moderate" | "complex" | "epic";

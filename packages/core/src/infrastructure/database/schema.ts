@@ -18,6 +18,7 @@ export interface TasksTable {
   id: string;
   project_id: string | null;
   title: string;
+  main_prompt: string | null;
   description: string | null;
   priority: number;
   category: string;
