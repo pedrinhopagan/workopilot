@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { safeInvoke, safeListen } from "../../../../services/tauri";
+import { trpc } from "../../../../services/trpc";
 import { useDbRefetchStore } from "../../../../stores/dbRefetch";
 import type {
 	ProjectWithConfig,
@@ -15,26 +16,10 @@ export const TASK_FULL_QUERY_KEY = ["taskFull"] as const;
 export const TASK_EXECUTION_QUERY_KEY = ["taskExecution"] as const;
 export const TASK_IMAGES_QUERY_KEY = ["taskImages"] as const;
 
-async function fetchTask(taskId: string): Promise<Task | null> {
-	return safeInvoke<Task>("get_task_by_id", { taskId }).catch(() => null);
-}
-
-async function fetchProjectWithConfig(projectId: string): Promise<ProjectWithConfig | null> {
-	return safeInvoke<ProjectWithConfig>("get_project_with_config", { projectId }).catch(() => null);
-}
-
-async function fetchTaskFull(taskId: string, projectPath: string): Promise<TaskFull | null> {
-	return safeInvoke<TaskFull>("get_task_full", { projectPath, taskId }).catch(() => null);
-}
-
-async function fetchTaskExecution(taskId: string): Promise<TaskExecution | null> {
-	return safeInvoke<TaskExecution | null>("get_active_task_execution", { taskId }).catch(
-		() => null,
-	);
-}
-
 async function fetchTaskImages(taskId: string): Promise<TaskImageMetadata[]> {
-	return safeInvoke<TaskImageMetadata[]>("get_task_images", { taskId }).catch(() => []);
+	return safeInvoke<TaskImageMetadata[]>("get_task_images", { taskId }).catch(
+		() => [],
+	);
 }
 
 interface UseGetTaskFullQueryOptions {
@@ -54,53 +39,55 @@ interface TaskFullQueryResult {
 	refetchImages: () => void;
 }
 
-export function useGetTaskFullQuery({ taskId }: UseGetTaskFullQueryOptions): TaskFullQueryResult {
+export function useGetTaskFullQuery({
+	taskId,
+}: UseGetTaskFullQueryOptions): TaskFullQueryResult {
 	const queryClient = useQueryClient();
+	const utils = trpc.useUtils();
 	const changeCounter = useDbRefetchStore((s) => s.changeCounter);
 	const lastChange = useDbRefetchStore((s) => s.lastChange);
 
-	const taskQuery = useQuery({
-		queryKey: ["task", taskId],
-		queryFn: () => fetchTask(taskId),
-		enabled: !!taskId,
-		staleTime: 30_000,
-		refetchOnMount: "always",
-	});
+	const taskQuery = trpc.tasks.get.useQuery(
+		{ id: taskId },
+		{
+			enabled: !!taskId,
+			staleTime: 30_000,
+			refetchOnMount: "always",
+		},
+	);
 
 	const task = taskQuery.data ?? null;
 
-	const projectQuery = useQuery({
-		queryKey: ["project", task?.project_id],
-		queryFn: async () => {
-			if (!task?.project_id) return null;
-			return fetchProjectWithConfig(task.project_id);
+	const projectId = task?.project_id ?? "";
+	const projectQuery = trpc.projects.get.useQuery(
+		{ id: projectId },
+		{
+			enabled: !!task?.project_id,
+			staleTime: 60_000,
 		},
-		enabled: !!task?.project_id,
-		staleTime: 60_000,
-	});
+	);
 
-	const project = projectQuery.data ?? null;
+	const project = (projectQuery.data ?? null) as ProjectWithConfig | null;
 	const projectPath = project?.path ?? null;
 
-	const taskFullQuery = useQuery({
-		queryKey: [...TASK_FULL_QUERY_KEY, taskId],
-		queryFn: async () => {
-			if (!projectPath) return null;
-			return fetchTaskFull(taskId, projectPath);
+	const taskFullQuery = trpc.tasks.getFull.useQuery(
+		{ id: taskId },
+		{
+			enabled: !!taskId,
+			staleTime: 30_000,
+			refetchOnMount: "always",
 		},
-		enabled: !!taskId && !!projectPath,
-		staleTime: 30_000,
-		refetchOnMount: "always",
-	});
+	);
 
-	const executionQuery = useQuery({
-		queryKey: [...TASK_EXECUTION_QUERY_KEY, taskId],
-		queryFn: () => fetchTaskExecution(taskId),
-		enabled: !!taskId,
-		staleTime: 5_000,
-		refetchOnMount: "always",
-		refetchInterval: 10_000,
-	});
+	const executionQuery = trpc.executions.getActiveForTask.useQuery(
+		{ taskId },
+		{
+			enabled: !!taskId,
+			staleTime: 5_000,
+			refetchOnMount: "always",
+			refetchInterval: 10_000,
+		},
+	);
 
 	const imagesQuery = useQuery({
 		queryKey: [...TASK_IMAGES_QUERY_KEY, taskId],
@@ -111,20 +98,20 @@ export function useGetTaskFullQuery({ taskId }: UseGetTaskFullQueryOptions): Tas
 
 	useEffect(() => {
 		if (changeCounter === 0) return;
-		
-		const isRelevant = !lastChange || 
-			lastChange.entity_type === "task" || 
+
+		const isRelevant =
+			!lastChange ||
+			lastChange.entity_type === "task" ||
 			lastChange.entity_type === "subtask";
-		
-		const isThisTask = !lastChange || 
-			lastChange.entity_id === taskId;
-		
+
+		const isThisTask = !lastChange || lastChange.entity_id === taskId;
+
 		if (isRelevant && isThisTask) {
-			queryClient.invalidateQueries({ queryKey: ["task", taskId] });
-			queryClient.invalidateQueries({ queryKey: [...TASK_FULL_QUERY_KEY, taskId] });
-			queryClient.invalidateQueries({ queryKey: [...TASK_EXECUTION_QUERY_KEY, taskId] });
+			utils.tasks.get.invalidate({ id: taskId });
+			utils.tasks.getFull.invalidate({ id: taskId });
+			utils.executions.getActiveForTask.invalidate({ taskId });
 		}
-	}, [changeCounter, lastChange, taskId, queryClient]);
+	}, [changeCounter, lastChange, taskId, utils]);
 
 	useEffect(() => {
 		let unlistenTask: (() => void) | null = null;
@@ -132,8 +119,8 @@ export function useGetTaskFullQuery({ taskId }: UseGetTaskFullQueryOptions): Tas
 
 		safeListen<TaskUpdatedPayload>("task-updated", async (event) => {
 			if (event.payload.task_id === taskId && event.payload.source === "ai") {
-				queryClient.invalidateQueries({ queryKey: ["task", taskId] });
-				queryClient.invalidateQueries({ queryKey: [...TASK_FULL_QUERY_KEY, taskId] });
+				utils.tasks.get.invalidate({ id: taskId });
+				utils.tasks.getFull.invalidate({ id: taskId });
 			}
 		}).then((fn) => {
 			unlistenTask = fn;
@@ -141,9 +128,12 @@ export function useGetTaskFullQuery({ taskId }: UseGetTaskFullQueryOptions): Tas
 
 		safeListen<TaskExecution>("execution-changed", (event) => {
 			if (event.payload.task_id === taskId) {
-				queryClient.invalidateQueries({ queryKey: [...TASK_EXECUTION_QUERY_KEY, taskId] });
-				if (event.payload.status === "completed" || event.payload.status === "error") {
-					queryClient.invalidateQueries({ queryKey: [...TASK_FULL_QUERY_KEY, taskId] });
+				utils.executions.getActiveForTask.invalidate({ taskId });
+				if (
+					event.payload.status === "completed" ||
+					event.payload.status === "error"
+				) {
+					utils.tasks.getFull.invalidate({ id: taskId });
 				}
 			}
 		}).then((fn) => {
@@ -154,23 +144,27 @@ export function useGetTaskFullQuery({ taskId }: UseGetTaskFullQueryOptions): Tas
 			unlistenTask?.();
 			unlistenExecution?.();
 		};
-	}, [taskId, queryClient]);
+	}, [taskId, utils]);
 
 	const refetch = () => {
-		queryClient.invalidateQueries({ queryKey: ["task", taskId] });
-		queryClient.invalidateQueries({ queryKey: [...TASK_FULL_QUERY_KEY, taskId] });
-		queryClient.invalidateQueries({ queryKey: [...TASK_EXECUTION_QUERY_KEY, taskId] });
+		utils.tasks.get.invalidate({ id: taskId });
+		utils.tasks.getFull.invalidate({ id: taskId });
+		utils.executions.getActiveForTask.invalidate({ taskId });
 	};
 
 	const refetchImages = () => {
-		queryClient.invalidateQueries({ queryKey: [...TASK_IMAGES_QUERY_KEY, taskId] });
+		queryClient.invalidateQueries({
+			queryKey: [...TASK_IMAGES_QUERY_KEY, taskId],
+		});
 	};
 
-	const isLoading = taskQuery.isLoading || projectQuery.isLoading || taskFullQuery.isLoading;
-	const isError = taskQuery.isError || projectQuery.isError || taskFullQuery.isError;
+	const isLoading =
+		taskQuery.isLoading || projectQuery.isLoading || taskFullQuery.isLoading;
+	const isError =
+		taskQuery.isError || projectQuery.isError || taskFullQuery.isError;
 
 	return {
-		task,
+		task: task as Task | null,
 		taskFull: taskFullQuery.data ?? null,
 		project,
 		projectPath,

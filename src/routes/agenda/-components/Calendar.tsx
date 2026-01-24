@@ -1,7 +1,6 @@
-import { useState, useEffect, useImperativeHandle, forwardRef } from "react";
-import { safeInvoke } from "../../../services/tauri";
+import { useImperativeHandle, forwardRef, useEffect } from "react";
+import { trpc } from "../../../services/trpc";
 import { useDbRefetchStore } from "../../../stores/dbRefetch";
-import type { CalendarTask } from "../../../types";
 import { CalendarDay } from "./CalendarDay";
 import { useAgendaStore } from "../../../stores/agenda";
 
@@ -21,20 +20,20 @@ const monthNames = [
   "Dezembro",
 ];
 
-type CalendarDay = {
+type CalendarDayData = {
   date: string;
   dayNumber: number;
   isCurrentMonth: boolean;
   isToday: boolean;
 };
 
-function generateCalendarDays(year: number, month: number): CalendarDay[] {
+function generateCalendarDays(year: number, month: number): CalendarDayData[] {
   const firstDay = new Date(year, month - 1, 1);
   const lastDay = new Date(year, month, 0);
   const startDayOfWeek = firstDay.getDay();
   const daysInMonth = lastDay.getDate();
 
-  const days: CalendarDay[] = [];
+  const days: CalendarDayData[] = [];
 
   const prevMonth = month === 1 ? 12 : month - 1;
   const prevYear = month === 1 ? year - 1 : year;
@@ -98,36 +97,39 @@ export const Calendar = forwardRef<CalendarRef, CalendarProps>(function Calendar
   const isDistributing = useAgendaStore((s) => s.isDistributing);
   const isDistributionMode = useAgendaStore((s) => s.isDistributionMode);
   const changeCounter = useDbRefetchStore((s) => s.changeCounter);
-  const [tasks, setTasks] = useState<CalendarTask[]>([]);
-  const [_isLoading, setIsLoading] = useState(true);
 
   const calendarDays = generateCalendarDays(currentMonth.year, currentMonth.month);
   const monthName = monthNames[currentMonth.month - 1];
 
-  function getTasksForDate(date: string): CalendarTask[] {
-    return tasks.filter((t) => t.scheduled_date === date);
+  const utils = trpc.useUtils();
+
+  const { data: tasks = [], refetch: refetchTasks } = trpc.tasks.listForMonth.useQuery(
+    { year: currentMonth.year, month: currentMonth.month },
+    { staleTime: 1000 * 60 }
+  );
+
+  const filteredTasks = projectId
+    ? tasks.filter((t) => t.project_id === projectId)
+    : tasks;
+
+  function getTasksForDate(date: string) {
+    return filteredTasks.filter((t) => t.scheduled_date === date);
   }
 
-  async function loadTasks() {
-    setIsLoading(true);
-    const result = await safeInvoke<CalendarTask[]>("get_tasks_for_month", {
-      year: currentMonth.year,
-      month: currentMonth.month,
-      projectId,
-    }).catch((e) => {
-      console.error("Failed to load calendar tasks:", e);
-      return [];
-    });
-    setTasks(result);
-    setIsLoading(false);
-  }
+  const scheduleMutation = trpc.tasks.schedule.useMutation({
+    onSuccess: () => {
+      utils.tasks.listForMonth.invalidate();
+      utils.tasks.listUnscheduled.invalidate();
+      onTasksChanged?.();
+    },
+  });
 
   async function handleDrop(taskId: string, date: string) {
-    await safeInvoke("schedule_task", { taskId, scheduledDate: date }).catch((e) =>
-      console.error("Failed to schedule task:", e)
-    );
-    await loadTasks();
-    onTasksChanged?.();
+    try {
+      await scheduleMutation.mutateAsync({ id: taskId, date });
+    } catch (e) {
+      console.error("Failed to schedule task:", e);
+    }
     setDraggedTask(null);
   }
 
@@ -156,16 +158,12 @@ export const Calendar = forwardRef<CalendarRef, CalendarProps>(function Calendar
   }
 
   useEffect(() => {
-    loadTasks();
-  }, [currentMonth.year, currentMonth.month, projectId]);
-
-  useEffect(() => {
     if (changeCounter === 0) return;
-    loadTasks();
-  }, [changeCounter]);
+    refetchTasks();
+  }, [changeCounter, refetchTasks]);
 
   useImperativeHandle(ref, () => ({
-    refresh: loadTasks,
+    refresh: () => refetchTasks(),
   }));
 
   return (

@@ -1,10 +1,10 @@
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { safeInvoke } from "../../../services/tauri";
+import { trpc } from "../../../services/trpc";
 import { useSelectedProjectStore } from "../../../stores/selectedProject";
 import { useGetTaskData, useProjectPath } from "../-utils";
 import { useGetTaskQuery } from "../-utils/useGetTaskQuery";
-import type { ProjectWithConfig, Task, TaskFull } from "../../../types";
+import type { Task, TaskFull } from "../../../types";
 import { TasksHeader } from "./TasksHeader";
 import { TasksNewTask } from "./TasksNewTask";
 import { TasksList } from "./TasksList";
@@ -43,30 +43,41 @@ export function TasksRoot() {
 		return { pendingTasks: pending, doneTasks: done };
 	}, [tasks]);
 
-	const handleToggleTask = useCallback(async (taskId: string, currentStatus: string) => {
+	const utils = trpc.useUtils();
+	
+	const updateStatusMutation = trpc.tasks.updateStatus.useMutation({
+		onSuccess: () => {
+			utils.tasks.invalidate();
+		},
+	});
+
+	const saveFullMutation = trpc.tasks.saveFull.useMutation({
+		onSuccess: () => {
+			utils.tasks.invalidate();
+		},
+	});
+
+	const deleteTaskMutation = trpc.tasks.delete.useMutation({
+		onSuccess: () => {
+			utils.tasks.invalidate();
+		},
+	});
+
+	const handleToggleTask = useCallback((taskId: string, currentStatus: string) => {
 		const newStatus = currentStatus === "done" ? "pending" : "done";
-		await safeInvoke("update_task_status", { taskId, status: newStatus }).catch(
-			(e) => console.error("Failed to update task:", e),
+		updateStatusMutation.mutate(
+			{ id: taskId, status: newStatus as "pending" | "done" },
+			{ onError: (e) => console.error("Failed to update task:", e) }
 		);
-		refetch();
-	}, [refetch]);
+	}, [updateStatusMutation]);
 
 	const handleEditTask = useCallback((taskId: string) => {
 		navigate({ to: "/tasks/$taskId", params: { taskId } });
 	}, [navigate]);
 
-	const handleToggleSubtask = useCallback(async (taskId: string, subtaskId: string) => {
+	const handleToggleSubtask = useCallback((taskId: string, subtaskId: string) => {
 		const taskFull = taskFullCache.get(taskId);
 		if (!taskFull) return;
-
-		const task = tasks.find((t) => t.id === taskId);
-		if (!task?.project_id) return;
-
-		const project = await safeInvoke<ProjectWithConfig>(
-			"get_project_with_config",
-			{ projectId: task.project_id },
-		).catch(() => null);
-		if (!project) return;
 
 		const newSubtasks = taskFull.subtasks.map((s) => {
 			if (s.id === subtaskId) {
@@ -90,34 +101,20 @@ export function TasksRoot() {
 			updatedTask.status = "done";
 		}
 
-		await safeInvoke("update_task_and_sync", {
-			projectPath: project.path,
-			task: updatedTask,
-		}).catch((e) => console.error("Failed to toggle subtask:", e));
+		saveFullMutation.mutate(updatedTask, {
+			onError: (e) => console.error("Failed to toggle subtask:", e),
+		});
+	}, [taskFullCache, saveFullMutation]);
 
-		refetch();
-	}, [taskFullCache, tasks, refetch]);
-
-
-
-	const handleDeleteTask = useCallback(async (taskId: string) => {
-		const task = tasks.find((t) => t.id === taskId);
-		if (!task?.project_id) return;
-
-		const project = await safeInvoke<ProjectWithConfig>(
-			"get_project_with_config",
-			{ projectId: task.project_id },
-		).catch(() => null);
-		if (!project) return;
-
-		await safeInvoke("delete_task_full", {
-			projectPath: project.path,
-			taskId,
-		}).catch((e) => console.error("Failed to delete task:", e));
-
-		setDeleteConfirmId(null);
-		refetch();
-	}, [tasks, refetch]);
+	const handleDeleteTask = useCallback((taskId: string) => {
+		deleteTaskMutation.mutate(
+			{ id: taskId },
+			{
+				onSuccess: () => setDeleteConfirmId(null),
+				onError: (e) => console.error("Failed to delete task:", e),
+			}
+		);
+	}, [deleteTaskMutation]);
 
 	const handleDeleteClick = useCallback((taskId: string) => {
 		if (deleteConfirmId === taskId) {

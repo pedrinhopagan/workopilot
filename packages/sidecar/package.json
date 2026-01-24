@@ -4,6 +4,10 @@
   "description": "JSON-RPC sidecar server for WorkoPilot Tauri app",
   "type": "module",
   "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./trpc": "./src/trpc/index.ts"
+  },
   "bin": {
     "workopilot-sidecar": "./src/index.ts"
   },
@@ -13,7 +17,9 @@
     "build": "bun build ./src/index.ts --compile --outfile=../sidecar-bin/workopilot-sidecar"
   },
   "dependencies": {
-    "@workopilot/sdk": "workspace:*"
+    "@trpc/server": "^11.8.1",
+    "@workopilot/sdk": "workspace:*",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/bun": "latest",

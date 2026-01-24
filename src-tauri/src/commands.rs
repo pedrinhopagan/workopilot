@@ -21,6 +21,10 @@ macro_rules! sidecar_call {
     }};
 }
 
+// ============================================================================
+// Types (kept for commands that still need them)
+// ============================================================================
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Project {
     pub id: String,
@@ -141,580 +145,9 @@ pub struct TaskTimestamps {
     pub completed_at: Option<String>,
 }
 
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct TaskExecution {
-    pub id: String,
-    pub task_id: String,
-    pub subtask_id: Option<String>,
-    pub execution_type: String,
-    pub status: String,
-    pub current_step: i32,
-    pub total_steps: i32,
-    pub current_step_description: Option<String>,
-    pub waiting_for_input: bool,
-    pub tmux_session: Option<String>,
-    pub pid: Option<i32>,
-    pub last_heartbeat: String,
-    pub error_message: Option<String>,
-    pub started_at: String,
-    pub ended_at: Option<String>,
-}
-
-#[tauri::command]
-pub fn get_projects(state: State<AppState>) -> Result<Vec<Project>, String> {
-    let result = sidecar_call!(state, "projects.list")?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[tauri::command]
-pub fn get_project_with_config(state: State<AppState>, project_id: String) -> Result<Project, String> {
-    let result = sidecar_call!(state, "projects.get", json!({ "id": project_id }))?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[tauri::command]
-pub fn add_project(
-    state: State<AppState>,
-    name: String,
-    path: String,
-    description: Option<String>,
-) -> Result<String, String> {
-    let result = sidecar_call!(state, "projects.create", json!({
-        "name": name,
-        "path": path,
-        "description": description
-    }))?;
-    
-    let project: Project = serde_json::from_value(result)
-        .map_err(|e| format!("Deserialize error: {}", e))?;
-    Ok(project.id)
-}
-
-#[tauri::command]
-pub fn update_project(
-    state: State<AppState>,
-    project_id: String,
-    name: String,
-    description: Option<String>,
-) -> Result<(), String> {
-    sidecar_call!(state, "projects.update", json!({
-        "id": project_id,
-        "name": name,
-        "description": description
-    }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn update_project_name(
-    state: State<AppState>,
-    project_id: String,
-    name: String,
-) -> Result<(), String> {
-    sidecar_call!(state, "projects.update", json!({
-        "id": project_id,
-        "name": name
-    }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn update_project_routes(
-    state: State<AppState>,
-    project_id: String,
-    routes: Vec<ProjectRoute>,
-) -> Result<(), String> {
-    sidecar_call!(state, "projects.update", json!({
-        "id": project_id,
-        "routes": routes
-    }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn update_project_tmux_config(
-    state: State<AppState>,
-    project_id: String,
-    tmux_config: TmuxConfig,
-) -> Result<(), String> {
-    sidecar_call!(state, "projects.update", json!({
-        "id": project_id,
-        "tmuxConfig": tmux_config
-    }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn update_project_business_rules(
-    state: State<AppState>,
-    project_id: String,
-    rules: String,
-) -> Result<(), String> {
-    sidecar_call!(state, "projects.update", json!({
-        "id": project_id,
-        "businessRules": rules
-    }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn update_project_color(
-    state: State<AppState>,
-    project_id: String,
-    color: Option<String>,
-) -> Result<(), String> {
-    sidecar_call!(state, "projects.update", json!({
-        "id": project_id,
-        "color": color
-    }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn update_projects_order(
-    state: State<AppState>,
-    project_orders: Vec<(String, i32)>,
-) -> Result<(), String> {
-    let ordered_ids: Vec<String> = project_orders.iter().map(|(id, _)| id.clone()).collect();
-    sidecar_call!(state, "projects.updateOrder", json!({
-        "orderedIds": ordered_ids
-    }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn set_tmux_configured(
-    state: State<AppState>,
-    project_id: String,
-    configured: bool,
-) -> Result<(), String> {
-    sidecar_call!(state, "projects.update", json!({
-        "id": project_id,
-        "tmuxConfigured": configured
-    }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn delete_project(state: State<AppState>, project_id: String) -> Result<(), String> {
-    sidecar_call!(state, "projects.delete", json!({ "id": project_id }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn get_tasks(state: State<AppState>) -> Result<Vec<Task>, String> {
-    let result = sidecar_call!(state, "tasks.list")?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[tauri::command]
-pub fn get_all_tasks_full(state: State<AppState>) -> Result<Vec<TaskFull>, String> {
-    let result = sidecar_call!(state, "tasks.listFull")?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct PaginatedTasksResult {
-    pub items: Vec<TaskFull>,
-    pub total: i64,
-    pub page: i32,
-    #[serde(rename = "perPage")]
-    pub per_page: i32,
-    #[serde(rename = "totalPages")]
-    pub total_pages: i32,
-}
-
-#[tauri::command]
-pub fn tasks_list_full_paginated(
-    state: State<AppState>,
-    project_id: Option<String>,
-    q: Option<String>,
-    priority: Option<i32>,
-    category: Option<String>,
-    page: Option<i32>,
-    per_page: Option<i32>,
-    sort_by: Option<String>,
-    sort_order: Option<String>,
-    exclude_done: Option<bool>,
-) -> Result<PaginatedTasksResult, String> {
-    let mut params = json!({});
-    
-    if let Some(pid) = project_id {
-        params["projectId"] = json!(pid);
-    }
-    if let Some(search) = q {
-        params["q"] = json!(search);
-    }
-    if let Some(p) = priority {
-        params["priority"] = json!(p);
-    }
-    if let Some(c) = category {
-        params["category"] = json!(c);
-    }
-    if let Some(pg) = page {
-        params["page"] = json!(pg);
-    }
-    if let Some(pp) = per_page {
-        params["perPage"] = json!(pp);
-    }
-    if let Some(sb) = sort_by {
-        params["sortBy"] = json!(sb);
-    }
-    if let Some(so) = sort_order {
-        params["sortOrder"] = json!(so);
-    }
-    if let Some(ed) = exclude_done {
-        params["excludeDone"] = json!(ed);
-    }
-    
-    let result = sidecar_call!(state, "tasks.listFullPaginated", params)?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[tauri::command]
-pub fn get_urgent_tasks(
-    state: State<AppState>,
-    project_id: String,
-    limit: i32,
-) -> Result<Vec<Task>, String> {
-    let result = sidecar_call!(state, "tasks.list", json!({
-        "projectId": project_id,
-        "status": ["pending", "structured", "standby", "ready_to_review"],
-        "limit": limit
-    }))?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[tauri::command]
-pub fn get_active_tasks(
-    state: State<AppState>,
-    project_id: String,
-    limit: i32,
-) -> Result<Vec<Task>, String> {
-    let result = sidecar_call!(state, "tasks.list", json!({
-        "projectId": project_id,
-        "status": ["in_progress"],
-        "limit": limit
-    }))?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[tauri::command]
-pub fn get_setting(state: State<AppState>, key: String) -> Result<Option<String>, String> {
-    let result = sidecar_call!(state, "settings.get", json!({ "key": key }))?;
-    if result.is_null() {
-        Ok(None)
-    } else {
-        Ok(result.as_str().map(|s| s.to_string()))
-    }
-}
-
-#[tauri::command]
-pub fn set_setting(state: State<AppState>, key: String, value: String) -> Result<(), String> {
-    sidecar_call!(state, "settings.set", json!({ "key": key, "value": value }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn add_task(
-    state: State<AppState>,
-    project_id: String,
-    title: String,
-    priority: i32,
-    category: String,
-) -> Result<String, String> {
-    let result = sidecar_call!(state, "tasks.create", json!({
-        "projectId": project_id,
-        "title": title,
-        "priority": priority,
-        "category": category
-    }))?;
-    
-    let task: TaskFull = serde_json::from_value(result)
-        .map_err(|e| format!("Deserialize error: {}", e))?;
-    Ok(task.id)
-}
-
-#[tauri::command]
-pub fn update_task_status(
-    state: State<AppState>,
-    task_id: String,
-    status: String,
-) -> Result<(), String> {
-    sidecar_call!(state, "tasks.updateStatus", json!({
-        "id": task_id,
-        "status": status,
-        "modifiedBy": "user"
-    }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn schedule_task(
-    state: State<AppState>,
-    task_id: String,
-    scheduled_date: String,
-) -> Result<(), String> {
-    sidecar_call!(state, "tasks.schedule", json!({
-        "id": task_id,
-        "date": scheduled_date
-    }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn unschedule_task(state: State<AppState>, task_id: String) -> Result<(), String> {
-    sidecar_call!(state, "tasks.unschedule", json!({ "id": task_id }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn get_tasks_for_month(
-    state: State<AppState>,
-    year: i32,
-    month: i32,
-    project_id: Option<String>,
-) -> Result<Vec<Task>, String> {
-    let mut params = json!({ "year": year, "month": month });
-    if let Some(pid) = project_id {
-        params["projectId"] = json!(pid);
-    }
-    let result = sidecar_call!(state, "tasks.listForMonth", params)?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[tauri::command]
-pub fn get_unscheduled_tasks(
-    state: State<AppState>,
-    project_id: Option<String>,
-    _category: Option<String>,
-    _priority: Option<i32>,
-) -> Result<Vec<Task>, String> {
-    let result = sidecar_call!(state, "tasks.listUnscheduled", json!({
-        "projectId": project_id
-    }))?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[tauri::command]
-pub fn get_tasks_for_date(state: State<AppState>, date: String) -> Result<Vec<Task>, String> {
-    let result = sidecar_call!(state, "tasks.listForDate", json!({ "date": date }))?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[tauri::command]
-pub fn create_task_with_json(
-    state: State<AppState>,
-    project_id: String,
-    _project_path: String,
-    title: String,
-    priority: i32,
-    category: String,
-) -> Result<String, String> {
-    let result = sidecar_call!(state, "tasks.create", json!({
-        "projectId": project_id,
-        "title": title,
-        "priority": priority,
-        "category": category
-    }))?;
-    
-    let task: TaskFull = serde_json::from_value(result)
-        .map_err(|e| format!("Deserialize error: {}", e))?;
-    Ok(task.id)
-}
-
-#[tauri::command]
-pub fn get_task_full(
-    state: State<AppState>,
-    _project_path: String,
-    task_id: String,
-) -> Result<TaskFull, String> {
-    let result = sidecar_call!(state, "tasks.getFull", json!({ "id": task_id }))?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[tauri::command]
-pub fn save_task_full(
-    state: State<AppState>,
-    _project_path: String,
-    task: TaskFull,
-) -> Result<(), String> {
-    sidecar_call!(state, "tasks.saveFull", serde_json::to_value(&task).map_err(|e| e.to_string())?)?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn update_task_and_sync(
-    state: State<AppState>,
-    _project_path: String,
-    task: TaskFull,
-) -> Result<(), String> {
-    sidecar_call!(state, "tasks.saveFull", serde_json::to_value(&task).map_err(|e| e.to_string())?)?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn delete_task_full(
-    state: State<AppState>,
-    _project_path: String,
-    task_id: String,
-) -> Result<(), String> {
-    sidecar_call!(state, "tasks.delete", json!({ "id": task_id }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn get_task_by_id(state: State<AppState>, task_id: String) -> Result<Task, String> {
-    let result = sidecar_call!(state, "tasks.get", json!({ "id": task_id }))?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[tauri::command]
-pub fn start_task_execution(
-    state: State<AppState>,
-    task_id: String,
-    subtask_id: Option<String>,
-    tmux_session: Option<String>,
-    pid: Option<i32>,
-    total_steps: Option<i32>,
-) -> Result<TaskExecution, String> {
-    let result = sidecar_call!(state, "executions.start", json!({
-        "taskId": task_id,
-        "subtaskId": subtask_id,
-        "tmuxSession": tmux_session,
-        "pid": pid,
-        "totalSteps": total_steps.unwrap_or(0)
-    }))?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[tauri::command]
-pub fn end_task_execution(
-    state: State<AppState>,
-    task_id: String,
-    _status: String,
-    error_message: Option<String>,
-) -> Result<(), String> {
-    sidecar_call!(state, "executions.end", json!({
-        "taskId": task_id,
-        "errorMessage": error_message
-    }))?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn update_task_execution_progress(
-    state: State<AppState>,
-    task_id: String,
-    current_step: Option<i32>,
-    total_steps: Option<i32>,
-    description: Option<String>,
-    waiting_for_input: Option<bool>,
-) -> Result<(), String> {
-    let active_result = sidecar_call!(state, "executions.getActiveForTask", json!({
-        "taskId": task_id
-    }))?;
-    
-    if active_result.is_null() {
-        return Err("No active execution found".to_string());
-    }
-    
-    let execution: TaskExecution = serde_json::from_value(active_result)
-        .map_err(|e| format!("Deserialize error: {}", e))?;
-    
-    let mut update = json!({});
-    if let Some(step) = current_step {
-        update["currentStep"] = json!(step);
-    }
-    if let Some(total) = total_steps {
-        update["totalSteps"] = json!(total);
-    }
-    if let Some(desc) = description {
-        update["currentStepDescription"] = json!(desc);
-    }
-    if let Some(waiting) = waiting_for_input {
-        update["waitingForInput"] = json!(waiting);
-    }
-    update["id"] = json!(execution.id);
-    
-    sidecar_call!(state, "executions.update", update)?;
-    Ok(())
-}
-
-#[tauri::command]
-pub fn get_active_task_execution(
-    state: State<AppState>,
-    task_id: String,
-) -> Result<Option<TaskExecution>, String> {
-    let result = sidecar_call!(state, "executions.getActiveForTask", json!({
-        "taskId": task_id
-    }))?;
-    
-    if result.is_null() {
-        Ok(None)
-    } else {
-        let execution = serde_json::from_value(result)
-            .map_err(|e| format!("Deserialize error: {}", e))?;
-        Ok(Some(execution))
-    }
-}
-
-#[tauri::command]
-pub fn get_all_active_executions(state: State<AppState>) -> Result<Vec<TaskExecution>, String> {
-    let result = sidecar_call!(state, "executions.listAllActive")?;
-    serde_json::from_value(result).map_err(|e| format!("Deserialize error: {}", e))
-}
-
-#[tauri::command]
-pub fn cleanup_stale_task_executions(
-    state: State<AppState>,
-    timeout_minutes: Option<i32>,
-) -> Result<i32, String> {
-    let result = sidecar_call!(state, "executions.cleanupStale", json!({
-        "maxAgeMinutes": timeout_minutes.unwrap_or(5)
-    }))?;
-    
-    result.as_i64().map(|n| n as i32).ok_or_else(|| "Invalid result".to_string())
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct CalendarTask {
-    pub id: String,
-    pub title: String,
-    pub project_id: Option<String>,
-    pub project_name: String,
-    pub priority: i32,
-    pub category: String,
-    pub status: String,
-    pub scheduled_date: String,
-    pub due_date: Option<String>,
-    pub is_overdue: bool,
-    pub subtask_count: i32,
-    pub subtask_done_count: i32,
-}
-
-#[tauri::command]
-pub fn enrich_calendar_tasks(
-    state: State<AppState>,
-    tasks: Vec<CalendarTask>,
-    _project_paths: std::collections::HashMap<String, String>,
-) -> Result<Vec<CalendarTask>, String> {
-    let mut enriched = Vec::with_capacity(tasks.len());
-    
-    for mut task in tasks {
-        if let Ok(result) = sidecar_call!(state, "subtasks.listByTaskId", json!({
-            "taskId": task.id
-        })) {
-            if let Ok(subtasks) = serde_json::from_value::<Vec<Subtask>>(result) {
-                task.subtask_count = subtasks.len() as i32;
-                task.subtask_done_count = subtasks.iter().filter(|s| s.status == "done").count() as i32;
-            }
-        }
-        enriched.push(task);
-    }
-    
-    Ok(enriched)
-}
+// ============================================================================
+// Tmux / Terminal Commands (remain in Rust - spawn processes)
+// ============================================================================
 
 #[tauri::command]
 pub fn launch_project_tmux(state: State<AppState>, project_id: String) -> Result<(), String> {
@@ -792,6 +225,61 @@ tmux attach-session -t "$SESSION"
 
     Ok(())
 }
+
+#[tauri::command]
+pub fn focus_tmux_session(app_handle: tauri::AppHandle, session_name: String) -> Result<(), String> {
+    if let Ok(output) = Command::new("tmux")
+        .args(["list-clients", "-t", &session_name, "-F", "#{client_tty}"])
+        .output()
+    {
+        if output.status.success() && !output.stdout.is_empty() {
+            if let Ok(search_output) = Command::new("xdotool")
+                .args(["search", "--name", &session_name])
+                .output()
+            {
+                if search_output.status.success() {
+                    let window_ids = String::from_utf8_lossy(&search_output.stdout);
+                    if let Some(window_id) = window_ids.lines().next() {
+                        let _ = Command::new("xdotool")
+                            .args(["windowactivate", window_id])
+                            .spawn();
+                        crate::window::hide(&app_handle);
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+
+    let script = format!(
+        r#"#!/usr/bin/env bash
+SESSION="{session_name}"
+
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+    tmux attach-session -t "$SESSION"
+else
+    tmux new-session -d -s "$SESSION" -c "$HOME"
+    tmux attach-session -t "$SESSION"
+fi
+"#
+    );
+
+    Command::new("alacritty")
+        .arg("-e")
+        .arg("bash")
+        .arg("-c")
+        .arg(&script)
+        .spawn()
+        .map_err(|e| format!("Failed to focus terminal: {}", e))?;
+
+    crate::window::hide(&app_handle);
+
+    Ok(())
+}
+
+// ============================================================================
+// File System Commands (remain in Rust)
+// ============================================================================
 
 #[tauri::command]
 pub fn open_env_file(path: String) -> Result<(), String> {
@@ -876,6 +364,10 @@ pub fn detect_project_structure(root_path: String) -> Result<Vec<ProjectRoute>, 
     Ok(routes)
 }
 
+// ============================================================================
+// AI Suggestion (local processing, no DB needed)
+// ============================================================================
+
 #[tauri::command]
 pub fn get_ai_suggestion(tasks: Vec<Task>) -> Result<String, String> {
     if tasks.is_empty() {
@@ -927,6 +419,129 @@ pub fn get_ai_suggestion(tasks: Vec<Task>) -> Result<String, String> {
 
     Ok(suggestion)
 }
+
+// ============================================================================
+// Skills Sync (file system operations)
+// ============================================================================
+
+fn get_skills_resource_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    app_handle
+        .path()
+        .resource_dir()
+        .map(|p| p.join("resources").join("opencode-skills"))
+        .ok()
+        .filter(|p| p.exists())
+        .or_else(|| {
+            let dev_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("resources")
+                .join("opencode-skills");
+            if dev_path.exists() {
+                Some(dev_path)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| "Could not find skills resource directory".to_string())
+}
+
+fn get_opencode_skills_dir() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME")
+        .map_err(|_| "Could not determine HOME directory".to_string())?;
+    Ok(std::path::Path::new(&home)
+        .join(".config")
+        .join("opencode")
+        .join("skills"))
+}
+
+fn get_opencode_plugin_dir() -> Result<std::path::PathBuf, String> {
+    let home = std::env::var("HOME")
+        .map_err(|_| "Could not determine HOME directory".to_string())?;
+    Ok(std::path::Path::new(&home)
+        .join(".config")
+        .join("opencode")
+        .join("plugin"))
+}
+
+fn get_plugin_resource_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    app_handle
+        .path()
+        .resource_dir()
+        .map(|p| p.join("resources").join("opencode-plugin"))
+        .ok()
+        .filter(|p| p.exists())
+        .or_else(|| {
+            let dev_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("resources")
+                .join("opencode-plugin");
+            if dev_path.exists() {
+                Some(dev_path)
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| "Could not find plugin resource directory".to_string())
+}
+
+fn sync_skills_to_opencode(app_handle: &tauri::AppHandle) -> Result<u32, String> {
+    let resource_dir = get_skills_resource_dir(app_handle)?;
+    let skills_base_dir = get_opencode_skills_dir()?;
+
+    eprintln!("[WorkoPilot] Syncing skills from: {:?} to {:?}", resource_dir, skills_base_dir);
+
+    let skill_names = [
+        "workopilot-structure",
+        "workopilot-execute-all",
+        "workopilot-execute-subtask",
+        "workopilot-review",
+        "workopilot-quickfix",
+    ];
+
+    let mut synced_count = 0u32;
+
+    for skill_name in skill_names {
+        let skill_source = resource_dir.join(skill_name).join("SKILL.md");
+        let skill_dest_dir = skills_base_dir.join(skill_name);
+
+        std::fs::create_dir_all(&skill_dest_dir)
+            .map_err(|e| format!("Failed to create skill directory {}: {}", skill_name, e))?;
+
+        let skill_dest = skill_dest_dir.join("SKILL.md");
+        std::fs::copy(&skill_source, &skill_dest)
+            .map_err(|e| format!("Failed to copy skill {} from {:?}: {}", skill_name, skill_source, e))?;
+        
+        synced_count += 1;
+    }
+
+    if let Ok(plugin_resource_dir) = get_plugin_resource_dir(app_handle) {
+        if let Ok(plugin_dest_dir) = get_opencode_plugin_dir() {
+            let plugin_source = plugin_resource_dir.join("workopilot.js");
+            if plugin_source.exists() {
+                if let Err(e) = std::fs::create_dir_all(&plugin_dest_dir) {
+                    eprintln!("[WorkoPilot] Failed to create plugin directory: {}", e);
+                } else {
+                    let plugin_dest = plugin_dest_dir.join("workopilot.js");
+                    if let Err(e) = std::fs::copy(&plugin_source, &plugin_dest) {
+                        eprintln!("[WorkoPilot] Failed to copy plugin: {}", e);
+                    } else {
+                        eprintln!("[WorkoPilot] Synced plugin to {:?}", plugin_dest);
+                    }
+                }
+            }
+        }
+    }
+
+    eprintln!("[WorkoPilot] Synced {} skills to OpenCode", synced_count);
+    Ok(synced_count)
+}
+
+#[tauri::command]
+pub fn sync_skills(app_handle: tauri::AppHandle) -> Result<u32, String> {
+    sync_skills_to_opencode(&app_handle)
+}
+
+// ============================================================================
+// AI Workflow Launch Commands (spawn terminal processes)
+// ============================================================================
 
 fn generate_loading_animation_script(
     session_name: &str,
@@ -1191,121 +806,6 @@ tmux attach-session -t "$SESSION"
     }
 }
 
-fn get_skills_resource_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    app_handle
-        .path()
-        .resource_dir()
-        .map(|p| p.join("resources").join("opencode-skills"))
-        .ok()
-        .filter(|p| p.exists())
-        .or_else(|| {
-            let dev_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("resources")
-                .join("opencode-skills");
-            if dev_path.exists() {
-                Some(dev_path)
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| "Could not find skills resource directory".to_string())
-}
-
-fn get_opencode_skills_dir() -> Result<std::path::PathBuf, String> {
-    let home = std::env::var("HOME")
-        .map_err(|_| "Could not determine HOME directory".to_string())?;
-    Ok(std::path::Path::new(&home)
-        .join(".config")
-        .join("opencode")
-        .join("skills"))
-}
-
-fn get_opencode_plugin_dir() -> Result<std::path::PathBuf, String> {
-    let home = std::env::var("HOME")
-        .map_err(|_| "Could not determine HOME directory".to_string())?;
-    Ok(std::path::Path::new(&home)
-        .join(".config")
-        .join("opencode")
-        .join("plugin"))
-}
-
-fn get_plugin_resource_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-    app_handle
-        .path()
-        .resource_dir()
-        .map(|p| p.join("resources").join("opencode-plugin"))
-        .ok()
-        .filter(|p| p.exists())
-        .or_else(|| {
-            let dev_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("resources")
-                .join("opencode-plugin");
-            if dev_path.exists() {
-                Some(dev_path)
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| "Could not find plugin resource directory".to_string())
-}
-
-fn sync_skills_to_opencode(app_handle: &tauri::AppHandle) -> Result<u32, String> {
-    let resource_dir = get_skills_resource_dir(app_handle)?;
-    let skills_base_dir = get_opencode_skills_dir()?;
-
-    eprintln!("[WorkoPilot] Syncing skills from: {:?} to {:?}", resource_dir, skills_base_dir);
-
-    let skill_names = [
-        "workopilot-structure",
-        "workopilot-execute-all",
-        "workopilot-execute-subtask",
-        "workopilot-review",
-        "workopilot-quickfix",
-    ];
-
-    let mut synced_count = 0u32;
-
-    for skill_name in skill_names {
-        let skill_source = resource_dir.join(skill_name).join("SKILL.md");
-        let skill_dest_dir = skills_base_dir.join(skill_name);
-
-        std::fs::create_dir_all(&skill_dest_dir)
-            .map_err(|e| format!("Failed to create skill directory {}: {}", skill_name, e))?;
-
-        let skill_dest = skill_dest_dir.join("SKILL.md");
-        std::fs::copy(&skill_source, &skill_dest)
-            .map_err(|e| format!("Failed to copy skill {} from {:?}: {}", skill_name, skill_source, e))?;
-        
-        synced_count += 1;
-    }
-
-    if let Ok(plugin_resource_dir) = get_plugin_resource_dir(app_handle) {
-        if let Ok(plugin_dest_dir) = get_opencode_plugin_dir() {
-            let plugin_source = plugin_resource_dir.join("workopilot.js");
-            if plugin_source.exists() {
-                if let Err(e) = std::fs::create_dir_all(&plugin_dest_dir) {
-                    eprintln!("[WorkoPilot] Failed to create plugin directory: {}", e);
-                } else {
-                    let plugin_dest = plugin_dest_dir.join("workopilot.js");
-                    if let Err(e) = std::fs::copy(&plugin_source, &plugin_dest) {
-                        eprintln!("[WorkoPilot] Failed to copy plugin: {}", e);
-                    } else {
-                        eprintln!("[WorkoPilot] Synced plugin to {:?}", plugin_dest);
-                    }
-                }
-            }
-        }
-    }
-
-    eprintln!("[WorkoPilot] Synced {} skills to OpenCode", synced_count);
-    Ok(synced_count)
-}
-
-#[tauri::command]
-pub fn sync_skills(app_handle: tauri::AppHandle) -> Result<u32, String> {
-    sync_skills_to_opencode(&app_handle)
-}
-
 #[tauri::command]
 pub fn launch_task_workflow(
     app_handle: tauri::AppHandle,
@@ -1376,7 +876,6 @@ pub fn launch_task_structure(
     let task_full: TaskFull = serde_json::from_value(task_result)
         .map_err(|e| format!("Deserialize error: {}", e))?;
     
-    // Update task status via sidecar
     sidecar_call!(state, "tasks.updateStatus", json!({
         "id": task_id,
         "status": "in_progress",
@@ -1490,57 +989,9 @@ pub fn launch_task_review(
     launch_in_workopilot_session(&app_handle, &project, &initial_prompt, &task_id, false)
 }
 
-#[tauri::command]
-pub fn focus_tmux_session(app_handle: tauri::AppHandle, session_name: String) -> Result<(), String> {
-    if let Ok(output) = Command::new("tmux")
-        .args(["list-clients", "-t", &session_name, "-F", "#{client_tty}"])
-        .output()
-    {
-        if output.status.success() && !output.stdout.is_empty() {
-            if let Ok(search_output) = Command::new("xdotool")
-                .args(["search", "--name", &session_name])
-                .output()
-            {
-                if search_output.status.success() {
-                    let window_ids = String::from_utf8_lossy(&search_output.stdout);
-                    if let Some(window_id) = window_ids.lines().next() {
-                        let _ = Command::new("xdotool")
-                            .args(["windowactivate", window_id])
-                            .spawn();
-                        crate::window::hide(&app_handle);
-                        return Ok(());
-                    }
-                }
-            }
-        }
-    }
-
-    let script = format!(
-        r#"#!/usr/bin/env bash
-SESSION="{session_name}"
-
-if tmux has-session -t "$SESSION" 2>/dev/null; then
-    tmux attach-session -t "$SESSION"
-else
-    # Create new session if it doesn't exist
-    tmux new-session -d -s "$SESSION" -c "$HOME"
-    tmux attach-session -t "$SESSION"
-fi
-"#
-    );
-
-    Command::new("alacritty")
-        .arg("-e")
-        .arg("bash")
-        .arg("-c")
-        .arg(&script)
-        .spawn()
-        .map_err(|e| format!("Failed to focus terminal: {}", e))?;
-
-    crate::window::hide(&app_handle);
-
-    Ok(())
-}
+// ============================================================================
+// Quickfix Background (spawn process)
+// ============================================================================
 
 #[derive(Clone, Serialize)]
 pub struct QuickfixPayload {
@@ -1628,6 +1079,10 @@ pub async fn launch_quickfix_background(
 
     Ok(())
 }
+
+// ============================================================================
+// Task Images (remain in Rust - direct database access for binary blobs)
+// ============================================================================
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TaskImageMetadata {
@@ -1774,6 +1229,10 @@ pub fn add_task_image_from_path(
     db.add_task_image(&task_id, &data, mime_type, &file_name)
         .map_err(|e| e.to_string())
 }
+
+// ============================================================================
+// User Sessions (database access for activity tracking)
+// ============================================================================
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct UserSession {

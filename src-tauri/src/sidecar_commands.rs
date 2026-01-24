@@ -45,3 +45,21 @@ pub fn sidecar_restart(state: State<AppState>) -> Result<(), String> {
     sidecar.stop();
     sidecar.start()
 }
+
+#[tauri::command]
+pub fn get_trpc_url(state: State<AppState>) -> Result<String, String> {
+    let mut sidecar = state
+        .sidecar
+        .sidecar
+        .lock()
+        .map_err(|e| format!("Lock error: {}", e))?;
+
+    if !sidecar.is_running() {
+        sidecar.start()?;
+    }
+
+    sidecar
+        .get_trpc_url()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "tRPC URL not available".to_string())
+}

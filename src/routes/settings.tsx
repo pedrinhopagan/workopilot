@@ -4,6 +4,7 @@ import { safeInvoke } from "../services/tauri";
 import { TabBar } from "../components/TabBar";
 import { HotkeyInput, type HotkeyValue } from "../components/HotkeyInput";
 import { Switch } from "@/components/ui/switch";
+import { trpc } from "../services/trpc";
 
 interface ShortcutConfig {
   modifier: string;
@@ -29,23 +30,22 @@ function SettingsPage() {
     }
   }, []);
 
-  const loadPinnedWindow = useCallback(async () => {
-    try {
-      const value = await safeInvoke<string | null>("get_setting", { key: "pinned_window" });
-      setPinnedWindow(value === "true");
-    } catch (e) {
-      console.error("Failed to load pinned_window setting:", e);
+  const pinnedWindowQuery = trpc.settings.get.useQuery({ key: "pinned_window" });
+  const setPinnedWindowMutation = trpc.settings.set.useMutation();
+
+  useEffect(() => {
+    if (pinnedWindowQuery.data !== undefined) {
+      setPinnedWindow(pinnedWindowQuery.data === "true");
     }
-  }, []);
+  }, [pinnedWindowQuery.data]);
 
   useEffect(() => {
     loadShortcut();
-    loadPinnedWindow();
-  }, [loadShortcut, loadPinnedWindow]);
+  }, [loadShortcut]);
 
   async function handlePinnedWindowChange(checked: boolean) {
     try {
-      await safeInvoke("set_setting", { key: "pinned_window", value: checked ? "true" : "false" });
+      await setPinnedWindowMutation.mutateAsync({ key: "pinned_window", value: checked ? "true" : "false" });
       setPinnedWindow(checked);
     } catch (e) {
       console.error("Failed to save pinned_window setting:", e);
@@ -136,6 +136,8 @@ function SettingsPage() {
             </div>
           </div>
 
+          <TrpcStatusCard />
+
           <div className="bg-card border border-border p-4 mt-4">
             <h2 className="text-sm text-muted-foreground uppercase tracking-wide mb-4">Skills do OpenCode</h2>
             <p className="text-xs text-muted-foreground mb-4">
@@ -162,6 +164,50 @@ function SettingsPage() {
         </div>
       </main>
     </>
+  );
+}
+
+function TrpcStatusCard() {
+  const pingQuery = trpc.system.ping.useQuery(undefined, {
+    refetchInterval: 5000,
+    retry: false,
+  });
+
+  const versionQuery = trpc.system.version.useQuery(undefined, {
+    retry: false,
+  });
+
+  return (
+    <div className="bg-card border border-border p-4 mt-4">
+      <h2 className="text-sm text-muted-foreground uppercase tracking-wide mb-4">tRPC Status</h2>
+      <div className="space-y-2 text-sm">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground">Conexao:</span>
+          {pingQuery.isLoading ? (
+            <span className="text-muted-foreground">Conectando...</span>
+          ) : pingQuery.isError ? (
+            <span className="text-destructive">Desconectado</span>
+          ) : (
+            <span className="text-primary">Conectado</span>
+          )}
+        </div>
+        {versionQuery.data && (
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">Versao:</span>
+            <span className="text-foreground">{versionQuery.data.version}</span>
+            <span className="text-muted-foreground">({versionQuery.data.transport})</span>
+          </div>
+        )}
+        {pingQuery.data && (
+          <div className="flex items-center gap-2">
+            <span className="text-muted-foreground">Ultimo ping:</span>
+            <span className="text-foreground font-mono text-xs">
+              {new Date(pingQuery.data.timestamp).toLocaleTimeString()}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

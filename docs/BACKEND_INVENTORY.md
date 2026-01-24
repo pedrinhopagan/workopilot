@@ -322,15 +322,45 @@ Frontend: click "Estruturar"
 
 ---
 
-## 9. Proximos Passos
+## 9. Status da Migracao (Atualizado 2026-01-24)
 
-1. Criar `packages/core` com domain/application/infrastructure
-2. Mover CRUD e logica de negocio para core
-3. CLI passa a usar core
-4. Implementar sidecar Bun + JSON-RPC
-5. Tauri commands viram proxy para sidecar
-6. Remover duplicacoes do Rust
+### Fases Concluidas:
+
+1. ✅ **Fase 1-3**: packages/core, packages/sdk, packages/cli (anteriormente)
+2. ✅ **Fase 4**: Migracao Frontend para tRPC
+   - Frontend usa `trpc.*` hooks para todas operacoes de dados
+   - Rust commands removidos (CRUD migrado)
+   - ~40 comandos Rust removidos
+3. ✅ **Fase 5**: Limpeza do Rust
+   - commands.rs reduzido de ~1800 para ~1260 linhas
+   - Apenas comandos essenciais permanecem:
+     - Process spawning (tmux, alacritty, opencode)
+     - Task images (blobs binarios)
+     - Window/shortcuts
+     - AI workflow launchers
+   - handlers.ts reduzido para 3 metodos JSON-RPC (projects.get, tasks.getFull, tasks.updateStatus)
+
+### Arquitetura Final:
+
+```
+Frontend (React)
+    ├── trpc.* hooks (HTTP) → Bun tRPC server → SDK → Core → SQLite
+    └── safeInvoke (apenas para):
+        - hide_window
+        - launch_* (AI workflows)
+        - *_task_image (blobs)
+        - focus_tmux_session
+        - get/set_shortcut
+        - sync_skills
+
+Rust (src-tauri)
+    ├── Window/tray management
+    ├── Global shortcuts
+    ├── Process spawning (alacritty, tmux, opencode)
+    ├── Task images (direct DB access for blobs)
+    └── sidecar_call! macro → JSON-RPC (minimal) → SDK
+```
 
 ---
 
-*Documento de referencia para a task de reestruturacao do backend.*
+*Documento de referencia para a arquitetura do backend.*

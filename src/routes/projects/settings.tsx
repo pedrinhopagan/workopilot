@@ -1,12 +1,13 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import { safeInvoke, isTauri } from "../../services/tauri";
+import { trpc } from "../../services/trpc";
 import { useDialogStateStore } from "../../stores/dialogState";
 import { useSelectedProjectStore } from "../../stores/selectedProject";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Select } from "../../components/Select";
 import { ColorPicker } from "../../components/ui/color-picker";
-import type { Project, ProjectWithConfig, ProjectRoute, TmuxTab } from "../../types";
+import type { ProjectWithConfig, ProjectRoute, TmuxTab } from "../../types";
 
 function getRouteNameFromPath(path: string) {
   const parts = path.split("/").filter(Boolean);
@@ -21,8 +22,16 @@ function SettingsPage() {
   const setSelectedProjectId = useSelectedProjectStore((s) => s.setSelectedProjectId);
   const setProjectsList = useSelectedProjectStore((s) => s.setProjectsList);
 
-  const [projectConfig, setProjectConfig] = useState<ProjectWithConfig | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const utils = trpc.useUtils();
+  const { data: fetchedConfig, isLoading } = trpc.projects.get.useQuery(
+    { id: selectedProjectId! },
+    { enabled: !!selectedProjectId }
+  );
+  const [localConfig, setLocalConfig] = useState<ProjectWithConfig | null>(null);
+  const projectConfig = localConfig ?? (fetchedConfig as ProjectWithConfig | null) ?? null;
+
+  const updateProjectMutation = trpc.projects.update.useMutation();
+  const deleteProjectMutation = trpc.projects.delete.useMutation();
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{
@@ -36,22 +45,8 @@ function SettingsPage() {
   const lastRouteSwapRef = useRef(0);
   const lastTabSwapRef = useRef(0);
 
-  useEffect(() => {
-    if (selectedProjectId) {
-      loadProjectConfig(selectedProjectId);
-    }
-  }, [selectedProjectId]);
-
-  async function loadProjectConfig(id: string) {
-    setIsLoading(true);
-    try {
-      const config = await safeInvoke<ProjectWithConfig>("get_project_with_config", { projectId: id });
-      setProjectConfig(config);
-    } catch (e) {
-      console.error("Failed to load project config:", e);
-    } finally {
-      setIsLoading(false);
-    }
+  function setProjectConfig(config: ProjectWithConfig | null) {
+    setLocalConfig(config);
   }
 
   async function openEnvFile(path: string) {
@@ -73,10 +68,19 @@ function SettingsPage() {
 
     try {
       if (deleteTarget.type === "project") {
-        await safeInvoke("delete_project", { projectId: deleteTarget.id });
+        await deleteProjectMutation.mutateAsync({ id: deleteTarget.id });
         setSelectedProjectId(null);
-        const loaded = await safeInvoke<Project[]>("get_projects");
-        setProjectsList(loaded);
+        await utils.projects.list.invalidate();
+        const loaded = utils.projects.list.getData() ?? [];
+        const projects = loaded.map(p => ({
+          id: p.id,
+          name: p.name,
+          description: p.description ?? undefined,
+          display_order: p.display_order,
+          created_at: p.created_at,
+          color: p.color ?? undefined,
+        }));
+        setProjectsList(projects);
         navigate({ to: "/projects" });
       } else if (deleteTarget.type === "route") {
         await removeRoute(deleteTarget.id);
@@ -302,9 +306,9 @@ function SettingsPage() {
   async function saveRoutes(routes: ProjectRoute[]) {
     if (!selectedProjectId) return;
     try {
-      await safeInvoke("update_project_routes", {
-        projectId: selectedProjectId,
-        routes,
+      await updateProjectMutation.mutateAsync({
+        id: selectedProjectId,
+        routes: JSON.stringify(routes),
       });
     } catch (e) {
       console.error("Failed to save routes:", e);
@@ -386,9 +390,9 @@ function SettingsPage() {
   async function saveTmuxConfig(tmuxConfig: ProjectWithConfig["tmux_config"]) {
     if (!selectedProjectId) return;
     try {
-      await safeInvoke("update_project_tmux_config", {
-        projectId: selectedProjectId,
-        tmuxConfig,
+      await updateProjectMutation.mutateAsync({
+        id: selectedProjectId,
+        tmux_config: JSON.stringify(tmuxConfig),
       });
     } catch (e) {
       console.error("Failed to save tmux config:", e);
@@ -398,10 +402,10 @@ function SettingsPage() {
   async function saveDescription() {
     if (!selectedProjectId || !projectConfig) return;
     try {
-      await safeInvoke("update_project", {
-        projectId: selectedProjectId,
+      await updateProjectMutation.mutateAsync({
+        id: selectedProjectId,
         name: projectConfig.name,
-        description: projectConfig.description,
+        description: projectConfig.description ?? undefined,
       });
     } catch (e) {
       console.error("Failed to save description:", e);
@@ -411,9 +415,9 @@ function SettingsPage() {
   async function saveBusinessRules() {
     if (!selectedProjectId || !projectConfig) return;
     try {
-      await safeInvoke("update_project_business_rules", {
-        projectId: selectedProjectId,
-        rules: projectConfig.business_rules,
+      await updateProjectMutation.mutateAsync({
+        id: selectedProjectId,
+        business_rules: projectConfig.business_rules ?? undefined,
       });
     } catch (e) {
       console.error("Failed to save business rules:", e);
@@ -424,9 +428,9 @@ function SettingsPage() {
     if (!selectedProjectId || !projectConfig) return;
     setProjectConfig({ ...projectConfig, color });
     try {
-      await safeInvoke("update_project_color", {
-        projectId: selectedProjectId,
-        color: color || null,
+      await updateProjectMutation.mutateAsync({
+        id: selectedProjectId,
+        color: color ?? undefined,
       });
     } catch (e) {
       console.error("Failed to save color:", e);

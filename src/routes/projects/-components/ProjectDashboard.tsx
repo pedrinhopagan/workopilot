@@ -1,8 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { safeInvoke } from "../../../services/tauri";
+import { trpc } from "../../../services/trpc";
 import { useSelectedProjectStore } from "../../../stores/selectedProject";
-import type { ProjectWithConfig, Task, TaskFull } from "../../../types";
+import type { ProjectWithConfig, TaskFull } from "../../../types";
 import { 
 	getTaskProgressStateContainerClass, 
 	getTaskProgressStateLabel, 
@@ -28,9 +29,28 @@ export function ProjectDashboard({ projectConfig, selectedProjectId }: ProjectDa
 	const projectsList = useSelectedProjectStore((s) => s.projectsList);
 	const setProjectsList = useSelectedProjectStore((s) => s.setProjectsList);
 
-	const [urgentTasks, setUrgentTasks] = useState<Task[]>([]);
-	const [activeTasks, setActiveTasks] = useState<Task[]>([]);
-	const [activeTasksFullCache, setActiveTasksFullCache] = useState<Map<string, TaskFull>>(new Map());
+	const { data: allUrgentTasks = [] } = trpc.tasks.listUrgent.useQuery();
+	const { data: allActiveTasks = [] } = trpc.tasks.listActive.useQuery();
+
+	const updateProjectMutation = trpc.projects.update.useMutation();
+
+	const urgentTasks = allUrgentTasks
+		.filter(t => t.project_id === selectedProjectId)
+		.slice(0, 5);
+	const activeTasks = allActiveTasks
+		.filter(t => t.project_id === selectedProjectId)
+		.slice(0, 5);
+
+	const activeTaskFullQueries = trpc.useQueries(t =>
+		activeTasks.map(task => t.tasks.getFull({ id: task.id }))
+	);
+	const activeTasksFullCache = new Map<string, TaskFull>();
+	for (let i = 0; i < activeTasks.length; i++) {
+		const result = activeTaskFullQueries[i];
+		if (result?.data) {
+			activeTasksFullCache.set(activeTasks[i].id, result.data);
+		}
+	}
 
 	const [isEditingProjectName, setIsEditingProjectName] = useState(false);
 	const [editedProjectName, setEditedProjectName] = useState("");
@@ -40,47 +60,8 @@ export function ProjectDashboard({ projectConfig, selectedProjectId }: ProjectDa
 		? localProjectConfig.tmux_configured || localProjectConfig.routes.length > 1
 		: false;
 
-	useEffect(() => {
+	if (projectConfig !== localProjectConfig && projectConfig.id !== localProjectConfig?.id) {
 		setLocalProjectConfig(projectConfig);
-		loadUrgentTasks(selectedProjectId);
-		loadActiveTasks(selectedProjectId);
-	}, [projectConfig, selectedProjectId]);
-
-	async function loadUrgentTasks(projectId: string) {
-		try {
-			const tasks = await safeInvoke<Task[]>("get_urgent_tasks", { projectId, limit: 5 });
-			setUrgentTasks(tasks);
-		} catch (e) {
-			console.error("Failed to load urgent tasks:", e);
-			setUrgentTasks([]);
-		}
-	}
-
-	async function loadActiveTasks(projectId: string) {
-		try {
-			const tasks = await safeInvoke<Task[]>("get_active_tasks", { projectId, limit: 5 });
-			setActiveTasks(tasks);
-			
-			if (localProjectConfig) {
-				const newCache = new Map<string, TaskFull>();
-				for (const task of tasks) {
-					try {
-						const taskFull = await safeInvoke<TaskFull>("get_task_full", { 
-							projectPath: localProjectConfig.path, 
-							taskId: task.id 
-						});
-						if (taskFull) {
-							newCache.set(task.id, taskFull);
-						}
-					} catch {
-					}
-				}
-				setActiveTasksFullCache(newCache);
-			}
-		} catch (e) {
-			console.error("Failed to load active tasks:", e);
-			setActiveTasks([]);
-		}
 	}
 
 	async function launchTmux() {
@@ -95,7 +76,7 @@ export function ProjectDashboard({ projectConfig, selectedProjectId }: ProjectDa
 	async function markTmuxConfigured() {
 		if (!selectedProjectId || !localProjectConfig) return;
 		try {
-			await safeInvoke("set_tmux_configured", { projectId: selectedProjectId, configured: true });
+			await updateProjectMutation.mutateAsync({ id: selectedProjectId, tmux_configured: true });
 			setLocalProjectConfig({ ...localProjectConfig, tmux_configured: true });
 		} catch (e) {
 			console.error("Failed to mark tmux as configured:", e);
@@ -111,8 +92,8 @@ export function ProjectDashboard({ projectConfig, selectedProjectId }: ProjectDa
 	async function saveProjectName() {
 		if (!selectedProjectId || !localProjectConfig || !editedProjectName.trim()) return;
 		try {
-			await safeInvoke("update_project_name", {
-				projectId: selectedProjectId,
+			await updateProjectMutation.mutateAsync({
+				id: selectedProjectId,
 				name: editedProjectName.trim(),
 			});
 			setLocalProjectConfig({ ...localProjectConfig, name: editedProjectName.trim() });

@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useSelectedProjectStore } from "../../../stores/selectedProject";
-import { safeInvoke } from "../../../services/tauri";
+import { trpc } from "../../../services/trpc";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui";
 
@@ -15,6 +15,8 @@ export function ProjectsSidebar({ isSettingsPage }: ProjectsSidebarProps) {
 	const setSelectedProjectId = useSelectedProjectStore((s) => s.setSelectedProjectId);
 	const projectsList = useSelectedProjectStore((s) => s.projectsList);
 	const setProjectsList = useSelectedProjectStore((s) => s.setProjectsList);
+
+	const updateOrderMutation = trpc.projects.updateOrder.useMutation();
 
 	const [draggingIndex, setDraggingIndex] = useState<number | null>(null);
 	const lastSwapRef = useRef(0);
@@ -68,8 +70,8 @@ export function ProjectsSidebar({ isSettingsPage }: ProjectsSidebarProps) {
 
 	async function handleDragEnd() {
 		setDraggingIndex(null);
-		const projectOrders: [string, number][] = projectsList.map((p) => [p.id, p.display_order]);
-		await safeInvoke("update_projects_order", { projectOrders }).catch(console.error);
+		const orderedIds = projectsList.map((p) => p.id);
+		await updateOrderMutation.mutateAsync({ orderedIds }).catch(console.error);
 	}
 
 	return (

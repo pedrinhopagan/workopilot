@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
-import { safeInvoke } from "../../services/tauri";
+import { trpc } from "../../services/trpc";
 import { useDbRefetchStore } from "../../stores/dbRefetch";
-import type { Task, TaskFull, Subtask, ProjectWithConfig } from "../../types";
+import type { Subtask } from "../../types";
 import { DayTaskItem } from "./DayTaskItem";
 import { useAgendaStore } from "../../stores/agenda";
 
@@ -14,10 +14,42 @@ export function DayDrawer({ onTaskChange }: DayDrawerProps) {
   const drawerCollapsed = useAgendaStore((s) => s.drawerCollapsed);
   const closeDrawer = useAgendaStore((s) => s.closeDrawer);
   const changeCounter = useDbRefetchStore((s) => s.changeCounter);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [taskFullCache, setTaskFullCache] = useState<Map<string, TaskFull>>(new Map());
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
+
+  const utils = trpc.useUtils();
+
+  const { data: tasks = [], isLoading, refetch: refetchTasks } = trpc.tasks.listForDate.useQuery(
+    { date: selectedDate ?? "" },
+    { enabled: !!selectedDate, staleTime: 1000 * 60 }
+  );
+
+  const [taskFullCache, setTaskFullCache] = useState<Map<string, NonNullable<Awaited<ReturnType<typeof utils.tasks.getFull.fetch>>>>>(new Map());
+
+  useEffect(() => {
+    async function loadFullTasks() {
+      const newCache = new Map(taskFullCache);
+      for (const task of tasks) {
+        if (!newCache.has(task.id)) {
+          const full = await utils.tasks.getFull.fetch({ id: task.id }).catch(() => null);
+          if (full) {
+            newCache.set(task.id, full);
+          }
+        }
+      }
+      setTaskFullCache(newCache);
+    }
+    if (tasks.length > 0) {
+      loadFullTasks();
+    }
+  }, [tasks, utils]);
+
+  const saveFullMutation = trpc.tasks.saveFull.useMutation({
+    onSuccess: () => {
+      utils.tasks.listForDate.invalidate();
+      utils.tasks.getFull.invalidate();
+      onTaskChange?.();
+    },
+  });
 
   const formattedDate = useCallback(() => {
     if (!selectedDate) return "";
@@ -29,41 +61,6 @@ export function DayDrawer({ onTaskChange }: DayDrawerProps) {
       year: "numeric",
     });
   }, [selectedDate]);
-
-  async function loadTaskFull(taskId: string, projectPath: string): Promise<TaskFull | null> {
-    const full = await safeInvoke<TaskFull>("get_task_full", { projectPath, taskId }).catch(() => null);
-    if (full) {
-      setTaskFullCache((prev) => new Map(prev).set(taskId, full));
-    }
-    return full;
-  }
-
-  async function loadAllTaskFulls(taskList: Task[]) {
-    for (const task of taskList) {
-      if (task.project_id) {
-        const project = await safeInvoke<ProjectWithConfig>("get_project_with_config", {
-          projectId: task.project_id,
-        }).catch(() => null);
-        if (project) {
-          await loadTaskFull(task.id, project.path);
-        }
-      }
-    }
-  }
-
-  async function loadTasks() {
-    if (!selectedDate) return;
-    setIsLoading(true);
-    const result = await safeInvoke<Task[]>("get_tasks_for_date", {
-      date: selectedDate,
-    }).catch((e) => {
-      console.error("Failed to load tasks for date:", e);
-      return [];
-    });
-    setTasks(result);
-    await loadAllTaskFulls(result);
-    setIsLoading(false);
-  }
 
   function getSubtasksForTask(taskId: string): Subtask[] {
     return taskFullCache.get(taskId)?.subtasks ?? [];
@@ -85,14 +82,6 @@ export function DayDrawer({ onTaskChange }: DayDrawerProps) {
     const taskFull = taskFullCache.get(taskId);
     if (!taskFull) return;
 
-    const task = tasks.find((t) => t.id === taskId);
-    if (!task?.project_id) return;
-
-    const project = await safeInvoke<ProjectWithConfig>("get_project_with_config", {
-      projectId: task.project_id,
-    }).catch(() => null);
-    if (!project) return;
-
     const newSubtasks = taskFull.subtasks.map((s) => {
       if (s.id === subtaskId) {
         const newStatus = s.status === "done" ? "pending" : "done";
@@ -101,7 +90,7 @@ export function DayDrawer({ onTaskChange }: DayDrawerProps) {
       return s;
     });
 
-    const updatedTask: TaskFull = {
+    const updatedTask = {
       ...taskFull,
       subtasks: newSubtasks,
       modified_at: new Date().toISOString(),
@@ -111,11 +100,11 @@ export function DayDrawer({ onTaskChange }: DayDrawerProps) {
       updatedTask.status = "done";
     }
 
-    await safeInvoke("update_task_and_sync", { projectPath: project.path, task: updatedTask }).catch((e) =>
-      console.error("Failed to toggle subtask:", e)
-    );
-    setTaskFullCache((prev) => new Map(prev).set(taskId, updatedTask));
-    handleTaskChange();
+    try {
+      await saveFullMutation.mutateAsync(updatedTask);
+    } catch (e) {
+      console.error("Failed to toggle subtask:", e);
+    }
   }
 
   function handleClickOutside(e: React.MouseEvent) {
@@ -126,20 +115,14 @@ export function DayDrawer({ onTaskChange }: DayDrawerProps) {
   }
 
   function handleTaskChange() {
-    loadTasks();
+    refetchTasks();
     onTaskChange?.();
   }
 
   useEffect(() => {
-    if (selectedDate) {
-      loadTasks();
-    }
-  }, [selectedDate]);
-
-  useEffect(() => {
     if (changeCounter === 0 || !selectedDate) return;
-    loadTasks();
-  }, [changeCounter, selectedDate]);
+    refetchTasks();
+  }, [changeCounter, selectedDate, refetchTasks]);
 
   useEffect(() => {
     function handleKeydown(e: KeyboardEvent) {

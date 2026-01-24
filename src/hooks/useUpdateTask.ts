@@ -1,6 +1,5 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { safeInvoke } from "../services/tauri";
 import type { TaskFull, TaskStatus } from "../types";
+import { trpc } from "../services/trpc";
 
 interface UpdateTaskStatusParams {
 	taskId: string;
@@ -13,95 +12,165 @@ interface UpdateTaskFullParams {
 }
 
 export function useUpdateTaskStatus() {
-	const queryClient = useQueryClient();
+	const utils = trpc.useUtils();
 
-	return useMutation({
-		mutationFn: async ({ taskId, status }: UpdateTaskStatusParams) => {
-			await safeInvoke("update_task_status", { taskId, status });
-		},
+	return trpc.tasks.updateStatus.useMutation({
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["tasks"] });
+			utils.tasks.invalidate();
 		},
 	});
 }
 
-export function useUpdateTaskFull() {
-	const queryClient = useQueryClient();
+// Wrapper to maintain backward-compatible API
+export function useUpdateTaskStatusCompat() {
+	const mutation = useUpdateTaskStatus();
 
-	return useMutation({
-		mutationFn: async ({ projectPath, task }: UpdateTaskFullParams) => {
+	return {
+		...mutation,
+		mutate: ({ taskId, status }: UpdateTaskStatusParams) => {
+			mutation.mutate({ id: taskId, status });
+		},
+		mutateAsync: async ({ taskId, status }: UpdateTaskStatusParams) => {
+			return mutation.mutateAsync({ id: taskId, status });
+		},
+	};
+}
+
+export function useUpdateTaskFull() {
+	const utils = trpc.useUtils();
+
+	const mutation = trpc.tasks.saveFull.useMutation({
+		onSuccess: (_, variables) => {
+			utils.tasks.invalidate();
+			if (variables?.id) {
+				utils.tasks.get.invalidate({ id: variables.id });
+				utils.tasks.getFull.invalidate({ id: variables.id });
+			}
+		},
+	});
+
+	// Wrapper to maintain backward-compatible API (projectPath + task)
+	return {
+		...mutation,
+		mutate: ({ task }: UpdateTaskFullParams) => {
 			const taskToSave = {
 				...task,
 				modified_at: new Date().toISOString(),
 				modified_by: "user" as const,
 			};
-			await safeInvoke("update_task_and_sync", { projectPath, task: taskToSave });
+			mutation.mutate(taskToSave);
+		},
+		mutateAsync: async ({ task }: UpdateTaskFullParams) => {
+			const taskToSave = {
+				...task,
+				modified_at: new Date().toISOString(),
+				modified_by: "user" as const,
+			};
+			await mutation.mutateAsync(taskToSave);
 			return taskToSave;
 		},
-		onSuccess: (savedTask) => {
-			queryClient.invalidateQueries({ queryKey: ["tasks"] });
-			queryClient.invalidateQueries({ queryKey: ["task", savedTask.id] });
-		},
-	});
+	};
 }
 
 export function useScheduleTask() {
-	const queryClient = useQueryClient();
+	const utils = trpc.useUtils();
 
-	return useMutation({
-		mutationFn: async ({ taskId, scheduledDate }: { taskId: string; scheduledDate: string }) => {
-			await safeInvoke("schedule_task", { taskId, scheduledDate });
-		},
+	const mutation = trpc.tasks.schedule.useMutation({
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["tasks"] });
-			queryClient.invalidateQueries({ queryKey: ["tasksForMonth"] });
+			utils.tasks.invalidate();
 		},
 	});
+
+	// Wrapper to maintain backward-compatible API
+	return {
+		...mutation,
+		mutate: ({ taskId, scheduledDate }: { taskId: string; scheduledDate: string }) => {
+			mutation.mutate({ id: taskId, date: scheduledDate });
+		},
+		mutateAsync: async ({ taskId, scheduledDate }: { taskId: string; scheduledDate: string }) => {
+			return mutation.mutateAsync({ id: taskId, date: scheduledDate });
+		},
+	};
 }
 
 export function useUnscheduleTask() {
-	const queryClient = useQueryClient();
+	const utils = trpc.useUtils();
 
-	return useMutation({
-		mutationFn: async (taskId: string) => {
-			await safeInvoke("unschedule_task", { taskId });
-		},
+	const mutation = trpc.tasks.unschedule.useMutation({
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["tasks"] });
-			queryClient.invalidateQueries({ queryKey: ["tasksForMonth"] });
+			utils.tasks.invalidate();
 		},
 	});
+
+	// Wrapper to maintain backward-compatible API
+	return {
+		...mutation,
+		mutate: (taskId: string) => {
+			mutation.mutate({ id: taskId });
+		},
+		mutateAsync: async (taskId: string) => {
+			return mutation.mutateAsync({ id: taskId });
+		},
+	};
 }
 
 export function useDeleteTask() {
-	const queryClient = useQueryClient();
+	const utils = trpc.useUtils();
 
-	return useMutation({
-		mutationFn: async ({ projectPath, taskId }: { projectPath: string; taskId: string }) => {
-			await safeInvoke("delete_task_full", { projectPath, taskId });
-		},
+	const mutation = trpc.tasks.delete.useMutation({
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["tasks"] });
+			utils.tasks.invalidate();
 		},
 	});
+
+	// Wrapper to maintain backward-compatible API (projectPath not needed in tRPC)
+	return {
+		...mutation,
+		mutate: ({ taskId }: { projectPath: string; taskId: string }) => {
+			mutation.mutate({ id: taskId });
+		},
+		mutateAsync: async ({ taskId }: { projectPath: string; taskId: string }) => {
+			return mutation.mutateAsync({ id: taskId });
+		},
+	};
 }
 
 export function useCreateTask() {
-	const queryClient = useQueryClient();
+	const utils = trpc.useUtils();
 
-	return useMutation({
-		mutationFn: async (params: {
+	const mutation = trpc.tasks.create.useMutation({
+		onSuccess: () => {
+			utils.tasks.invalidate();
+		},
+	});
+
+	// Wrapper to maintain backward-compatible API
+	return {
+		...mutation,
+		mutate: (params: {
 			projectId: string;
 			projectPath: string;
 			title: string;
 			priority: number;
 			category: string;
 		}) => {
-			const taskId = await safeInvoke<string>("create_task_with_json", params);
-			return taskId;
+			mutation.mutate({
+				title: params.title,
+				project_id: params.projectId,
+			});
 		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["tasks"] });
+		mutateAsync: async (params: {
+			projectId: string;
+			projectPath: string;
+			title: string;
+			priority: number;
+			category: string;
+		}) => {
+			const result = await mutation.mutateAsync({
+				title: params.title,
+				project_id: params.projectId,
+			});
+			return result.id;
 		},
-	});
+	};
 }

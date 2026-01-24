@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { safeInvoke, isTauri } from "../../../services/tauri";
+import { isTauri } from "../../../services/tauri";
+import { trpc } from "../../../services/trpc";
 import { useDialogStateStore } from "../../../stores/dialogState";
 import { useSelectedProjectStore } from "../../../stores/selectedProject";
-import type { Project } from "../../../types";
 import { Button, Input, Label, Card, CardContent, CardHeader, CardTitle, Textarea } from "@/components/ui";
 
 type NewProjectFormProps = {
@@ -15,6 +15,9 @@ export function NewProjectForm({ onCancel, onCreated }: NewProjectFormProps) {
 	const closeDialog = useDialogStateStore((s) => s.closeDialog);
 	const setSelectedProjectId = useSelectedProjectStore((s) => s.setSelectedProjectId);
 	const setProjectsList = useSelectedProjectStore((s) => s.setProjectsList);
+
+	const utils = trpc.useUtils();
+	const createProjectMutation = trpc.projects.create.useMutation();
 
 	const [newProjectName, setNewProjectName] = useState("");
 	const [newProjectPath, setNewProjectPath] = useState("");
@@ -43,13 +46,22 @@ export function NewProjectForm({ onCancel, onCreated }: NewProjectFormProps) {
 	async function createProject() {
 		if (!newProjectName.trim() || !newProjectPath.trim()) return;
 		try {
-			const id = await safeInvoke<string>("add_project", {
+			const id = await createProjectMutation.mutateAsync({
 				name: newProjectName,
 				path: newProjectPath,
-				description: newProjectDescription.trim() || null,
+				description: newProjectDescription.trim() || undefined,
 			});
-			const loaded = await safeInvoke<Project[]>("get_projects");
-			setProjectsList(loaded);
+			await utils.projects.list.invalidate();
+			const loaded = utils.projects.list.getData() ?? [];
+			const projects = loaded.map(p => ({
+				id: p.id,
+				name: p.name,
+				description: p.description ?? undefined,
+				display_order: p.display_order,
+				created_at: p.created_at,
+				color: p.color ?? undefined,
+			}));
+			setProjectsList(projects);
 			setSelectedProjectId(id);
 			onCreated();
 		} catch (e) {

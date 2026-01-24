@@ -31,11 +31,14 @@ struct JsonRpcError {
     data: Option<serde_json::Value>,
 }
 
+const TRPC_URL_PREFIX: &str = "TRPC_URL=";
+
 pub struct Sidecar {
     process: Option<Child>,
     stdin: Option<ChildStdin>,
     stdout_reader: Option<BufReader<ChildStdout>>,
     request_id: AtomicU64,
+    trpc_url: Option<String>,
 }
 
 impl Sidecar {
@@ -45,6 +48,7 @@ impl Sidecar {
             stdin: None,
             stdout_reader: None,
             request_id: AtomicU64::new(1),
+            trpc_url: None,
         }
     }
 
@@ -79,13 +83,41 @@ impl Sidecar {
         self.stdin = Some(stdin);
         self.stdout_reader = Some(stdout_reader);
 
+        self.wait_for_trpc_url()?;
+
         eprintln!("[SIDECAR] Sidecar started successfully");
         Ok(())
+    }
+
+    fn wait_for_trpc_url(&mut self) -> Result<(), String> {
+        let reader = self
+            .stdout_reader
+            .as_mut()
+            .ok_or("No stdout reader available")?;
+
+        let mut line = String::new();
+        reader
+            .read_line(&mut line)
+            .map_err(|e| format!("Read error waiting for tRPC URL: {}", e))?;
+
+        if line.starts_with(TRPC_URL_PREFIX) {
+            let url = line.trim_start_matches(TRPC_URL_PREFIX).trim().to_string();
+            eprintln!("[SIDECAR] tRPC URL captured: {}", url);
+            self.trpc_url = Some(url);
+            Ok(())
+        } else {
+            Err(format!("Expected tRPC URL, got: {}", line.trim()))
+        }
+    }
+
+    pub fn get_trpc_url(&self) -> Option<&str> {
+        self.trpc_url.as_deref()
     }
 
     pub fn stop(&mut self) {
         self.stdin = None;
         self.stdout_reader = None;
+        self.trpc_url = None;
 
         if let Some(mut child) = self.process.take() {
             let _ = child.kill();

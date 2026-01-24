@@ -2,9 +2,8 @@ import { createFileRoute, Outlet, useLocation, useSearch } from "@tanstack/react
 import { useEffect } from "react";
 import { TabBar } from "../components/TabBar";
 import type { ProjectsSearch } from "../lib/searchSchemas";
-import { safeInvoke } from "../services/tauri";
+import { trpc } from "../services/trpc";
 import { useSelectedProjectStore } from "../stores/selectedProject";
-import type { Project } from "../types";
 import { ProjectsSidebar } from "./projects/-components";
 
 function ProjectsLayout() {
@@ -16,24 +15,22 @@ function ProjectsLayout() {
 
 	const isSettingsPage = location.pathname.includes("/settings");
 
+	const { data: projects = [] } = trpc.projects.list.useQuery();
+
 	useEffect(() => {
-		async function loadProjects() {
-			const loaded = await safeInvoke<Project[]>("get_projects").catch(() => [] as Project[]);
-			setProjectsList(loaded);
+		setProjectsList(projects);
 
-			if (loaded.length > 0) {
-				const urlProjectId = search.projectId;
-				const targetId = urlProjectId || selectedProjectId;
+		if (projects.length > 0) {
+			const urlProjectId = search.projectId;
+			const targetId = urlProjectId || selectedProjectId;
 
-				if (targetId && loaded.some((p) => p.id === targetId)) {
-					setSelectedProjectId(targetId);
-				} else if (!selectedProjectId) {
-					setSelectedProjectId(loaded[0].id);
-				}
+			if (targetId && projects.some((p) => p.id === targetId)) {
+				setSelectedProjectId(targetId);
+			} else if (!selectedProjectId) {
+				setSelectedProjectId(projects[0].id);
 			}
 		}
-		loadProjects();
-	}, [search.projectId, selectedProjectId, setProjectsList, setSelectedProjectId]);
+	}, [projects, search.projectId, selectedProjectId, setProjectsList, setSelectedProjectId]);
 
 	return (
 		<>

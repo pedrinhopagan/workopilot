@@ -1,6 +1,6 @@
-import { safeInvoke } from "./tauri";
+import { getVanillaClient } from "./trpc";
 import { useStructuringNotificationStore } from "../stores/structuringNotification";
-import type { TaskFull, Task, ProjectWithConfig } from "../types";
+import type { Task } from "../types";
 
 type TrackedTask = {
   taskId: string;
@@ -12,11 +12,12 @@ const trackedTasks = new Map<string, TrackedTask>();
 
 async function getTaskStructuringState(taskId: string): Promise<{ structuringComplete: boolean; title: string; subtaskCount: number } | null> {
   try {
-    const task: Task = await safeInvoke("get_task_by_id", { taskId });
+    const client = await getVanillaClient();
+    const task = await client.tasks.get.query({ id: taskId });
     if (!task?.project_id) return null;
 
-    const project: ProjectWithConfig = await safeInvoke("get_project_with_config", { projectId: task.project_id });
-    const taskFull: TaskFull = await safeInvoke("get_task_full", { projectPath: project.path, taskId });
+    const taskFull = await client.tasks.getFull.query({ id: taskId });
+    if (!taskFull) return null;
 
     return {
       structuringComplete: taskFull.ai_metadata.structuring_complete,
@@ -68,8 +69,9 @@ export async function checkForStructuringChanges(): Promise<void> {
 
 export async function checkAllInProgressTasks(): Promise<void> {
   try {
-    const tasks: Task[] = await safeInvoke("get_all_tasks");
-    const inProgressTasks = tasks.filter((t) => 
+    const client = await getVanillaClient();
+    const tasks = await client.tasks.list.query();
+    const inProgressTasks = tasks.filter((t: Task) => 
       t.status === "structuring" || 
       t.status === "working" || 
       t.status === "pending" ||

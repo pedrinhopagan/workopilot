@@ -1,14 +1,24 @@
 import { useState } from "react";
-import type { CalendarTask } from "../../../types";
 import { TaskChip } from "./TaskChip";
 import { useAgendaStore } from "../../../stores/agenda";
+
+export type CalendarTaskItem = {
+  id: string;
+  title: string;
+  project_id: string | null;
+  priority: number;
+  category: string;
+  status: string;
+  scheduled_date: string | null;
+  due_date: string | null;
+};
 
 type CalendarDayProps = {
   date: string;
   dayNumber: number;
   isCurrentMonth: boolean;
   isToday: boolean;
-  tasks: CalendarTask[];
+  tasks: CalendarTaskItem[];
   onDrop: (taskId: string, date: string) => void;
 };
 
@@ -23,7 +33,8 @@ export function CalendarDay({ date, dayNumber, isCurrentMonth, isToday, tasks, o
 
   const isSelected = selectedDate === date;
   const isDateSelectedForDistribution = selectedDates.has(date);
-  const hasOverdue = tasks.some((t) => t.is_overdue);
+  const today = new Date().toISOString().split("T")[0];
+  const hasOverdue = tasks.some((t) => t.due_date && t.due_date < today && t.status !== "done");
   const visibleTasks = tasks.slice(0, 3);
   const overflowCount = Math.max(0, tasks.length - 3);
 

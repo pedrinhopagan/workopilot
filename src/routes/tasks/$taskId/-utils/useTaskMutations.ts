@@ -1,7 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { safeInvoke } from "../../../../services/tauri";
-import type { TaskFull } from "../../../../types";
-import { TASK_FULL_QUERY_KEY, TASK_IMAGES_QUERY_KEY } from "./useGetTaskFullQuery";
+import { trpc } from "../../../../services/trpc";
+import type { TaskFull, TaskStatus } from "../../../../types";
+import { TASK_IMAGES_QUERY_KEY } from "./useGetTaskFullQuery";
 
 interface UpdateTaskFullParams {
 	projectPath: string;
@@ -10,7 +11,7 @@ interface UpdateTaskFullParams {
 
 interface UpdateTaskStatusParams {
 	taskId: string;
-	status: string;
+	status: TaskStatus;
 }
 
 interface AddImageParams {
@@ -29,39 +30,65 @@ interface LaunchWorkflowParams {
 }
 
 export function useUpdateTaskFullMutation() {
-	const queryClient = useQueryClient();
+	const utils = trpc.useUtils();
 
-	return useMutation({
-		mutationFn: async ({ projectPath, task }: UpdateTaskFullParams) => {
+	const mutation = trpc.tasks.saveFull.useMutation({
+		onSuccess: (_, variables) => {
+			utils.tasks.invalidate();
+			if (variables?.id) {
+				utils.tasks.get.invalidate({ id: variables.id });
+				utils.tasks.getFull.invalidate({ id: variables.id });
+			}
+		},
+	});
+
+	return {
+		...mutation,
+		mutate: (
+			{ task }: UpdateTaskFullParams,
+			options?: { onSuccess?: (savedTask: TaskFull) => void },
+		) => {
 			const taskToSave: TaskFull = {
 				...task,
 				modified_at: new Date().toISOString(),
 				modified_by: "user",
 			};
-			await safeInvoke("update_task_and_sync", { projectPath, task: taskToSave });
+			mutation.mutate(taskToSave, {
+				onSuccess: () => options?.onSuccess?.(taskToSave),
+			});
+		},
+		mutateAsync: async ({ task }: UpdateTaskFullParams) => {
+			const taskToSave: TaskFull = {
+				...task,
+				modified_at: new Date().toISOString(),
+				modified_by: "user",
+			};
+			await mutation.mutateAsync(taskToSave);
 			return taskToSave;
 		},
-		onSuccess: (savedTask) => {
-			queryClient.invalidateQueries({ queryKey: ["tasks"] });
-			queryClient.invalidateQueries({ queryKey: ["task", savedTask.id] });
-			queryClient.invalidateQueries({ queryKey: [...TASK_FULL_QUERY_KEY, savedTask.id] });
-		},
-	});
+	};
 }
 
 export function useUpdateTaskStatusMutation(taskId: string) {
-	const queryClient = useQueryClient();
+	const utils = trpc.useUtils();
 
-	return useMutation({
-		mutationFn: async ({ taskId, status }: UpdateTaskStatusParams) => {
-			await safeInvoke("update_task_status", { taskId, status });
-		},
+	const mutation = trpc.tasks.updateStatus.useMutation({
 		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ["tasks"] });
-			queryClient.invalidateQueries({ queryKey: ["task", taskId] });
-			queryClient.invalidateQueries({ queryKey: [...TASK_FULL_QUERY_KEY, taskId] });
+			utils.tasks.invalidate();
+			utils.tasks.get.invalidate({ id: taskId });
+			utils.tasks.getFull.invalidate({ id: taskId });
 		},
 	});
+
+	return {
+		...mutation,
+		mutate: ({ taskId: id, status }: UpdateTaskStatusParams) => {
+			mutation.mutate({ id, status });
+		},
+		mutateAsync: async ({ taskId: id, status }: UpdateTaskStatusParams) => {
+			return mutation.mutateAsync({ id, status });
+		},
+	};
 }
 
 export function useAddTaskImageMutation(taskId: string) {

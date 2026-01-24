@@ -1,7 +1,5 @@
-import { useState, useEffect } from "react";
 import { Select } from "./Select";
-import type { Project } from "../types";
-import { safeInvoke } from "../services/tauri";
+import { trpc } from "../services/trpc";
 
 type ProjectSelectProps = {
   value: string | null;
@@ -20,13 +18,7 @@ export function ProjectSelect({
   showAllOption = true,
   allOptionLabel = "Todos os projetos",
 }: ProjectSelectProps) {
-  const [projects, setProjects] = useState<Project[]>([]);
-
-  useEffect(() => {
-    safeInvoke<Project[]>("get_projects")
-      .then(setProjects)
-      .catch(() => setProjects([]));
-  }, []);
+  const { data: projects = [] } = trpc.projects.list.useQuery();
 
   const options = [
     ...(showAllOption ? [{ value: "", label: allOptionLabel }] : []),

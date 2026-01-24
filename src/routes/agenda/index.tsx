@@ -1,24 +1,15 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useEffect, useRef } from "react";
+import { useRef } from "react";
 import { agendaSearchSchema } from "../../lib/searchSchemas";
-import { safeInvoke } from "../../services/tauri";
-import type { Project } from "../../types";
+import { trpc } from "../../services/trpc";
 import { TabBar } from "../../components/TabBar";
 import { DayDrawer } from "../../components/agenda";
 import { Calendar, type CalendarRef, UnscheduledPanel, type UnscheduledPanelRef } from "./-components";
 
 function AgendaPage() {
-  const [projects, setProjects] = useState<Project[]>([]);
+  const { data: projects = [] } = trpc.projects.list.useQuery();
   const calendarRef = useRef<CalendarRef>(null);
   const panelRef = useRef<UnscheduledPanelRef>(null);
-
-  async function loadProjects() {
-    const result = await safeInvoke<Project[]>("get_projects").catch((e) => {
-      console.error("Failed to load projects:", e);
-      return [];
-    });
-    setProjects(result);
-  }
 
   function handleTaskScheduled() {
     calendarRef.current?.refresh();
@@ -29,10 +20,6 @@ function AgendaPage() {
     calendarRef.current?.refresh();
     panelRef.current?.refresh();
   }
-
-  useEffect(() => {
-    loadProjects();
-  }, []);
 
   return (
     <>

@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
 import { useNavigate } from "@tanstack/react-router";
+import { trpc } from "../../services/trpc";
 import type { Task, TaskFull } from "../../types";
 import { useAgendaStore } from "../../stores/agenda";
 import { 
@@ -34,13 +34,18 @@ export function DayTaskItem({ task, taskFull = null, onStatusChange }: DayTaskIt
   const indicator = getTaskProgressStateIndicator(taskFull);
   const showSpinner = indicator === "spinner";
 
+  const updateStatusMutation = trpc.tasks.updateStatus.useMutation({
+    onSuccess: () => onStatusChange(),
+  });
+
   async function toggleStatus(e: React.MouseEvent) {
     e.stopPropagation();
     const newStatus = isDone ? "pending" : "done";
-    await invoke("update_task_status", { taskId: task.id, status: newStatus }).catch((e) =>
-      console.error("Failed to update task status:", e)
-    );
-    onStatusChange();
+    try {
+      await updateStatusMutation.mutateAsync({ id: task.id, status: newStatus });
+    } catch (err) {
+      console.error("Failed to update task status:", err);
+    }
   }
 
   function handleDragStart(e: React.DragEvent) {

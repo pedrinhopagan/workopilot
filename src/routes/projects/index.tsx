@@ -1,10 +1,8 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { projectsSearchSchema } from "../../lib/searchSchemas";
-import { safeInvoke } from "../../services/tauri";
-import { useDbRefetchStore } from "../../stores/dbRefetch";
+import { trpc } from "../../services/trpc";
 import { useSelectedProjectStore } from "../../stores/selectedProject";
-import type { Project, ProjectWithConfig } from "../../types";
 import { NewProjectForm, ProjectDashboard } from "./-components";
 
 function ProjectsPage() {
@@ -13,64 +11,42 @@ function ProjectsPage() {
 	const setSelectedProjectId = useSelectedProjectStore((s) => s.setSelectedProjectId);
 	const setProjectsList = useSelectedProjectStore((s) => s.setProjectsList);
 
-	const [projectConfig, setProjectConfig] = useState<ProjectWithConfig | null>(null);
-	const [isLoading, setIsLoading] = useState(false);
 	const [showNewProjectForm, setShowNewProjectForm] = useState(search.newProject === "true");
-	
-	const changeCounter = useDbRefetchStore((s) => s.changeCounter);
-	const selectedProjectIdRef = useRef(selectedProjectId);
-	
-	useEffect(() => {
-		selectedProjectIdRef.current = selectedProjectId;
-	}, [selectedProjectId]);
 
-	async function loadProjects() {
-		try {
-			const projects = await safeInvoke<Project[]>("get_projects");
-			setProjectsList(projects);
-			if (projects.length > 0 && !selectedProjectIdRef.current) {
-				setSelectedProjectId(projects[0].id);
-			}
-		} catch (e) {
-			console.error("Failed to load projects:", e);
-		}
-	}
+	const { data: projectsData = [] } = trpc.projects.list.useQuery();
 
-	async function loadProjectConfig(id: string) {
-		setIsLoading(true);
-		try {
-			const config = await safeInvoke<ProjectWithConfig>("get_project_with_config", { projectId: id });
-			setProjectConfig(config);
-		} catch (e) {
-			console.error("Failed to load project config:", e);
-		} finally {
-			setIsLoading(false);
-		}
-	}
+	const { data: projectConfigData, isLoading } = trpc.projects.get.useQuery(
+		{ id: selectedProjectId! },
+		{ enabled: !!selectedProjectId }
+	);
+
+	const projectConfig = projectConfigData ? {
+		...projectConfigData,
+		description: projectConfigData.description ?? undefined,
+		color: projectConfigData.color ?? undefined,
+		routes: projectConfigData.routes.map(r => ({ ...r, env_path: r.env_path ?? undefined })),
+	} : null;
 
 	useEffect(() => {
-		loadProjects();
-	}, []);
+		const projects = projectsData.map(p => ({
+			id: p.id,
+			name: p.name,
+			description: p.description ?? undefined,
+			display_order: p.display_order,
+			created_at: p.created_at,
+			color: p.color ?? undefined,
+		}));
+		setProjectsList(projects);
+		if (projects.length > 0 && !selectedProjectId) {
+			setSelectedProjectId(projects[0].id);
+		}
+	}, [projectsData, selectedProjectId, setProjectsList, setSelectedProjectId]);
 
 	useEffect(() => {
 		if (search.newProject === "true") {
 			setShowNewProjectForm(true);
 		}
 	}, [search.newProject]);
-
-	useEffect(() => {
-		if (selectedProjectId) {
-			loadProjectConfig(selectedProjectId);
-		}
-	}, [selectedProjectId]);
-
-	useEffect(() => {
-		if (changeCounter === 0) return;
-		loadProjects();
-		if (selectedProjectIdRef.current) {
-			loadProjectConfig(selectedProjectIdRef.current);
-		}
-	}, [changeCounter]);
 
 	function handleProjectCreated() {
 		setShowNewProjectForm(false);

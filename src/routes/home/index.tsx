@@ -1,5 +1,4 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
 import { useMemo, useCallback, memo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
@@ -8,7 +7,7 @@ import {
 	Loader2,
 	FolderOpen,
 } from "lucide-react";
-import { safeInvoke } from "@/services/tauri";
+import { trpc } from "@/services/trpc";
 import { useSelectedProjectStore } from "@/stores/selectedProject";
 import { useAgendaStore } from "@/stores/agenda";
 import { DayDrawer } from "@/components/agenda";
@@ -22,18 +21,10 @@ import {
 	getComplexityLabel,
 } from "@/lib/constants/taskStatus";
 import { cn } from "@/lib/utils";
-import type { TaskFull, Project, CalendarTask } from "@/types";
-
-const TASKS_FULL_QUERY_KEY = ["tasksFull"] as const;
-
-async function fetchAllTasksFull(): Promise<TaskFull[]> {
-	return safeInvoke<TaskFull[]>("get_all_tasks_full").catch(() => []);
-}
+import type { TaskFull, Project, Task } from "@/types";
 
 function useInProgressTasks() {
-	const tasksFullQuery = useQuery({
-		queryKey: [...TASKS_FULL_QUERY_KEY, "home"],
-		queryFn: fetchAllTasksFull,
+	const tasksFullQuery = trpc.tasks.listFull.useQuery(undefined, {
 		staleTime: 60_000,
 	});
 
@@ -114,61 +105,55 @@ const WEEK_DATES_CACHE = getWeekDates();
 function useWeekTasks() {
 	const weekDates = WEEK_DATES_CACHE;
 	const firstDate = weekDates[0];
-	const lastDate = weekDates[6];
 
-	const tasksQuery = useQuery({
-		queryKey: ["weekTasks", firstDate?.date, lastDate?.date],
-		queryFn: async () => {
-			const tasksByDate = new Map<string, CalendarTask[]>();
-			
-			for (const { date } of weekDates) {
-				tasksByDate.set(date, []);
+	const year = firstDate ? Number.parseInt(firstDate.date.split("-")[0], 10) : new Date().getFullYear();
+	const month = firstDate ? Number.parseInt(firstDate.date.split("-")[1], 10) : new Date().getMonth() + 1;
+
+	const tasksQuery = trpc.tasks.listForMonth.useQuery(
+		{ year, month },
+		{ staleTime: 60_000 }
+	);
+
+	const tasksByDate = useMemo(() => {
+		const map = new Map<string, Task[]>();
+		for (const { date } of weekDates) {
+			map.set(date, []);
+		}
+
+		const tasks = tasksQuery.data ?? [];
+		for (const task of tasks) {
+			if (task.scheduled_date && map.has(task.scheduled_date)) {
+				map.get(task.scheduled_date)?.push(task as Task);
 			}
+		}
 
-			const monthsToFetch = new Set<string>();
-			for (const { date } of weekDates) {
-				const [year, month] = date.split("-");
-				monthsToFetch.add(`${year}-${month}`);
-			}
-
-			for (const monthKey of monthsToFetch) {
-				const [year, month] = monthKey.split("-");
-				const tasks = await safeInvoke<CalendarTask[]>("get_tasks_for_month", {
-					year: Number.parseInt(year),
-					month: Number.parseInt(month),
-					projectId: null,
-				}).catch(() => []);
-
-				for (const task of tasks) {
-					if (task.scheduled_date && tasksByDate.has(task.scheduled_date)) {
-						tasksByDate.get(task.scheduled_date)?.push(task);
-					}
-				}
-			}
-			
-			return tasksByDate;
-		},
-		staleTime: 60_000,
-	});
+		return map;
+	}, [weekDates, tasksQuery.data]);
 
 	return {
 		weekDates,
-		tasksByDate: tasksQuery.data ?? new Map<string, CalendarTask[]>(),
+		tasksByDate,
 		isLoading: tasksQuery.isLoading,
 		refetch: tasksQuery.refetch,
 	};
+}
+
+function isTaskOverdue(task: Task): boolean {
+	if (!task.due_date || task.status === "done") return false;
+	const today = new Date().toISOString().split("T")[0];
+	return task.due_date < today;
 }
 
 type WeekDayCardProps = {
 	dayNumber: number;
 	weekDay: string;
 	isToday: boolean;
-	tasks: CalendarTask[];
+	tasks: Task[];
 	onClick: () => void;
 };
 
 const WeekDayCard = memo(function WeekDayCard({ dayNumber, weekDay, isToday, tasks, onClick }: WeekDayCardProps) {
-	const hasOverdue = tasks.some((t) => t.is_overdue);
+	const hasOverdue = tasks.some((t) => isTaskOverdue(t));
 	const taskCount = tasks.length;
 
 	return (

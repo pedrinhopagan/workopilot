@@ -20,7 +20,7 @@ workopilot/
 │   ├── core/               # Domain logic, DDD architecture (see packages/core/AGENTS.md)
 │   ├── sdk/                # High-level API for external use
 │   ├── cli/                # CLI for AI skill integration
-│   └── sidecar/            # JSON-RPC server (Bun process)
+│   └── sidecar/            # tRPC HTTP server + JSON-RPC (Bun process)
 ├── docs/                   # ARCHITECTURE.md, BACKEND_INVENTORY.md, FRONTEND_STRUCTURE.md
 └── aur/                    # Arch Linux packaging
 ```
@@ -97,6 +97,7 @@ sync-skills                          # Sync skills to OpenCode
 
 **Dependency Graph (STRICT):**
 ```
+Frontend → tRPC (HTTP) → Bun HTTP server → SDK → SQLite
 src-tauri (spawns) → sidecar (depends) → core
                      cli (depends) → sdk (depends) → core
 ```
@@ -105,13 +106,19 @@ src-tauri (spawns) → sidecar (depends) → core
 - Window management (`window.rs`)
 - System tray (`tray.rs`)
 - Global shortcuts (`settings.rs`)
-- Process spawning (tmux, alacritty)
+- Process spawning (tmux, alacritty, opencode)
 - Resource bundling (skills sync)
+- Task images (binary blobs via direct DB access)
+- AI workflow launch commands
 
-**What's in TypeScript:**
-- All CRUD operations (via sidecar JSON-RPC)
+**What's in TypeScript (via tRPC):**
+- All CRUD operations (projects, tasks, subtasks, executions, settings)
 - Migrations
 - Business logic
+
+**Data Flow (after tRPC migration):**
+- Frontend uses `trpc.*` hooks for all data operations
+- Rust commands only for: window control, process spawn, images, shortcuts
 
 ## ANTI-PATTERNS
 

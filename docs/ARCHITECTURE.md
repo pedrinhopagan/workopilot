@@ -230,31 +230,56 @@ workopilot migrate
 
 ### 2.4 packages/sidecar
 
-**Purpose**: JSON-RPC server process spawned by Tauri for IPC communication.
+**Purpose**: tRPC HTTP server + minimal JSON-RPC for Rust IPC.
 
 ```
 packages/sidecar/
 ├── src/
-│   ├── index.ts              # Entry point
-│   ├── rpc-server.ts         # JSON-RPC over stdio
-│   ├── handlers/
-│   │   ├── tasks.ts
-│   │   ├── projects.ts
-│   │   ├── subtasks.ts
-│   │   └── ...
-│   └── types.ts              # RPC types
+│   ├── index.ts              # Entry point (starts both servers)
+│   ├── handlers.ts           # Minimal JSON-RPC (3 methods for Rust)
+│   ├── types.ts              # RPC types
+│   └── trpc/
+│       ├── server.ts         # Bun HTTP server, dynamic port
+│       ├── context.ts        # tRPC context with SDK
+│       ├── trpc.ts           # Base tRPC config
+│       ├── router.ts         # AppRouter (aggregates all routers)
+│       └── routers/
+│           ├── system.ts     # ping, version
+│           ├── projects.ts   # All project operations
+│           ├── tasks.ts      # All task operations
+│           ├── subtasks.ts   # All subtask operations
+│           ├── settings.ts   # Key-value settings
+│           └── executions.ts # Execution tracking
 └── package.json
 ```
 
 **Characteristics**:
 - Spawned by Tauri on app startup
-- Communicates via stdin/stdout (JSON-RPC 2.0)
-- Uses `@workopilot/core` directly
+- **tRPC HTTP server** (primary): Frontend connects via HTTP
+- **JSON-RPC stdio** (minimal): Only for Rust AI workflow commands
+- Uses `@workopilot/sdk` for tRPC, `@workopilot/core` for JSON-RPC
 - Single long-running process
-- Handles all DB operations for Tauri
+- Emits `TRPC_URL=http://localhost:PORT` on stdout for Tauri to capture
+
+**tRPC Routers**:
+| Router | Procedures |
+|--------|------------|
+| system | ping, version |
+| projects | list, get, create, update, updateOrder, delete |
+| tasks | get, getFull, list, listFull, listFullPaginated, listUrgent, listActive, listForDate, listForMonth, listUnscheduled, create, update, updateStatus, schedule, unschedule, saveFull, delete |
+| subtasks | get, listByTaskId, create, update, updateStatus, delete, reorder, deleteByTaskId |
+| settings | get, set, getAll, delete |
+| executions | start, end, update, get, getActiveForTask, listAllActive, cleanupStale, getTerminalForTask, linkTerminal, unlinkTerminal, updateTerminalSubtask |
+
+**JSON-RPC Methods** (minimal, for Rust only):
+- `projects.get` - Get project for AI workflow launch
+- `tasks.getFull` - Get task for AI workflow launch  
+- `tasks.updateStatus` - Update status when launching AI workflows
 
 **Dependencies**:
-- `@workopilot/core`
+- `@workopilot/sdk`
+- `@trpc/server`
+- `zod`
 
 ---
 
@@ -272,31 +297,63 @@ packages/sidecar/
 | `ipc_socket.rs` | Receive notifications from CLI |
 | `sidecar.rs` | **NEW** - Spawn + communicate with Bun sidecar |
 
-**REMOVES** (migrates to TS):
+**REMOVES** (migrated to TS/tRPC):
 | Module | Destination |
 |--------|-------------|
 | `database.rs` | `packages/core/infrastructure/` |
-| `commands.rs` (CRUD) | `packages/sidecar/handlers/` |
+| `commands.rs` (CRUD) | `packages/sidecar/src/trpc/routers/` |
 | `activity_logger.rs` | `packages/core/application/services/` |
 
-**Remaining Rust Commands**:
+**Remaining Rust Commands** (after tRPC migration):
 ```rust
 // Window/desktop operations (cannot move to TS)
 #[tauri::command] fn hide_window() -> ...
-#[tauri::command] fn show_window() -> ...
-#[tauri::command] fn toggle_window() -> ...
 
 // Process spawning (needs native APIs)
 #[tauri::command] fn launch_project_tmux() -> ...
 #[tauri::command] fn focus_tmux_session() -> ...
+#[tauri::command] fn launch_task_workflow() -> ...
+#[tauri::command] fn launch_task_structure() -> ...
+#[tauri::command] fn launch_task_execute_all() -> ...
+#[tauri::command] fn launch_task_execute_subtask() -> ...
+#[tauri::command] fn launch_task_review() -> ...
+#[tauri::command] fn launch_quickfix_background() -> ...
 
 // Skills sync (needs bundle resources)
 #[tauri::command] fn sync_skills() -> ...
 
-// Proxy commands (forward to sidecar)
-#[tauri::command] async fn get_tasks() -> ... { sidecar.call("getTasks", params) }
-#[tauri::command] async fn get_task() -> ... { sidecar.call("getTask", params) }
-// ... all CRUD becomes proxy
+// File system operations
+#[tauri::command] fn open_env_file() -> ...
+#[tauri::command] fn detect_project_structure() -> ...
+
+// Task images (binary blobs - kept in Rust for performance)
+#[tauri::command] fn add_task_image() -> ...
+#[tauri::command] fn add_task_image_from_path() -> ...
+#[tauri::command] fn get_task_images() -> ...
+#[tauri::command] fn get_task_image() -> ...
+#[tauri::command] fn delete_task_image() -> ...
+
+// Settings (shortcuts - needs Tauri plugin)
+#[tauri::command] fn get_shortcut() -> ...
+#[tauri::command] fn set_shortcut() -> ...
+
+// Sidecar management
+#[tauri::command] fn get_trpc_url() -> ...
+#[tauri::command] fn sidecar_status() -> ...
+#[tauri::command] fn sidecar_restart() -> ...
+#[tauri::command] fn sidecar_call() -> ...  // For debugging
+
+// Local processing
+#[tauri::command] fn get_ai_suggestion() -> ...
+#[tauri::command] fn get_user_sessions() -> ...
+```
+
+**Frontend Data Flow** (tRPC - NO Rust proxy):
+```typescript
+// Frontend uses tRPC directly (not invoke)
+const { data: projects } = trpc.projects.list.useQuery();
+const { data: task } = trpc.tasks.getFull.useQuery({ id: taskId });
+const updateStatus = trpc.tasks.updateStatus.useMutation();
 ```
 
 ---
@@ -597,23 +654,35 @@ Communication between Tauri and Sidecar uses **JSON-RPC 2.0** over **stdio** (st
 
 ## 5. Data Flow
 
-### 5.1 Frontend -> Tauri -> Sidecar -> DB
+### 5.1 Frontend -> tRPC -> Sidecar -> DB (NEW - tRPC migration complete)
 
 ```
 React Component
-    -> invoke("get_tasks")
-    -> commands.rs::get_tasks()
-    -> sidecar.call("tasks.list", {})
-    -> JSON-RPC over stdio
-    -> sidecar handles request
-    -> core.useCases.getTasks()
-    -> SqliteTaskRepository.findAll()
-    -> Return tasks
-    -> JSON-RPC response
-    -> Return to frontend
+    -> trpc.tasks.list.useQuery()
+    -> HTTP request to localhost:PORT/trpc
+    -> Bun HTTP server (packages/sidecar)
+    -> tRPC router (packages/sidecar/src/trpc/)
+    -> SDK (packages/sdk)
+    -> Core (packages/core)
+    -> SQLite
+    -> Return to frontend via React Query
 ```
 
-### 5.2 CLI -> SDK -> Core -> DB (+ notify Tauri)
+### 5.2 Rust Commands (AI Workflows) -> JSON-RPC -> Sidecar
+
+```
+commands.rs::launch_task_structure()
+    -> sidecar_call!("projects.get", ...)
+    -> sidecar_call!("tasks.getFull", ...)
+    -> JSON-RPC over stdio (minimal handlers)
+    -> SDK → Core → SQLite
+    -> Spawn alacritty/tmux with opencode
+```
+
+Note: JSON-RPC handlers are now minimal (only 3 methods: projects.get, tasks.getFull, tasks.updateStatus)
+      All other data operations go through tRPC HTTP.
+
+### 5.3 CLI -> SDK -> Core -> DB (+ notify Tauri)
 
 ```
 CLI: workopilot update-task abc --status working
@@ -628,7 +697,7 @@ CLI: workopilot update-task abc --status working
     -> Frontend refetches
 ```
 
-### 5.3 OpenCode (via SDK, not CLI)
+### 5.4 OpenCode (via SDK, not CLI)
 
 ```
 OpenCode skill execution

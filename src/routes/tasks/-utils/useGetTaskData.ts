@@ -1,9 +1,8 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo } from "react";
-import { safeInvoke, safeListen } from "../../../services/tauri";
+import { safeListen } from "../../../services/tauri";
+import { trpc } from "../../../services/trpc";
 import { useDbRefetchStore } from "../../../stores/dbRefetch";
 import type {
-	ProjectWithConfig,
 	TaskExecution,
 	TaskFull,
 	TaskUpdatedPayload,
@@ -12,53 +11,6 @@ import type { TaskQueryFilters } from "./useGetTaskQuery";
 
 export const TASKS_FULL_QUERY_KEY = ["tasksFull"] as const;
 export const EXECUTIONS_QUERY_KEY = ["activeExecutions"] as const;
-
-interface PaginatedTasksResult {
-	items: TaskFull[];
-	total: number;
-	page: number;
-	perPage: number;
-	totalPages: number;
-}
-
-async function fetchTasksFullPaginated(filters: TaskQueryFilters): Promise<PaginatedTasksResult> {
-	const params: Record<string, unknown> = {};
-
-	if (filters.projectId) {
-		params.project_id = filters.projectId;
-	}
-	if (filters.q) {
-		params.q = filters.q;
-	}
-	if (filters.priority) {
-		params.priority = filters.priority;
-	}
-	if (filters.category) {
-		params.category = filters.category;
-	}
-	params.page = filters.page;
-	params.perPage = filters.perPage;
-	params.sortBy = filters.sortBy;
-	params.sortOrder = filters.sortOrder;
-	params.excludeDone = false;
-
-	return safeInvoke<PaginatedTasksResult>("tasks_list_full_paginated", params).catch(() => ({
-		items: [],
-		total: 0,
-		page: 1,
-		perPage: 20,
-		totalPages: 0,
-	}));
-}
-
-async function fetchActiveExecutions(): Promise<Map<string, TaskExecution>> {
-	const executions = await safeInvoke<TaskExecution[]>("get_all_active_executions").catch(() => []);
-	const executionMap = new Map<string, TaskExecution>();
-	for (const exec of executions) {
-		executionMap.set(exec.task_id, exec);
-	}
-	return executionMap;
-}
 
 interface UseGetTaskDataOptions {
 	filters: TaskQueryFilters;
@@ -82,29 +34,60 @@ interface TaskDataResult {
 	};
 }
 
-export function useGetTaskData({ filters }: UseGetTaskDataOptions): TaskDataResult {
-	const queryClient = useQueryClient();
-	
+export function useGetTaskData({
+	filters,
+}: UseGetTaskDataOptions): TaskDataResult {
+	const utils = trpc.useUtils();
+
 	const changeCounter = useDbRefetchStore((s) => s.changeCounter);
 	const lastChange = useDbRefetchStore((s) => s.lastChange);
 
-	const tasksQuery = useQuery({
-		queryKey: [...TASKS_FULL_QUERY_KEY, filters],
-		queryFn: () => fetchTasksFullPaginated(filters),
-		staleTime: 30_000,
-		refetchOnMount: "always",
-	});
+	const tasksQuery = trpc.tasks.listFullPaginated.useQuery(
+		{
+			projectId: filters.projectId ?? undefined,
+			priority: filters.priority as 1 | 2 | 3 | undefined,
+			category: filters.category as
+				| "feature"
+				| "bug"
+				| "refactor"
+				| "research"
+				| "documentation"
+				| undefined,
+			q: filters.q ?? undefined,
+			page: filters.page,
+			perPage: filters.perPage,
+			sortBy: filters.sortBy,
+			sortOrder: filters.sortOrder,
+			excludeDone: false,
+		},
+		{
+			staleTime: 30_000,
+			refetchOnMount: "always",
+		},
+	);
 
-	const executionsQuery = useQuery({
-		queryKey: [...EXECUTIONS_QUERY_KEY],
-		queryFn: fetchActiveExecutions,
+	const executionsQuery = trpc.executions.listAllActive.useQuery(undefined, {
 		staleTime: 5_000,
 		refetchOnMount: "always",
 		refetchInterval: 10_000,
 	});
 
-	const paginatedResult = tasksQuery.data ?? { items: [], total: 0, page: 1, perPage: 20, totalPages: 0 };
-	const activeExecutions = executionsQuery.data ?? new Map<string, TaskExecution>();
+	const paginatedResult = tasksQuery.data ?? {
+		items: [],
+		total: 0,
+		page: 1,
+		perPage: 20,
+		totalPages: 0,
+	};
+
+	const activeExecutions = useMemo(() => {
+		const executionMap = new Map<string, TaskExecution>();
+		const executions = executionsQuery.data ?? [];
+		for (const exec of executions) {
+			executionMap.set(exec.task_id, exec);
+		}
+		return executionMap;
+	}, [executionsQuery.data]);
 
 	const taskFullCache = useMemo(() => {
 		const cache = new Map<string, TaskFull>();
@@ -116,29 +99,30 @@ export function useGetTaskData({ filters }: UseGetTaskDataOptions): TaskDataResu
 
 	useEffect(() => {
 		if (changeCounter === 0) return;
-		
-		const shouldRefetch = !lastChange || 
-			lastChange.entity_type === "task" || 
+
+		const shouldRefetch =
+			!lastChange ||
+			lastChange.entity_type === "task" ||
 			lastChange.entity_type === "subtask";
-		
+
 		if (shouldRefetch) {
-			queryClient.invalidateQueries({ queryKey: TASKS_FULL_QUERY_KEY });
-			queryClient.invalidateQueries({ queryKey: EXECUTIONS_QUERY_KEY });
+			utils.tasks.listFullPaginated.invalidate();
+			utils.executions.listAllActive.invalidate();
 		}
-	}, [changeCounter, lastChange, queryClient]);
+	}, [changeCounter, lastChange, utils]);
 
 	useEffect(() => {
 		let unlistenTask: (() => void) | null = null;
 		let unlistenExecution: (() => void) | null = null;
 
 		safeListen<TaskUpdatedPayload>("task-updated", () => {
-			queryClient.invalidateQueries({ queryKey: TASKS_FULL_QUERY_KEY });
+			utils.tasks.listFullPaginated.invalidate();
 		}).then((fn) => {
 			unlistenTask = fn;
 		});
 
 		safeListen("execution-changed", () => {
-			queryClient.invalidateQueries({ queryKey: EXECUTIONS_QUERY_KEY });
+			utils.executions.listAllActive.invalidate();
 		}).then((fn) => {
 			unlistenExecution = fn;
 		});
@@ -147,7 +131,7 @@ export function useGetTaskData({ filters }: UseGetTaskDataOptions): TaskDataResu
 			unlistenTask?.();
 			unlistenExecution?.();
 		};
-	}, [queryClient]);
+	}, [utils]);
 
 	const getSubtasks = useCallback(
 		(taskId: string) => taskFullCache.get(taskId)?.subtasks || [],
@@ -155,18 +139,21 @@ export function useGetTaskData({ filters }: UseGetTaskDataOptions): TaskDataResu
 	);
 
 	const refetch = useCallback(() => {
-		queryClient.invalidateQueries({ queryKey: TASKS_FULL_QUERY_KEY });
-		queryClient.invalidateQueries({ queryKey: EXECUTIONS_QUERY_KEY });
-	}, [queryClient]);
+		utils.tasks.listFullPaginated.invalidate();
+		utils.executions.listAllActive.invalidate();
+	}, [utils]);
 
-	const pagination = useMemo(() => ({
-		page: paginatedResult.page,
-		perPage: paginatedResult.perPage,
-		total: paginatedResult.total,
-		totalPages: paginatedResult.totalPages,
-		hasNextPage: paginatedResult.page < paginatedResult.totalPages,
-		hasPrevPage: paginatedResult.page > 1,
-	}), [paginatedResult]);
+	const pagination = useMemo(
+		() => ({
+			page: paginatedResult.page,
+			perPage: paginatedResult.perPage,
+			total: paginatedResult.total,
+			totalPages: paginatedResult.totalPages,
+			hasNextPage: paginatedResult.page < paginatedResult.totalPages,
+			hasPrevPage: paginatedResult.page > 1,
+		}),
+		[paginatedResult],
+	);
 
 	return {
 		tasks: paginatedResult.items,
@@ -181,17 +168,17 @@ export function useGetTaskData({ filters }: UseGetTaskDataOptions): TaskDataResu
 }
 
 export function useProjectPath(projectId: string | null) {
-	return useQuery({
-		queryKey: ["projectPath", projectId],
-		queryFn: async () => {
-			if (!projectId) return null;
-			const project = await safeInvoke<ProjectWithConfig>(
-				"get_project_with_config",
-				{ projectId },
-			).catch(() => null);
-			return project?.path ?? null;
+	const projectQuery = trpc.projects.get.useQuery(
+		{ id: projectId ?? "" },
+		{
+			enabled: !!projectId,
+			staleTime: 60_000,
 		},
-		enabled: !!projectId,
-		staleTime: 60_000,
-	});
+	);
+
+	return {
+		data: projectQuery.data?.path ?? null,
+		isLoading: projectQuery.isLoading,
+		isError: projectQuery.isError,
+	};
 }

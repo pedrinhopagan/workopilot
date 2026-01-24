@@ -1,7 +1,7 @@
 import { useState, useEffect, useImperativeHandle, forwardRef } from "react";
-import { safeInvoke } from "../../../services/tauri";
+import { trpc } from "../../../services/trpc";
 import { useDbRefetchStore } from "../../../stores/dbRefetch";
-import type { Task, Project } from "../../../types";
+import type { Project } from "../../../types";
 import { Select } from "../../../components/Select";
 import { UnscheduledTask } from "./UnscheduledTask";
 import { useAgendaStore } from "../../../stores/agenda";
@@ -42,38 +42,43 @@ export const UnscheduledPanel = forwardRef<UnscheduledPanelRef, UnscheduledPanel
     const resetDistributionState = useAgendaStore((s) => s.resetDistributionState);
     const changeCounter = useDbRefetchStore((s) => s.changeCounter);
 
-    const [tasks, setTasks] = useState<Task[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
     const [isDragOver, setIsDragOver] = useState(false);
     const [filterProject, setFilterProject] = useState("");
     const [filterCategory, setFilterCategory] = useState("");
     const [filterPriority, setFilterPriority] = useState("");
     const [error, setError] = useState<string | null>(null);
 
-    async function loadTasks() {
-      setIsLoading(true);
-      const result = await safeInvoke<Task[]>("get_unscheduled_tasks", {
-        projectId: filterProject || null,
-        category: filterCategory || null,
-        priority: filterPriority ? parseInt(filterPriority) : null,
-      }).catch((e) => {
-        console.error("Failed to load unscheduled tasks:", e);
-        return [];
-      });
-      setTasks(result);
-      setIsLoading(false);
-    }
+    const utils = trpc.useUtils();
+
+    const { data: rawTasks = [], isLoading, refetch: refetchTasks } = trpc.tasks.listUnscheduled.useQuery(
+      filterProject ? { projectId: filterProject } : undefined,
+      { staleTime: 1000 * 60 }
+    );
+
+    const tasks = rawTasks.filter((t) => {
+      if (filterCategory && t.category !== filterCategory) return false;
+      if (filterPriority && t.priority !== parseInt(filterPriority)) return false;
+      return true;
+    });
+
+    const unscheduleMutation = trpc.tasks.unschedule.useMutation({
+      onSuccess: () => {
+        utils.tasks.listUnscheduled.invalidate();
+        utils.tasks.listForMonth.invalidate();
+        onTaskScheduled();
+      },
+    });
 
     async function handleDrop(e: React.DragEvent) {
       e.preventDefault();
       setIsDragOver(false);
 
       if (draggedTask?.fromDate) {
-        await safeInvoke("unschedule_task", { taskId: draggedTask.id }).catch((e) =>
-          console.error("Failed to unschedule task:", e)
-        );
-        await loadTasks();
-        onTaskScheduled();
+        try {
+          await unscheduleMutation.mutateAsync({ id: draggedTask.id });
+        } catch (err) {
+          console.error("Failed to unschedule task:", err);
+        }
       }
       setDraggedTask(null);
     }
@@ -144,7 +149,7 @@ export const UnscheduledPanel = forwardRef<UnscheduledPanelRef, UnscheduledPanel
             clearInterval(pollInterval);
             setIsDistributing(false);
             resetDistributionState();
-            loadTasks();
+            refetchTasks();
             onTaskScheduled();
           }
         }, 2000);
@@ -154,7 +159,7 @@ export const UnscheduledPanel = forwardRef<UnscheduledPanelRef, UnscheduledPanel
           if (isDistributing) {
             setIsDistributing(false);
             resetDistributionState();
-            loadTasks();
+            refetchTasks();
             onTaskScheduled();
           }
         }, 120000);
@@ -174,16 +179,12 @@ export const UnscheduledPanel = forwardRef<UnscheduledPanelRef, UnscheduledPanel
     }
 
     useEffect(() => {
-      loadTasks();
-    }, [filterProject, filterCategory, filterPriority]);
-
-    useEffect(() => {
       if (changeCounter === 0) return;
-      loadTasks();
-    }, [changeCounter]);
+      refetchTasks();
+    }, [changeCounter, refetchTasks]);
 
     useImperativeHandle(ref, () => ({
-      refresh: loadTasks,
+      refresh: () => refetchTasks(),
     }));
 
     return (
