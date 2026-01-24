@@ -166,7 +166,7 @@ if [ "$NEW_VERSION" != "$CURRENT_VERSION" ]; then
     update_changelog "$NEW_VERSION"
 fi
 
-# Step 2: Build
+# Step 2: Build Tauri app
 echo ""
 log_info "Building release binary..."
 if ! bun run build 2>&1 | tee /tmp/build.log; then
@@ -182,7 +182,25 @@ fi
 if [ ! -f "src-tauri/target/release/workopilot" ]; then
     log_error "Binary not found at src-tauri/target/release/workopilot"
 fi
-log_success "Binary built successfully"
+log_success "Tauri binary built successfully"
+
+# Step 2.5: Build sidecar (Bun TypeScript server)
+echo ""
+log_info "Building sidecar binary..."
+cd "$PROJECT_ROOT/packages/sidecar"
+
+# Compile TypeScript sidecar to standalone executable
+if ! bun build --compile --target=bun-linux-x64 src/index.ts --outfile "$PROJECT_ROOT/src-tauri/target/release/workopilot-sidecar" 2>&1; then
+    log_error "Sidecar build failed"
+fi
+
+cd "$PROJECT_ROOT"
+
+# Verify sidecar binary exists
+if [ ! -f "src-tauri/target/release/workopilot-sidecar" ]; then
+    log_error "Sidecar binary not found at src-tauri/target/release/workopilot-sidecar"
+fi
+log_success "Sidecar binary built successfully"
 
 # Step 3: Prepare release tarball
 echo ""
@@ -194,6 +212,7 @@ rm -rf "$RELEASE_DIR"
 mkdir -p "$RELEASE_DIR/icons"
 
 cp "$PROJECT_ROOT/src-tauri/target/release/workopilot" "$RELEASE_DIR/"
+cp "$PROJECT_ROOT/src-tauri/target/release/workopilot-sidecar" "$RELEASE_DIR/"
 cp workopilot.desktop "$RELEASE_DIR/"
 cp "$PROJECT_ROOT/src-tauri/icons/32x32.png" "$RELEASE_DIR/icons/"
 cp "$PROJECT_ROOT/src-tauri/icons/128x128.png" "$RELEASE_DIR/icons/"

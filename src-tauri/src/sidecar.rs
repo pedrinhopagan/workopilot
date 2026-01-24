@@ -57,23 +57,32 @@ impl Sidecar {
             return Ok(());
         }
 
-        let bun_path = which::which("bun").map_err(|e| format!("Bun not found: {}", e))?;
-        let sidecar_script = get_sidecar_path()?;
+        let sidecar_info = get_sidecar_path()?;
 
-        eprintln!(
-            "[SIDECAR] Starting sidecar: {} run {}",
-            bun_path.display(),
-            sidecar_script
-        );
-
-        let mut child = Command::new(bun_path)
-            .arg("run")
-            .arg(&sidecar_script)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
-            .spawn()
-            .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+        let mut child = if sidecar_info.is_compiled {
+            eprintln!("[SIDECAR] Starting compiled sidecar: {}", sidecar_info.path);
+            Command::new(&sidecar_info.path)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::inherit())
+                .spawn()
+                .map_err(|e| format!("Failed to spawn sidecar: {}", e))?
+        } else {
+            let bun_path = which::which("bun").map_err(|e| format!("Bun not found: {}", e))?;
+            eprintln!(
+                "[SIDECAR] Starting sidecar via bun: {} run {}",
+                bun_path.display(),
+                sidecar_info.path
+            );
+            Command::new(bun_path)
+                .arg("run")
+                .arg(&sidecar_info.path)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::inherit())
+                .spawn()
+                .map_err(|e| format!("Failed to spawn sidecar: {}", e))?
+        };
 
         let stdin = child.stdin.take().ok_or("Failed to get stdin")?;
         let stdout = child.stdout.take().ok_or("Failed to get stdout")?;
@@ -187,7 +196,12 @@ impl Drop for Sidecar {
     }
 }
 
-fn get_sidecar_path() -> Result<String, String> {
+struct SidecarInfo {
+    path: String,
+    is_compiled: bool,
+}
+
+fn get_sidecar_path() -> Result<SidecarInfo, String> {
     if cfg!(debug_assertions) {
         let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default();
         if !manifest_dir.is_empty() {
@@ -196,14 +210,20 @@ fn get_sidecar_path() -> Result<String, String> {
                 .unwrap()
                 .join("packages/sidecar/src/index.ts");
             if path.exists() {
-                return Ok(path.to_string_lossy().to_string());
+                return Ok(SidecarInfo {
+                    path: path.to_string_lossy().to_string(),
+                    is_compiled: false,
+                });
             }
         }
 
         let cwd = std::env::current_dir().map_err(|e| e.to_string())?;
         let dev_path = cwd.join("packages/sidecar/src/index.ts");
         if dev_path.exists() {
-            return Ok(dev_path.to_string_lossy().to_string());
+            return Ok(SidecarInfo {
+                path: dev_path.to_string_lossy().to_string(),
+                is_compiled: false,
+            });
         }
 
         let tauri_dev_path = cwd
@@ -211,7 +231,10 @@ fn get_sidecar_path() -> Result<String, String> {
             .map(|p| p.join("packages/sidecar/src/index.ts"));
         if let Some(path) = tauri_dev_path {
             if path.exists() {
-                return Ok(path.to_string_lossy().to_string());
+                return Ok(SidecarInfo {
+                    path: path.to_string_lossy().to_string(),
+                    is_compiled: false,
+                });
             }
         }
     }
@@ -227,7 +250,10 @@ fn get_sidecar_path() -> Result<String, String> {
 
     let prod_path = exe_dir.join(sidecar_name);
     if prod_path.exists() {
-        return Ok(prod_path.to_string_lossy().to_string());
+        return Ok(SidecarInfo {
+            path: prod_path.to_string_lossy().to_string(),
+            is_compiled: true,
+        });
     }
 
     Err("Sidecar not found".to_string())
