@@ -67,7 +67,7 @@ export function ProjectDashboard({ projectConfig, selectedProjectId }: ProjectDa
 	async function launchTmux() {
 		if (!selectedProjectId) return;
 		try {
-			await safeInvoke("launch_project_tmux", { projectId: selectedProjectId });
+			await safeInvoke("terminal_action", { action: "launch_project", projectId: selectedProjectId });
 		} catch (e) {
 			console.error("Failed to launch tmux:", e);
 		}

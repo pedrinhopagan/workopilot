@@ -6,12 +6,8 @@ import type { QuickfixPayload, TaskExecution, TaskUpdatedPayload } from "../../.
 import { useGetTaskFullQuery } from "../-utils";
 import { useTaskForm } from "../-utils/useTaskForm";
 import {
-	useFocusTmuxSessionMutation,
-	useLaunchExecuteAllMutation,
-	useLaunchExecuteSubtaskMutation,
+	useTerminalActionMutation,
 	useLaunchQuickfixMutation,
-	useLaunchReviewMutation,
-	useLaunchStructureMutation,
 } from "../-utils/useTaskMutations";
 import { ManageTaskForm } from "./ManageTaskForm";
 import { ManageTaskHeader } from "./ManageTaskHeader";
@@ -26,7 +22,6 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 	const {
 		task,
 		taskFull,
-		project,
 		projectPath,
 		activeExecution,
 		taskImages,
@@ -63,12 +58,8 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 	const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null);
 	const [loadedImages, setLoadedImages] = useState<Map<string, { data: string; loading: boolean; error: string | null }>>(new Map());
 
-	const launchStructureMutation = useLaunchStructureMutation();
-	const launchExecuteAllMutation = useLaunchExecuteAllMutation();
-	const launchExecuteSubtaskMutation = useLaunchExecuteSubtaskMutation();
-	const launchReviewMutation = useLaunchReviewMutation();
+	const terminalActionMutation = useTerminalActionMutation();
 	const launchQuickfixMutation = useLaunchQuickfixMutation();
-	const focusTmuxSessionMutation = useFocusTmuxSessionMutation();
 
 	const isExecuting = useMemo(() => {
 		if (!activeExecution || activeExecution.status !== "running") return false;
@@ -82,20 +73,8 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 	const isBlocked =
 		isExecuting ||
 		isAdjusting ||
-		launchStructureMutation.isPending ||
-		launchExecuteAllMutation.isPending ||
-		launchExecuteSubtaskMutation.isPending ||
-		launchReviewMutation.isPending ||
-		launchQuickfixMutation.isPending ||
-		focusTmuxSessionMutation.isPending;
-
-	const tmuxSessionName = useMemo(() => {
-		if (activeExecution?.tmux_session) return activeExecution.tmux_session;
-		if (!project || !taskId) return null;
-		const safeName = project.name.replace(/[^a-zA-Z0-9-_]/g, "");
-		const taskShort = taskId.length > 8 ? taskId.slice(0, 8) : taskId;
-		return `workopilot:${safeName}-${taskShort}`;
-	}, [activeExecution?.tmux_session, project, taskId]);
+		terminalActionMutation.isPending ||
+		launchQuickfixMutation.isPending;
 
 	const pendingSubtasks = useMemo(
 		() =>
@@ -238,39 +217,41 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 
 	function handleStructureTask() {
 		if (!task?.project_id) return;
-		launchStructureMutation.mutate(
-			{ projectId: task.project_id, taskId: task.id },
+		terminalActionMutation.mutate(
+			{ action: "structure", projectId: task.project_id, taskId: task.id },
 			{ onSuccess: hideWindowAfterDelay },
 		);
 	}
 
 	function handleExecuteAll() {
 		if (!task?.project_id) return;
-		launchExecuteAllMutation.mutate(
-			{ projectId: task.project_id, taskId: task.id },
+		terminalActionMutation.mutate(
+			{ action: "execute_all", projectId: task.project_id, taskId: task.id },
 			{ onSuccess: hideWindowAfterDelay },
 		);
 	}
 
 	function handleExecuteSubtask(subtaskId: string) {
 		if (!task?.project_id) return;
-		launchExecuteSubtaskMutation.mutate(
-			{ projectId: task.project_id, taskId: task.id, subtaskId },
+		terminalActionMutation.mutate(
+			{ action: "execute_subtask", projectId: task.project_id, taskId: task.id, subtaskId },
 			{ onSuccess: hideWindowAfterDelay },
 		);
 	}
 
 	function handleReviewTask() {
 		if (!task?.project_id) return;
-		launchReviewMutation.mutate(
-			{ projectId: task.project_id, taskId: task.id },
+		terminalActionMutation.mutate(
+			{ action: "review", projectId: task.project_id, taskId: task.id },
 			{ onSuccess: hideWindowAfterDelay },
 		);
 	}
 
 	function handleFocusTerminal() {
-		if (!tmuxSessionName) return;
-		focusTmuxSessionMutation.mutate({ sessionName: tmuxSessionName });
+		if (!task?.project_id) return;
+		terminalActionMutation.mutate(
+			{ action: "focus", projectId: task.project_id, taskId: task.id },
+		);
 	}
 
 	function handleLaunchQuickfix() {
@@ -378,11 +359,7 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 				canExecuteSubtask={!!canExecuteSubtask}
 				pendingSubtasks={pendingSubtasks}
 				lastAction={taskFull.ai_metadata.last_completed_action}
-				isLaunchingStructure={launchStructureMutation.isPending}
-				isLaunchingExecuteAll={launchExecuteAllMutation.isPending}
-				isLaunchingExecuteSubtask={launchExecuteSubtaskMutation.isPending}
-				isLaunchingReview={launchReviewMutation.isPending}
-				isLaunchingFocus={focusTmuxSessionMutation.isPending}
+				isLaunchingTerminalAction={terminalActionMutation.isPending}
 				onDismissConflictWarning={dismissConflictWarning}
 				onStatusChange={handleStatusChange}
 				onStructureTask={handleStructureTask}

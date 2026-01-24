@@ -5,6 +5,7 @@ mod ipc_socket;
 mod settings;
 mod sidecar;
 mod sidecar_commands;
+mod terminal;
 mod token_tracker;
 mod tray;
 mod window;
@@ -45,27 +46,30 @@ pub fn run() {
             sidecar: SidecarState::new(),
         })
         .invoke_handler(tauri::generate_handler![
-            commands::launch_project_tmux,
+            // Terminal actions (centralized)
+            terminal::terminal_action,
+            // File system commands
             commands::open_env_file,
             commands::detect_project_structure,
+            // AI commands
             commands::get_ai_suggestion,
-            commands::launch_task_workflow,
-            commands::launch_task_structure,
-            commands::launch_task_execute_all,
-            commands::launch_task_execute_subtask,
-            commands::launch_task_review,
-            commands::focus_tmux_session,
             commands::launch_quickfix_background,
+            // Task images
             commands::add_task_image,
             commands::add_task_image_from_path,
             commands::get_task_images,
             commands::get_task_image,
             commands::delete_task_image,
+            // User sessions
             commands::get_user_sessions,
+            // Skills sync
             commands::sync_skills,
+            // Settings
             settings::get_shortcut,
             settings::set_shortcut,
+            // Window
             window::hide_window,
+            // Sidecar
             sidecar_commands::sidecar_call,
             sidecar_commands::sidecar_status,
             sidecar_commands::sidecar_restart,

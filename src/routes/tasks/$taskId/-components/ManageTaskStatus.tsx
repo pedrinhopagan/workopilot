@@ -50,11 +50,7 @@ interface ManageTaskStatusProps {
 	canExecuteSubtask: boolean;
 	pendingSubtasks: Subtask[];
 	lastAction: string | null;
-	isLaunchingStructure: boolean;
-	isLaunchingExecuteAll: boolean;
-	isLaunchingExecuteSubtask: boolean;
-	isLaunchingReview: boolean;
-	isLaunchingFocus: boolean;
+	isLaunchingTerminalAction: boolean;
 	onDismissConflictWarning: () => void;
 	onStatusChange: (status: TaskStatus) => void;
 	onStructureTask: () => void;
@@ -70,11 +66,7 @@ export function ManageTaskStatus({
 	canExecuteSubtask,
 	pendingSubtasks,
 	lastAction,
-	isLaunchingStructure,
-	isLaunchingExecuteAll,
-	isLaunchingExecuteSubtask,
-	isLaunchingReview,
-	isLaunchingFocus,
+	isLaunchingTerminalAction,
 	onDismissConflictWarning,
 	onStatusChange,
 	onStructureTask,
@@ -135,15 +127,11 @@ export function ManageTaskStatus({
 					<button
 						type="button"
 						onClick={onFocusTerminal}
-						disabled={isLaunchingFocus}
+						disabled={isLaunchingTerminalAction}
 						className="px-2 py-1 text-xs font-medium rounded border border-border bg-card text-foreground hover:bg-secondary hover:border-muted transition-all duration-200 flex items-center gap-1.5"
 						title="Focar no terminal da task (cria se não existir)"
 					>
-						{isLaunchingFocus ? (
-							<Loader2 size={12} className="animate-spin" />
-						) : (
-							<Monitor size={12} />
-						)}
+						<Monitor size={12} />
 						<span>Terminal</span>
 					</button>
 
@@ -217,7 +205,7 @@ export function ManageTaskStatus({
 					<ActionButton
 						label="Estruturar"
 						icon={<FileText size={20} />}
-						isLoading={isLaunchingStructure}
+						isLoading={isLaunchingTerminalAction}
 						isSuggested={suggestedAction === "structure"}
 						suggestedColor="accent"
 						prompt={generateStructurePrompt(taskFull.title, taskFull.id)}
@@ -227,7 +215,7 @@ export function ManageTaskStatus({
 					<ActionButton
 						label="Executar Tudo"
 						icon={<Rocket size={20} />}
-						isLoading={isLaunchingExecuteAll}
+						isLoading={isLaunchingTerminalAction}
 						isSuggested={suggestedAction === "execute_all"}
 						suggestedColor="primary"
 						prompt={generateExecuteAllPrompt(taskFull.title, taskFull.id)}
@@ -238,17 +226,14 @@ export function ManageTaskStatus({
 						<button
 							type="button"
 							onClick={() => setShowSubtaskSelector(!showSubtaskSelector)}
+							disabled={isLaunchingTerminalAction}
 							className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 border transition-all duration-200 ${
 								suggestedAction === "execute_subtask"
 									? "border-chart-4 bg-chart-4/10 text-chart-4 shadow-lg shadow-chart-4/10"
 									: "border-border bg-card text-foreground hover:border-muted hover:bg-secondary"
 							}`}
 						>
-							{isLaunchingExecuteSubtask ? (
-								<Loader2 size={20} className="animate-spin" />
-							) : (
-								<Target size={20} />
-							)}
+							<Target size={20} />
 							<span className="text-sm font-medium">Executar Subtask</span>
 							{canExecuteSubtask && (
 								<span className="text-[10px] opacity-60">
@@ -287,7 +272,7 @@ export function ManageTaskStatus({
 					<ActionButton
 						label="Revisar"
 						icon={<FileCheck size={20} />}
-						isLoading={isLaunchingReview}
+						isLoading={isLaunchingTerminalAction}
 						isSuggested={suggestedAction === "review"}
 						suggestedColor="accent"
 						prompt={generateReviewPrompt(taskFull.title, taskFull.id)}

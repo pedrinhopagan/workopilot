@@ -23,9 +23,10 @@ interface DeleteImageParams {
 	imageId: string;
 }
 
-interface LaunchWorkflowParams {
+interface TerminalActionParams {
+	action: "launch_project" | "focus" | "structure" | "execute_all" | "execute_subtask" | "review";
 	projectId: string;
-	taskId: string;
+	taskId?: string;
 	subtaskId?: string;
 }
 
@@ -117,34 +118,10 @@ export function useDeleteTaskImageMutation(taskId: string) {
 	});
 }
 
-export function useLaunchStructureMutation() {
+export function useTerminalActionMutation() {
 	return useMutation({
-		mutationFn: async ({ projectId, taskId }: LaunchWorkflowParams) => {
-			await safeInvoke("launch_task_structure", { projectId, taskId });
-		},
-	});
-}
-
-export function useLaunchExecuteAllMutation() {
-	return useMutation({
-		mutationFn: async ({ projectId, taskId }: LaunchWorkflowParams) => {
-			await safeInvoke("launch_task_execute_all", { projectId, taskId });
-		},
-	});
-}
-
-export function useLaunchExecuteSubtaskMutation() {
-	return useMutation({
-		mutationFn: async ({ projectId, taskId, subtaskId }: LaunchWorkflowParams) => {
-			await safeInvoke("launch_task_execute_subtask", { projectId, taskId, subtaskId });
-		},
-	});
-}
-
-export function useLaunchReviewMutation() {
-	return useMutation({
-		mutationFn: async ({ projectId, taskId }: LaunchWorkflowParams) => {
-			await safeInvoke("launch_task_review", { projectId, taskId });
+		mutationFn: async ({ action, projectId, taskId, subtaskId }: TerminalActionParams) => {
+			await safeInvoke("terminal_action", { action, projectId, taskId, subtaskId });
 		},
 	});
 }
@@ -153,14 +130,6 @@ export function useLaunchQuickfixMutation() {
 	return useMutation({
 		mutationFn: async ({ taskId, prompt }: { taskId: string; prompt: string }) => {
 			await safeInvoke("send_quickfix", { taskId, prompt });
-		},
-	});
-}
-
-export function useFocusTmuxSessionMutation() {
-	return useMutation({
-		mutationFn: async ({ sessionName }: { sessionName: string }) => {
-			await safeInvoke("focus_tmux_session", { sessionName });
 		},
 	});
 }
