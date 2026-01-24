@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { TaskStatusSelect } from "@/components/tasks/TaskStatusSelect";
+import { CustomSelect } from "@/components/ui/custom-select";
 import {
 	type TaskStatus,
 	getSuggestedAction,
@@ -75,8 +76,6 @@ export function ManageTaskStatus({
 	onReviewTask,
 	onFocusTerminal,
 }: ManageTaskStatusProps) {
-	const [showSubtaskSelector, setShowSubtaskSelector] = useState(false);
-
 	const progressState = deriveProgressState(taskFull);
 	const progressColor = getTaskProgressStateColor(taskFull);
 	const progressLabel = getTaskProgressStateLabel(taskFull);
@@ -104,11 +103,11 @@ export function ManageTaskStatus({
 			)}
 
 			<div
-				className={`border-b border-border ${progressContainerClass} ${
+				className={`border-b border-border animate-fade-in ${progressContainerClass} ${
 					progressHighlight === "pulse" ? "animate-pulse" : ""
 				}`}
 			>
-				<div className="px-4 py-3 flex items-center gap-4 border-b border-secondary">
+				<div className="px-4 py-3 flex items-center gap-4 border-b border-secondary transition-all duration-200">
 					<TaskStatusSelect
 						value={taskFull.status as TaskStatus}
 						onChange={onStatusChange}
@@ -201,7 +200,7 @@ export function ManageTaskStatus({
 					</div>
 				</div>
 
-				<div className="px-4 py-4 flex items-stretch gap-3">
+				<div className="px-4 py-4 flex items-stretch gap-3 animate-slide-up-fade" style={{ animationDelay: "0.1s" }}>
 					<ActionButton
 						label="Estruturar"
 						icon={<FileText size={20} />}
@@ -223,49 +222,39 @@ export function ManageTaskStatus({
 					/>
 
 					<div className="flex-1 relative">
-						<button
-							type="button"
-							onClick={() => setShowSubtaskSelector(!showSubtaskSelector)}
-							disabled={isLaunchingTerminalAction}
-							className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 border transition-all duration-200 ${
+						<CustomSelect
+							items={pendingSubtasks}
+							onValueChange={(subtaskId) => onExecuteSubtask(subtaskId)}
+							label="Selecione uma subtask"
+							disabled={isLaunchingTerminalAction || !canExecuteSubtask}
+							triggerClassName={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 border transition-all duration-200 ${
 								suggestedAction === "execute_subtask"
 									? "border-chart-4 bg-chart-4/10 text-chart-4 shadow-lg shadow-chart-4/10"
 									: "border-border bg-card text-foreground hover:border-muted hover:bg-secondary"
 							}`}
-						>
-							<Target size={20} />
-							<span className="text-sm font-medium">Executar Subtask</span>
-							{canExecuteSubtask && (
-								<span className="text-[10px] opacity-60">
-									({pendingSubtasks.length})
-								</span>
+							contentClassName="min-w-[var(--radix-select-trigger-width)]"
+							renderTrigger={() => (
+								<>
+									<Target size={20} />
+									<span className="text-sm font-medium">Executar Subtask</span>
+									{canExecuteSubtask && (
+										<span className="text-[10px] opacity-60">
+											({pendingSubtasks.length})
+										</span>
+									)}
+								</>
 							)}
-						</button>
+							renderItem={(subtask) => (
+								<SubtaskSelectItem
+									subtask={subtask}
+									taskFull={taskFull}
+								/>
+							)}
+						/>
 						{suggestedAction === "execute_subtask" && (
-							<span className="absolute -top-2 -left-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-chart-4 text-background">
+							<span className="absolute -top-2 -left-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-chart-4 text-background z-10">
 								Sugestão
 							</span>
-						)}
-
-						{showSubtaskSelector && canExecuteSubtask && (
-							<div className="absolute top-full left-0 right-0 mt-2 bg-card border border-border shadow-xl z-50 overflow-hidden animate-slide-down">
-								<div className="px-3 py-2 border-b border-border text-xs text-muted-foreground uppercase tracking-wider">
-									Selecione uma subtask
-								</div>
-								<div className="max-h-48 overflow-y-auto">
-									{pendingSubtasks.map((subtask) => (
-										<SubtaskListItem
-											key={subtask.id}
-											subtask={subtask}
-											taskFull={taskFull}
-											onExecute={() => {
-												onExecuteSubtask(subtask.id);
-												setShowSubtaskSelector(false);
-											}}
-										/>
-									))}
-								</div>
-							</div>
 						)}
 					</div>
 
@@ -389,17 +378,17 @@ function ActionButton({
 	);
 }
 
-interface SubtaskListItemProps {
+interface SubtaskSelectItemProps {
 	subtask: Subtask;
 	taskFull: TaskFull;
-	onExecute: () => void;
 }
 
-function SubtaskListItem({ subtask, taskFull, onExecute }: SubtaskListItemProps) {
+function SubtaskSelectItem({ subtask, taskFull }: SubtaskSelectItemProps) {
 	const [copied, setCopied] = useState(false);
 
 	async function handleCopyPrompt(e: React.MouseEvent) {
 		e.stopPropagation();
+		e.preventDefault();
 		const prompt = generateExecuteSubtaskPrompt(
 			subtask.title,
 			taskFull.title,
@@ -416,22 +405,18 @@ function SubtaskListItem({ subtask, taskFull, onExecute }: SubtaskListItemProps)
 	}
 
 	return (
-		<div className="flex items-center min-w-0">
-			<button
-				type="button"
-				onClick={onExecute}
-				className="flex-1 min-w-0 px-3 py-2.5 text-left text-sm text-foreground hover:bg-secondary transition-colors flex items-center gap-2"
-			>
+		<div className="flex items-center min-w-0 hover:bg-secondary transition-colors">
+			<div className="flex-1 min-w-0 px-3 py-2.5 text-left text-sm text-foreground flex items-center gap-2">
 				<span className="w-5 h-5 flex-shrink-0 flex items-center justify-center bg-border text-[10px] text-primary">
 					{subtask.order + 1}
 				</span>
 				<span className="flex-1 min-w-0 truncate">{subtask.title}</span>
-			</button>
+			</div>
 
 			<button
 				type="button"
 				onClick={handleCopyPrompt}
-				className="flex-shrink-0 px-2 py-2.5 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+				className="flex-shrink-0 px-2 py-2.5 text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
 				title="Copiar prompt"
 			>
 				{copied ? <FileCheck size={14} className="text-primary" /> : <Copy size={14} />}
