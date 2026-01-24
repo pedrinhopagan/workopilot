@@ -1,6 +1,6 @@
 {
   "name": "workopilot",
-  "version": "0.6.1",
+  "version": "0.6.3",
   "description": "Seu copiloto de trabalho para desenvolvimento com IA",
   "type": "module",
   "workspaces": [
