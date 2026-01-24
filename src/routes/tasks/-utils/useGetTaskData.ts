@@ -45,8 +45,8 @@ export function useGetTaskData({
 	const tasksQuery = trpc.tasks.listFullPaginated.useQuery(
 		{
 			projectId: filters.projectId ?? undefined,
-			priority: filters.priority as 1 | 2 | 3 | undefined,
-			category: filters.category as
+			priority: (filters.priority ?? undefined) as 1 | 2 | 3 | undefined,
+			category: (filters.category ?? undefined) as
 				| "feature"
 				| "bug"
 				| "refactor"
