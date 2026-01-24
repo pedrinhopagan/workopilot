@@ -1,42 +1,38 @@
-import { createFileRoute, Outlet, useLocation, useSearch } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useSearch } from "@tanstack/react-router";
 import { useEffect } from "react";
 import { TabBar } from "../components/TabBar";
 import type { ProjectsSearch } from "../lib/searchSchemas";
 import { trpc } from "../services/trpc";
 import { useSelectedProjectStore } from "../stores/selectedProject";
-import { ProjectsSidebar } from "./projects/-components";
 
 function ProjectsLayout() {
-	const location = useLocation();
 	const search = useSearch({ strict: false }) as Partial<ProjectsSearch>;
-	const selectedProjectId = useSelectedProjectStore((s) => s.selectedProjectId);
 	const setSelectedProjectId = useSelectedProjectStore((s) => s.setSelectedProjectId);
 	const setProjectsList = useSelectedProjectStore((s) => s.setProjectsList);
-
-	const isSettingsPage = location.pathname.includes("/settings");
 
 	const { data: projects = [] } = trpc.projects.list.useQuery();
 
 	useEffect(() => {
-		setProjectsList(projects);
+		const normalizedProjects = projects.map((p) => ({
+			id: p.id,
+			name: p.name,
+			description: p.description ?? undefined,
+			display_order: p.display_order,
+			created_at: p.created_at,
+			color: p.color ?? undefined,
+		}));
+		setProjectsList(normalizedProjects);
 
-		if (projects.length > 0) {
-			const urlProjectId = search.projectId;
-			const targetId = urlProjectId || selectedProjectId;
-
-			if (targetId && projects.some((p) => p.id === targetId)) {
-				setSelectedProjectId(targetId);
-			} else if (!selectedProjectId) {
-				setSelectedProjectId(projects[0].id);
-			}
+		const urlProjectId = search.projectId;
+		if (urlProjectId && projects.some((p) => p.id === urlProjectId)) {
+			setSelectedProjectId(urlProjectId);
 		}
-	}, [projects, search.projectId, selectedProjectId, setProjectsList, setSelectedProjectId]);
+	}, [projects, search.projectId, setProjectsList, setSelectedProjectId]);
 
 	return (
 		<>
 			<TabBar />
 			<main className="flex flex-1 overflow-hidden">
-				<ProjectsSidebar isSettingsPage={isSettingsPage} />
 				<section className="flex-1 flex flex-col overflow-hidden">
 					<Outlet />
 				</section>

@@ -1,18 +1,298 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState, useRef } from "react";
+import { useState, useRef, memo } from "react";
 import { safeInvoke, isTauri } from "../../services/tauri";
 import { trpc } from "../../services/trpc";
 import { useDialogStateStore } from "../../stores/dialogState";
 import { useSelectedProjectStore } from "../../stores/selectedProject";
 import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { Select } from "../../components/Select";
-import { ColorPicker } from "../../components/ui/color-picker";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import type { ProjectWithConfig, ProjectRoute, TmuxTab } from "../../types";
+import {
+  ArrowLeft,
+  FolderOpen,
+  Palette,
+  Route as RouteIcon,
+  Terminal,
+  FileText,
+  Trash2,
+  Plus,
+  GripVertical,
+  Check,
+  Save,
+  AlertTriangle,
+  X,
+} from "lucide-react";
+
+const PRESET_COLORS = [
+  "#ef4444",
+  "#f97316",
+  "#f59e0b",
+  "#eab308",
+  "#84cc16",
+  "#22c55e",
+  "#10b981",
+  "#14b8a6",
+  "#06b6d4",
+  "#0ea5e9",
+  "#3b82f6",
+  "#6366f1",
+  "#8b5cf6",
+  "#a855f7",
+  "#d946ef",
+  "#ec4899",
+  "#f43f5e",
+  "#64748b",
+];
 
 function getRouteNameFromPath(path: string) {
   const parts = path.split("/").filter(Boolean);
   return parts[parts.length - 1] || "root";
 }
+
+type SectionProps = {
+  title: string;
+  description?: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+  headerAction?: React.ReactNode;
+  accentColor?: string;
+  danger?: boolean;
+};
+
+const Section = memo(function Section({
+  title,
+  description,
+  icon,
+  children,
+  className,
+  headerAction,
+  accentColor,
+  danger,
+}: SectionProps) {
+  return (
+    <div
+      className={cn(
+        "relative bg-card border border-border overflow-hidden",
+        "animate-fade-in",
+        danger && "border-destructive/30",
+        className
+      )}
+      style={{
+        animationDelay: "0.1s",
+        animationFillMode: "forwards",
+      }}
+    >
+      {accentColor && (
+        <div
+          className="absolute left-0 top-0 bottom-0 w-[3px]"
+          style={{
+            background: `linear-gradient(180deg, ${accentColor} 0%, ${accentColor}60 100%)`,
+          }}
+        />
+      )}
+
+      <div
+        className={cn(
+          "flex items-center justify-between p-4 border-b border-border",
+          accentColor && "pl-5"
+        )}
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className={cn(
+              "p-2 bg-background/60",
+              danger && "text-destructive"
+            )}
+            style={
+              accentColor
+                ? { boxShadow: `inset 0 0 0 1px ${accentColor}30` }
+                : undefined
+            }
+          >
+            {icon}
+          </div>
+          <div>
+            <h3
+              className={cn(
+                "text-sm font-medium uppercase tracking-wide",
+                danger ? "text-destructive" : "text-foreground"
+              )}
+            >
+              {title}
+            </h3>
+            {description && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {description}
+              </p>
+            )}
+          </div>
+        </div>
+        {headerAction}
+      </div>
+
+      <div className={cn("p-4", accentColor && "pl-5")}>{children}</div>
+    </div>
+  );
+});
+
+type ColorPickerWithPreviewProps = {
+  value?: string;
+  onChange: (color: string | undefined) => void;
+  onSave: () => void;
+  isSaving?: boolean;
+  saved?: boolean;
+};
+
+const ColorPickerWithPreview = memo(function ColorPickerWithPreview({
+  value,
+  onChange,
+  onSave,
+  isSaving,
+  saved,
+}: ColorPickerWithPreviewProps) {
+  const projectColor = value || "#909d63";
+
+  return (
+    <div className="space-y-4">
+      <div
+        className="relative p-4 bg-background/50 border border-border overflow-hidden"
+        style={{
+          background: `linear-gradient(135deg, ${projectColor}15 0%, transparent 60%)`,
+        }}
+      >
+        <div
+          className="absolute left-0 top-0 bottom-0 w-[3px]"
+          style={{
+            background: `linear-gradient(180deg, ${projectColor} 0%, ${projectColor}60 100%)`,
+          }}
+        />
+        <div className="pl-3">
+          <div className="flex items-center gap-2 mb-2">
+            <FolderOpen size={16} style={{ color: projectColor }} />
+            <span className="text-sm font-medium text-foreground">
+              Preview do Projeto
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Assim ficará o card do projeto na listagem
+          </p>
+
+          <div className="mt-3 h-1 bg-secondary/60 overflow-hidden">
+            <div
+              className="h-full w-[65%]"
+              style={{
+                background: `linear-gradient(90deg, ${projectColor} 0%, ${projectColor}cc 100%)`,
+                boxShadow: `0 0 8px ${projectColor}60`,
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-9 gap-2">
+        {PRESET_COLORS.map((color) => (
+          <button
+            key={color}
+            type="button"
+            onClick={() => onChange(color)}
+            className={cn(
+              "group relative w-8 h-8 transition-all duration-200",
+              "hover:scale-110 hover:z-10",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              value === color && "ring-2 ring-foreground ring-offset-2 ring-offset-background"
+            )}
+            style={{ backgroundColor: color }}
+            title={color}
+          >
+            {value === color && (
+              <Check
+                size={14}
+                className="absolute inset-0 m-auto text-white drop-shadow-md"
+              />
+            )}
+            <div
+              className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+              style={{ boxShadow: `0 0 12px ${color}80` }}
+            />
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-3">
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange(undefined)}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Remover cor
+          </button>
+        )}
+        <div className="flex-1" />
+        {saved ? (
+          <Badge variant="outline" className="gap-1.5 text-accent border-accent/40">
+            <Check size={12} />
+            Salvo
+          </Badge>
+        ) : (
+          <Button
+            size="sm"
+            onClick={onSave}
+            disabled={isSaving}
+            className="gap-2"
+            style={{
+              background: `linear-gradient(135deg, ${projectColor} 0%, ${projectColor}cc 100%)`,
+            }}
+          >
+            <Save size={14} />
+            {isSaving ? "Salvando..." : "Salvar cor"}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+});
+
+type DraggableItemProps = {
+  isDragging: boolean;
+  onDragStart: (e: React.DragEvent) => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragEnd: () => void;
+  children: React.ReactNode;
+};
+
+const DraggableItem = memo(function DraggableItem({
+  isDragging,
+  onDragStart,
+  onDragOver,
+  onDragEnd,
+  children,
+}: DraggableItemProps) {
+  return (
+    <li
+      className={cn(
+        "flex items-center gap-2 bg-background/50 p-3 border border-border/50",
+        "transition-all duration-200 cursor-grab list-none",
+        "hover:bg-secondary/30 hover:border-border",
+        isDragging && "opacity-30"
+      )}
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDragEnd={onDragEnd}
+    >
+      <GripVertical
+        size={14}
+        className="text-muted-foreground/50 flex-shrink-0"
+      />
+      {children}
+    </li>
+  );
+});
 
 function SettingsPage() {
   const navigate = useNavigate();
@@ -45,6 +325,12 @@ function SettingsPage() {
   const lastRouteSwapRef = useRef(0);
   const lastTabSwapRef = useRef(0);
 
+  const [colorSaved, setColorSaved] = useState(false);
+  const [descriptionSaved, setDescriptionSaved] = useState(false);
+  const [businessRulesSaved, setBusinessRulesSaved] = useState(false);
+
+  const projectColor = projectConfig?.color || "#909d63";
+
   function setProjectConfig(config: ProjectWithConfig | null) {
     setLocalConfig(config);
   }
@@ -72,7 +358,7 @@ function SettingsPage() {
         setSelectedProjectId(null);
         await utils.projects.list.invalidate();
         const loaded = utils.projects.list.getData() ?? [];
-        const projects = loaded.map(p => ({
+        const projects = loaded.map((p) => ({
           id: p.id,
           name: p.name,
           description: p.description ?? undefined,
@@ -104,7 +390,7 @@ function SettingsPage() {
       const selected = await open({
         directory: true,
         multiple: false,
-        title: "Selecionar diretorio da rota",
+        title: "Selecionar diretório da rota",
         defaultPath: projectConfig.path,
       });
 
@@ -407,6 +693,8 @@ function SettingsPage() {
         name: projectConfig.name,
         description: projectConfig.description ?? undefined,
       });
+      setDescriptionSaved(true);
+      setTimeout(() => setDescriptionSaved(false), 2000);
     } catch (e) {
       console.error("Failed to save description:", e);
     }
@@ -419,22 +707,33 @@ function SettingsPage() {
         id: selectedProjectId,
         business_rules: projectConfig.business_rules ?? undefined,
       });
+      setBusinessRulesSaved(true);
+      setTimeout(() => setBusinessRulesSaved(false), 2000);
     } catch (e) {
       console.error("Failed to save business rules:", e);
     }
   }
 
-  async function saveColor(color: string | undefined) {
+  async function saveColor() {
     if (!selectedProjectId || !projectConfig) return;
-    setProjectConfig({ ...projectConfig, color });
     try {
       await updateProjectMutation.mutateAsync({
         id: selectedProjectId,
-        color: color ?? undefined,
+        color: projectConfig.color ?? undefined,
       });
+      await utils.projects.list.invalidate();
+      await utils.projects.get.invalidate({ id: selectedProjectId });
+      setColorSaved(true);
+      setTimeout(() => setColorSaved(false), 2000);
     } catch (e) {
       console.error("Failed to save color:", e);
     }
+  }
+
+  function handleColorChange(color: string | undefined) {
+    if (!projectConfig) return;
+    setProjectConfig({ ...projectConfig, color });
+    setColorSaved(false);
   }
 
   async function handleRoutePathChange(route: ProjectRoute) {
@@ -519,14 +818,32 @@ function SettingsPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">Carregando...</div>
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-primary border-t-transparent animate-spin" />
+          <p className="text-muted-foreground text-sm">Carregando configurações...</p>
+        </div>
+      </div>
     );
   }
 
   if (!projectConfig) {
     return (
-      <div className="flex items-center justify-center h-full text-muted-foreground">
-        Selecione um projeto
+      <div className="flex items-center justify-center h-full">
+        <div className="flex flex-col items-center gap-4 text-center max-w-sm">
+          <div className="p-4 bg-secondary/50">
+            <FolderOpen size={32} className="text-muted-foreground" />
+          </div>
+          <div>
+            <p className="text-foreground font-medium">Nenhum projeto selecionado</p>
+            <p className="text-muted-foreground text-sm mt-1">
+              Selecione um projeto na lista para editar suas configurações
+            </p>
+          </div>
+          <Button asChild variant="outline">
+            <Link to="/projects">Ver projetos</Link>
+          </Button>
+        </div>
       </div>
     );
   }
@@ -535,7 +852,7 @@ function SettingsPage() {
     <>
       <ConfirmDialog
         isOpen={showDeleteConfirm}
-        title="Confirmar exclusao"
+        title="Confirmar exclusão"
         message={
           deleteTarget
             ? `Tem certeza que deseja excluir ${deleteTarget.type === "project" ? "o projeto" : deleteTarget.type === "route" ? "a rota" : "a tab"} "${deleteTarget.name}"?`
@@ -550,255 +867,271 @@ function SettingsPage() {
         danger={true}
       />
 
-      <div className="flex-shrink-0 p-4 pb-2 border-b border-border bg-background">
-        <div className="flex items-center gap-3">
-          <Link
-            to="/projects"
-            className="p-1 text-muted-foreground hover:text-primary hover:bg-popover transition-colors"
-            title="Voltar"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+      <div
+        className="flex-shrink-0 border-b border-border animate-fade-in"
+        style={{
+          background: `linear-gradient(135deg, ${projectColor}10 0%, transparent 60%)`,
+        }}
+      >
+        <div className="p-4">
+          <div className="flex items-center gap-4">
+            <Button asChild variant="ghost" size="icon" className="flex-shrink-0">
+              <Link to="/projects" title="Voltar">
+                <ArrowLeft size={18} />
+              </Link>
+            </Button>
+
+            <div
+              className="relative flex-1 pl-4"
+              style={{
+                borderLeft: `3px solid ${projectColor}`,
+              }}
             >
-              <polyline points="15 18 9 12 15 6"></polyline>
-            </svg>
-          </Link>
-          <div>
-            <h2 className="text-xl text-foreground">Configuracoes: {projectConfig.name}</h2>
-            <p className="text-sm text-muted-foreground">{projectConfig.path}</p>
+              <div className="flex items-center gap-2">
+                <FolderOpen size={18} style={{ color: projectColor }} />
+                <h1 className="text-xl text-foreground font-medium truncate">
+                  {projectConfig.name}
+                </h1>
+              </div>
+              <p className="text-sm text-muted-foreground mt-0.5 font-mono truncate">
+                {projectConfig.path}
+              </p>
+            </div>
           </div>
         </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
-        <div className="space-y-4">
-          <div className="bg-card border border-border p-4">
-            <h3 className="text-sm text-muted-foreground uppercase tracking-wide mb-3">
-              Descricao do Projeto
-            </h3>
-            <textarea
-              value={projectConfig.description || ""}
-              onChange={(e) =>
-                setProjectConfig({ ...projectConfig, description: e.target.value })
-              }
-              onBlur={saveDescription}
-              placeholder="Breve descricao do projeto..."
-              rows={3}
-              className="w-full px-3 py-2 bg-background border border-border text-foreground text-sm resize-y focus:border-primary focus:outline-none"
-            />
-          </div>
-
-          <div className="bg-card border border-border p-4">
-            <h3 className="text-sm text-muted-foreground uppercase tracking-wide mb-3">
-              Cor do Projeto
-            </h3>
-            <p className="text-xs text-muted-foreground mb-3">
-              Escolha uma cor para identificar visualmente este projeto na lista de tarefas.
-            </p>
-            <ColorPicker
-              value={projectConfig.color}
-              onChange={saveColor}
-            />
-          </div>
-
-          <div className="bg-card border border-border p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm text-muted-foreground uppercase tracking-wide">Rotas</h3>
-              <button
-                onClick={addRoute}
-                className="text-xs text-primary hover:text-primary/80 transition-colors"
-              >
-                + Adicionar
-              </button>
+        <div className="max-w-4xl mx-auto space-y-4">
+          <Section
+            title="Descrição"
+            description="Breve descrição do projeto para referência rápida"
+            icon={<FileText size={16} className="text-muted-foreground" />}
+          >
+            <div className="space-y-3">
+              <textarea
+                value={projectConfig.description || ""}
+                onChange={(e) =>
+                  setProjectConfig({ ...projectConfig, description: e.target.value })
+                }
+                onBlur={saveDescription}
+                placeholder="Descreva seu projeto aqui..."
+                rows={3}
+                className={cn(
+                  "w-full px-3 py-2 bg-background border border-border text-foreground text-sm",
+                  "resize-y focus:border-primary focus:outline-none transition-colors"
+                )}
+              />
+              {descriptionSaved && (
+                <Badge variant="outline" className="gap-1.5 text-accent border-accent/40">
+                  <Check size={12} />
+                  Salvo
+                </Badge>
+              )}
             </div>
+          </Section>
 
-            <div className="space-y-1" role="list">
+          <Section
+            title="Cor do Projeto"
+            description="Escolha uma cor para identificar visualmente o projeto"
+            icon={<Palette size={16} style={{ color: projectColor }} />}
+            accentColor={projectColor}
+          >
+            <ColorPickerWithPreview
+              value={projectConfig.color}
+              onChange={handleColorChange}
+              onSave={saveColor}
+              isSaving={updateProjectMutation.isPending}
+              saved={colorSaved}
+            />
+          </Section>
+
+          <Section
+            title="Rotas"
+            description="Diretórios do projeto para navegação rápida"
+            icon={<RouteIcon size={16} className="text-muted-foreground" />}
+            headerAction={
+              <Button variant="ghost" size="sm" onClick={addRoute} className="gap-1.5">
+                <Plus size={14} />
+                Adicionar
+              </Button>
+            }
+          >
+            <ul className="space-y-2">
               {getSortedRoutes().map((route, index) => {
                 const routeName = getRouteNameFromPath(route.path);
                 const isRoot = isRootRoute(route);
                 const isDragging = draggingRouteIndex === index;
+
                 return (
-                  <div
+                  <DraggableItem
                     key={route.id}
-                    role="listitem"
-                    className={`flex items-center gap-2 bg-background p-2 border border-muted cursor-grab ${isDragging ? "opacity-10" : ""}`}
-                    draggable
+                    isDragging={isDragging}
                     onDragStart={(e) => handleRouteDragStart(e, index)}
                     onDragOver={(e) => handleRouteDragOver(e, index)}
                     onDragEnd={handleRouteDragEnd}
                   >
-                    <span className="text-muted-foreground/50 cursor-grab select-none">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <circle cx="9" cy="5" r="2"></circle>
-                        <circle cx="9" cy="12" r="2"></circle>
-                        <circle cx="9" cy="19" r="2"></circle>
-                        <circle cx="15" cy="5" r="2"></circle>
-                        <circle cx="15" cy="12" r="2"></circle>
-                        <circle cx="15" cy="19" r="2"></circle>
-                      </svg>
-                    </span>
-                    <span
-                      className={`w-24 px-2 py-1 text-sm ${isRoot ? "text-muted-foreground" : "text-foreground"}`}
+                    <Badge
+                      variant={isRoot ? "muted" : "outline"}
+                      className="w-20 justify-center flex-shrink-0"
                     >
                       {isRoot ? "root" : routeName}
-                    </span>
+                    </Badge>
                     <input
                       type="text"
                       value={route.path}
                       onChange={(e) => updateRoutePath(route.id, e.target.value)}
                       onBlur={() => handleRoutePathChange(route)}
                       disabled={isRoot}
-                      className="flex-1 px-2 py-1 bg-transparent border border-transparent text-muted-foreground text-sm focus:border-border focus:outline-none disabled:text-muted-foreground"
+                      className={cn(
+                        "flex-1 px-2 py-1 bg-transparent text-muted-foreground text-sm font-mono",
+                        "border border-transparent focus:border-border focus:outline-none",
+                        "disabled:text-muted-foreground/60"
+                      )}
                     />
                     {route.env_path && (
-                      <button
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => route.env_path && openEnvFile(route.env_path)}
-                        className="px-2 py-1 text-xs text-muted-foreground hover:text-accent transition-colors"
+                        className="text-xs"
                       >
                         .env
-                      </button>
+                      </Button>
                     )}
                     {!isRoot && (
                       <button
+                        type="button"
                         onClick={() => confirmRemoveRoute(route.id)}
-                        className="px-2 py-1 text-muted-foreground hover:text-destructive transition-colors"
+                        className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
                       >
-                        x
+                        <X size={14} />
                       </button>
                     )}
-                  </div>
+                  </DraggableItem>
                 );
               })}
-            </div>
-          </div>
+            </ul>
+          </Section>
 
-          <div className="bg-card border border-border p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className="text-sm text-muted-foreground uppercase tracking-wide">Tabs do Tmux</h3>
-                <p className="text-xs text-muted-foreground">
-                  Session: {projectConfig.tmux_config.session_name}
-                </p>
-              </div>
-              <button
-                onClick={addTmuxTab}
-                className="text-xs text-primary hover:text-primary/80 transition-colors"
-              >
-                + Adicionar
-              </button>
-            </div>
-
-            <div className="space-y-1" role="list">
+          <Section
+            title="Tabs do Tmux"
+            description={`Sessão: ${projectConfig.tmux_config.session_name}`}
+            icon={<Terminal size={16} className="text-muted-foreground" />}
+            headerAction={
+              <Button variant="ghost" size="sm" onClick={addTmuxTab} className="gap-1.5">
+                <Plus size={14} />
+                Adicionar
+              </Button>
+            }
+          >
+            <ul className="space-y-2">
               {getSortedTabs().map((tab, index) => {
                 const isOcTab = isRootTab(tab);
                 const isDragging = draggingTabIndex === index;
+
                 return (
-                  <div
+                  <DraggableItem
                     key={tab.id}
-                    role="listitem"
-                    className={`flex items-center gap-2 bg-background p-2 border border-muted cursor-grab ${isDragging ? "opacity-10" : ""}`}
-                    draggable
+                    isDragging={isDragging}
                     onDragStart={(e) => handleTabDragStart(e, index)}
                     onDragOver={(e) => handleTabDragOver(e, index)}
                     onDragEnd={handleTabDragEnd}
                   >
-                    <span className="text-muted-foreground/50 cursor-grab select-none">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        width="12"
-                        height="12"
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                      >
-                        <circle cx="9" cy="5" r="2"></circle>
-                        <circle cx="9" cy="12" r="2"></circle>
-                        <circle cx="9" cy="19" r="2"></circle>
-                        <circle cx="15" cy="5" r="2"></circle>
-                        <circle cx="15" cy="12" r="2"></circle>
-                        <circle cx="15" cy="19" r="2"></circle>
-                      </svg>
+                    <span className="text-muted-foreground text-sm w-6 flex-shrink-0">
+                      {index + 1}.
                     </span>
-                    <span className="text-muted-foreground text-sm w-6">{index + 1}.</span>
                     <input
                       type="text"
                       value={tab.name}
                       onChange={(e) => updateTabName(tab.id, e.target.value)}
                       onBlur={() => saveTmuxConfig(projectConfig.tmux_config)}
                       placeholder="nome"
-                      className="w-24 px-2 py-1 bg-transparent border border-transparent text-foreground text-sm focus:border-border focus:outline-none"
+                      className={cn(
+                        "w-24 px-2 py-1 bg-transparent text-foreground text-sm",
+                        "border border-transparent focus:border-border focus:outline-none"
+                      )}
                     />
-                    <span className="text-muted-foreground">-&gt;</span>
+                    <span className="text-muted-foreground/50">→</span>
                     <Select
                       value={tab.route_id}
                       options={getRouteOptions()}
                       onChange={(newRouteId) => handleTabRouteChange(tab, newRouteId)}
                     />
-                    <span className="text-muted-foreground text-xs">cmd:</span>
+                    <span className="text-muted-foreground/50 text-xs">cmd:</span>
                     <input
                       type="text"
                       value={tab.startup_command || ""}
                       onChange={(e) => updateTabCommand(tab.id, e.target.value)}
                       onBlur={() => saveTmuxConfig(projectConfig.tmux_config)}
                       placeholder="-"
-                      className="flex-1 px-2 py-1 bg-transparent border border-transparent text-muted-foreground text-sm focus:border-border focus:outline-none"
+                      className={cn(
+                        "flex-1 px-2 py-1 bg-transparent text-muted-foreground text-sm font-mono",
+                        "border border-transparent focus:border-border focus:outline-none"
+                      )}
                     />
                     {!isOcTab && (
                       <button
+                        type="button"
                         onClick={() => confirmRemoveTmuxTab(tab.id)}
-                        className="px-2 py-1 text-muted-foreground hover:text-destructive transition-colors"
+                        className="p-1.5 text-muted-foreground hover:text-destructive transition-colors"
                       >
-                        x
+                        <X size={14} />
                       </button>
                     )}
-                  </div>
+                  </DraggableItem>
                 );
               })}
+            </ul>
+          </Section>
+
+          <Section
+            title="Resumo da Aplicação"
+            description="Documente regras de negócio, arquitetura e contexto"
+            icon={<FileText size={16} className="text-muted-foreground" />}
+          >
+            <div className="space-y-3">
+              <textarea
+                value={projectConfig.business_rules || ""}
+                onChange={(e) =>
+                  setProjectConfig({ ...projectConfig, business_rules: e.target.value })
+                }
+                onBlur={saveBusinessRules}
+                placeholder="Documente aqui o resumo da aplicação, regras de negócio, arquitetura, etc..."
+                rows={8}
+                className={cn(
+                  "w-full px-3 py-2 bg-background border border-border text-foreground text-sm",
+                  "resize-y focus:border-primary focus:outline-none transition-colors"
+                )}
+              />
+              {businessRulesSaved && (
+                <Badge variant="outline" className="gap-1.5 text-accent border-accent/40">
+                  <Check size={12} />
+                  Salvo
+                </Badge>
+              )}
             </div>
-          </div>
+          </Section>
 
-          <div className="bg-card border border-border p-4">
-            <h3 className="text-sm text-muted-foreground uppercase tracking-wide mb-3">
-              Resumo da Aplicacao
-            </h3>
-            <textarea
-              value={projectConfig.business_rules || ""}
-              onChange={(e) =>
-                setProjectConfig({ ...projectConfig, business_rules: e.target.value })
-              }
-              onBlur={saveBusinessRules}
-              placeholder="Documente aqui o resumo da aplicacao, regras de negocio, arquitetura, etc..."
-              rows={8}
-              className="w-full px-3 py-2 bg-background border border-border text-foreground text-sm resize-y focus:border-primary focus:outline-none"
-            />
-          </div>
-
-          <div className="bg-card border border-destructive/30 p-4">
-            <h3 className="text-sm text-destructive uppercase tracking-wide mb-3">Zona de Perigo</h3>
-            <p className="text-xs text-muted-foreground mb-4">
-              Acao irreversivel. Ao excluir o projeto, todas as tarefas associadas tambem serao
-              removidas.
-            </p>
-            <button
-              onClick={confirmDeleteProject}
-              className="px-4 py-2 bg-popover border border-destructive text-destructive text-sm hover:bg-destructive hover:text-background transition-colors"
-            >
-              Excluir Projeto
-            </button>
-          </div>
+          <Section
+            title="Zona de Perigo"
+            description="Ação irreversível - todos os dados serão perdidos"
+            icon={<AlertTriangle size={16} />}
+            danger
+          >
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-foreground">Excluir projeto</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Ao excluir, todas as tarefas associadas também serão removidas.
+                </p>
+              </div>
+              <Button variant="destructive" onClick={confirmDeleteProject} className="gap-2">
+                <Trash2 size={14} />
+                Excluir Projeto
+              </Button>
+            </div>
+          </Section>
         </div>
       </div>
     </>

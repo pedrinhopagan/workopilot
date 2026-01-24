@@ -12,6 +12,16 @@ export const projectsRouter = router({
       return ctx.sdk.projects.get(input.id);
     }),
 
+  getStats: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      return ctx.sdk.projects.getStats(input.projectId);
+    }),
+
+  getAllStats: publicProcedure.query(async ({ ctx }) => {
+    return ctx.sdk.projects.getAllStats();
+  }),
+
   create: publicProcedure
     .input(
       z.object({

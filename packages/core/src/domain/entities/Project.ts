@@ -52,3 +52,13 @@ export interface UpdateProjectInput {
   display_order?: number;
   color?: string | null;
 }
+
+export interface ProjectStats {
+  project_id: string;
+  total_tasks: number;
+  pending_tasks: number;
+  in_progress_tasks: number;
+  done_tasks: number;
+  completion_percent: number;
+  last_task_modified_at: string | null;
+}

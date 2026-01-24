@@ -3,6 +3,7 @@ import type {
   Project,
   CreateProjectInput,
   UpdateProjectInput,
+  ProjectStats,
 } from '@workopilot/core';
 
 export class ProjectsModule {
@@ -14,6 +15,14 @@ export class ProjectsModule {
 
   async list(): Promise<Project[]> {
     return this.core.projects.findAll();
+  }
+
+  async getStats(projectId: string): Promise<ProjectStats> {
+    return this.core.projects.getStats(projectId);
+  }
+
+  async getAllStats(): Promise<ProjectStats[]> {
+    return this.core.projects.getAllStats();
   }
 
   async create(input: CreateProjectInput): Promise<Project> {
