@@ -12,3 +12,7 @@ vite.config.ts.timestamp-*
 /.workopilot
 /.cursor
 /.opencode
+
+# Release artifacts
+/aur/workopilot-linux-x86_64/
+/aur/*.tar.gz
