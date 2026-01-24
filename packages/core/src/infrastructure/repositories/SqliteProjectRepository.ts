@@ -1,7 +1,7 @@
-import { Kysely } from 'kysely';
+import { Kysely, sql } from 'kysely';
 import type { Database, ProjectRow } from '../database/schema';
 import type { ProjectRepository } from '../../application/ports/ProjectRepository';
-import type { Project, CreateProjectInput, UpdateProjectInput, TmuxConfig, ProjectRoute } from '../../domain/entities/Project';
+import type { Project, CreateProjectInput, UpdateProjectInput, TmuxConfig, ProjectRoute, ProjectStats } from '../../domain/entities/Project';
 
 function generateId(): string {
   return crypto.randomUUID();
@@ -54,6 +54,84 @@ export class SqliteProjectRepository implements ProjectRepository {
       .execute();
 
     return rows.map(rowToProject);
+  }
+
+  async getStats(projectId: string): Promise<ProjectStats> {
+    const result = await this.db
+      .selectFrom('tasks')
+      .select([
+        sql<number>`COUNT(*)`.as('total_tasks'),
+        sql<number>`SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END)`.as('pending_tasks'),
+        sql<number>`SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END)`.as('in_progress_tasks'),
+        sql<number>`SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END)`.as('done_tasks'),
+        sql<string | null>`MAX(modified_at)`.as('last_task_modified_at'),
+      ])
+      .where('project_id', '=', projectId)
+      .executeTakeFirst();
+
+    const total = Number(result?.total_tasks ?? 0);
+    const done = Number(result?.done_tasks ?? 0);
+    const completionPercent = total > 0 ? Math.round((done / total) * 100) : 0;
+
+    return {
+      project_id: projectId,
+      total_tasks: total,
+      pending_tasks: Number(result?.pending_tasks ?? 0),
+      in_progress_tasks: Number(result?.in_progress_tasks ?? 0),
+      done_tasks: done,
+      completion_percent: completionPercent,
+      last_task_modified_at: result?.last_task_modified_at ?? null,
+    };
+  }
+
+  async getAllStats(): Promise<ProjectStats[]> {
+    const projects = await this.db
+      .selectFrom('projects')
+      .select('id')
+      .execute();
+
+    const result = await this.db
+      .selectFrom('tasks')
+      .select([
+        'project_id',
+        sql<number>`COUNT(*)`.as('total_tasks'),
+        sql<number>`SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END)`.as('pending_tasks'),
+        sql<number>`SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END)`.as('in_progress_tasks'),
+        sql<number>`SUM(CASE WHEN status = 'done' THEN 1 ELSE 0 END)`.as('done_tasks'),
+        sql<string | null>`MAX(modified_at)`.as('last_task_modified_at'),
+      ])
+      .where('project_id', 'is not', null)
+      .groupBy('project_id')
+      .execute();
+
+    const statsMap = new Map<string, ProjectStats>();
+    
+    for (const row of result) {
+      if (!row.project_id) continue;
+      const total = Number(row.total_tasks ?? 0);
+      const done = Number(row.done_tasks ?? 0);
+      const completionPercent = total > 0 ? Math.round((done / total) * 100) : 0;
+
+      statsMap.set(row.project_id, {
+        project_id: row.project_id,
+        total_tasks: total,
+        pending_tasks: Number(row.pending_tasks ?? 0),
+        in_progress_tasks: Number(row.in_progress_tasks ?? 0),
+        done_tasks: done,
+        completion_percent: completionPercent,
+        last_task_modified_at: row.last_task_modified_at ?? null,
+      });
+    }
+
+    return projects.map((p) => statsMap.get(p.id) ?? {
+      project_id: p.id,
+      total_tasks: 0,
+      pending_tasks: 0,
+      in_progress_tasks: 0,
+      done_tasks: 0,
+      completion_percent: 0,
+      last_task_modified_at: null,
+    });
   }
 
   async create(input: CreateProjectInput): Promise<Project> {

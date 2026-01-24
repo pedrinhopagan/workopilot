@@ -30,6 +30,7 @@ export type {
   ProjectRoute,
   TmuxConfig,
   TmuxTab,
+  ProjectStats,
 } from '@workopilot/core';
 
 export type { Setting } from '@workopilot/core';

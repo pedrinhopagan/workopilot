@@ -37,10 +37,18 @@ export const taskDetailSearchSchema = z.object({
 
 export type TaskDetailSearch = z.infer<typeof taskDetailSearchSchema>;
 
+export const projectSortByEnum = z.enum(["name", "activity", "pending_tasks", "created_at"]);
+export const projectSortOrderEnum = z.enum(["asc", "desc"]);
+export const projectStatusFilterEnum = z.enum(["all", "active", "archived"]);
+
 export const projectsSearchSchema = z.object({
 	newProject: z.enum(["true", "false"]).optional().catch(undefined),
 	projectId: optionalString(),
 	tab: z.enum(["dashboard", "settings", "tmux"]).optional().catch("dashboard"),
+	q: optionalString(),
+	sortBy: projectSortByEnum.optional().catch("activity"),
+	sortOrder: projectSortOrderEnum.optional().catch("desc"),
+	status: projectStatusFilterEnum.optional().catch("all"),
 });
 
 export type ProjectsSearch = z.infer<typeof projectsSearchSchema>;
