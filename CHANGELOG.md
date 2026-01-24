@@ -5,6 +5,30 @@ All notable changes to WorkoPilot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-01-24
+
+### Changes
+- chore: remove release artifacts from git, add to gitignore
+- build
+- agents md
+- projects rework completed
+- refactor(terminal): centralizar gerenciamento de terminal em módulo dedicado
+- cleanup
+- migração pra trpc concluída
+- chore: update dependencies and lockfiles
+- docs: update documentation and add coding standards
+- refactor(routes): update all routes and add home dashboard
+- refactor(frontend): update hooks, stores, types and services
+- feat(lib): add taskProgressState constants and search schemas
+- refactor(components): update shared components and remove deprecated
+- feat(ui): add shadcn/ui component library
+- refactor(tauri): update Rust backend commands and activity logger
+- chore(cli): remove generated artifacts and lockfile
+- refactor(sdk/sidecar): update TasksModule and handlers
+- refactor(core): update domain entities, ports, repositories and migrations
+- chore: add dist/ to gitignore - build artifacts should not be committed
+- feat(cli): add sync-skills command with plugin auto-sync
+
 ## [0.5.0] - 2026-01-22
 
 ### Changes
