@@ -107,7 +107,7 @@ export function useGetTaskQuery(initialProjectId: string | null = null): TaskQue
 	};
 }
 
-export const TASK_CATEGORIES = ["feature", "bug", "refactor", "test", "docs"] as const;
+export const TASK_CATEGORIES = ["feature", "bug", "refactor", "research", "documentation"] as const;
 
 export const TASK_PRIORITIES = [
 	{ value: 1, label: "Alta", color: "bg-[#bc5653]" },
