@@ -4,4 +4,3 @@ export * from './Project';
 export * from './Execution';
 export * from './Log';
 export * from './Settings';
-export * from './TaskImage';

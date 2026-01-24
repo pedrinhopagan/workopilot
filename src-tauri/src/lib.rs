@@ -54,12 +54,6 @@ pub fn run() {
             // AI commands
             commands::get_ai_suggestion,
             commands::launch_quickfix_background,
-            // Task images
-            commands::add_task_image,
-            commands::add_task_image_from_path,
-            commands::get_task_images,
-            commands::get_task_image,
-            commands::delete_task_image,
             // User sessions
             commands::get_user_sessions,
             // Skills sync

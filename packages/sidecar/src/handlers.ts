@@ -1,3 +1,8 @@
+/**
+ * @deprecated JSON-RPC handlers are legacy. Use tRPC for new integrations.
+ * These handlers are still used by Rust sidecar calls (terminal.rs, commands.rs).
+ * Plan: Migrate Rust to use tRPC HTTP calls, then remove this file.
+ */
 import { WorkoPilotSDK } from '@workopilot/sdk';
 import type { JsonRpcRequest, JsonRpcResponse } from './types';
 import { createSuccessResponse, createErrorResponse, JSON_RPC_ERRORS } from './types';

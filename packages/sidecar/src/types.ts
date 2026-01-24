@@ -1,3 +1,6 @@
+/**
+ * @deprecated JSON-RPC types are legacy. Use tRPC for new integrations.
+ */
 export interface JsonRpcRequest {
   jsonrpc: '2.0';
   id: string | number;

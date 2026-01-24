@@ -107,15 +107,6 @@ export interface TaskTerminalsTable {
   updated_at: string;
 }
 
-export interface TaskImagesTable {
-  id: string;
-  task_id: string;
-  data: Uint8Array;
-  mime_type: string;
-  file_name: string;
-  created_at: Generated<string>;
-}
-
 export interface ActivityLogsTable {
   id: string;
   event_type: string;
@@ -143,7 +134,6 @@ export interface Database {
   operation_logs: OperationLogsTable;
   task_executions: TaskExecutionsTable;
   task_terminals: TaskTerminalsTable;
-  task_images: TaskImagesTable;
   activity_logs: ActivityLogsTable;
   user_sessions: UserSessionsTable;
 }
@@ -154,7 +144,6 @@ export type SubtaskRow = Selectable<SubtasksTable>;
 export type LogRow = Selectable<LogsTable>;
 export type TaskExecutionRow = Selectable<TaskExecutionsTable>;
 export type TaskTerminalRow = Selectable<TaskTerminalsTable>;
-export type TaskImageRow = Selectable<TaskImagesTable>;
 export type ActivityLogRow = Selectable<ActivityLogsTable>;
 export type OperationLogRow = Selectable<OperationLogsTable>;
 

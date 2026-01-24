@@ -282,28 +282,6 @@ async function ensureTaskTerminalsTable(db: Kysely<Database>): Promise<Migration
   return { name: 'create_task_terminals_table', success: true, message: 'Table created with indexes' };
 }
 
-async function ensureTaskImagesTable(db: Kysely<Database>): Promise<MigrationResult> {
-  const exists = await tableExists(db, 'task_images');
-  if (exists) {
-    return { name: 'ensure_task_images_table', success: true, message: 'Table already exists' };
-  }
-
-  await sql`
-    CREATE TABLE task_images (
-      id TEXT PRIMARY KEY,
-      task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-      data BLOB NOT NULL,
-      mime_type TEXT NOT NULL,
-      file_name TEXT NOT NULL,
-      created_at TEXT DEFAULT CURRENT_TIMESTAMP
-    )
-  `.execute(db);
-
-  await sql`CREATE INDEX idx_task_images_task_id ON task_images(task_id)`.execute(db);
-
-  return { name: 'create_task_images_table', success: true, message: 'Table created with index' };
-}
-
 async function ensureActivityLogsTable(db: Kysely<Database>): Promise<MigrationResult> {
   const exists = await tableExists(db, 'activity_logs');
   if (exists) {
@@ -462,7 +440,6 @@ export async function runMigrations(db: Kysely<Database>): Promise<MigrationResu
     results.push(await ensureOperationLogsTable(db));
     results.push(await ensureTaskExecutionsTable(db));
     results.push(await ensureTaskTerminalsTable(db));
-    results.push(await ensureTaskImagesTable(db));
     results.push(await ensureActivityLogsTable(db));
     results.push(await ensureUserSessionsTable(db));
     results.push(await migrateTaskStatusValues(db));
