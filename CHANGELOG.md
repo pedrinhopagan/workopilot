@@ -5,6 +5,30 @@ All notable changes to WorkoPilot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.4] - 2026-01-24
+
+### Changes
+- fixes queries
+- chore: bump version to v0.6.3
+- fix(sidecar): use nullish() for optional filters in listFullPaginated
+- chore: bump version to v0.6.1
+- chore: cleanup exports and build artifacts
+- fix: convert null to undefined for priority/category filters
+- fix: sync TASK_CATEGORIES with backend schema
+- chore: bump version to v0.6.0
+- chore: remove release artifacts from git, add to gitignore
+- build
+- agents md
+- projects rework completed
+- refactor(terminal): centralizar gerenciamento de terminal em módulo dedicado
+- cleanup
+- migração pra trpc concluída
+- chore: update dependencies and lockfiles
+- docs: update documentation and add coding standards
+- refactor(routes): update all routes and add home dashboard
+- refactor(frontend): update hooks, stores, types and services
+- feat(lib): add taskProgressState constants and search schemas
+
 ## [0.6.3] - 2026-01-24
 
 ### Changes
