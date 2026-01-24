@@ -66,6 +66,9 @@ cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.t
 cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts get-task {taskId}
 ```
 
+**Salve os dados inicias da tarefa como `main_prompt`** - Este é o prompt original do usuario e NAO deve ser modificado pela IA posteriormente.
+
+
 2. **Identificar o projeto vinculado** e ler documentacao tecnica:
    - Buscar `AGENTS.md` na raiz do projeto para entender stack, estrutura e padroes
    - Buscar `README.md` para contexto adicional
@@ -83,8 +86,6 @@ Conduza uma entrevista detalhada seguindo estas etapas:
 #### 2.1 Entendimento do Problema
 Pergunte ao usuario:
 > "Descreva em detalhes o problema que voce quer resolver. Qual e o objetivo final desta task?"
-
-**Salve a resposta como `main_prompt`** - Este e o prompt original do usuario e NAO deve ser modificado pela IA posteriormente.
 
 #### 2.2 Exploracao do Codebase
 - Verifique as assercoes do usuario explorando o codigo relevante
