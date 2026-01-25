@@ -428,6 +428,101 @@ async function migrateTasksSchemaV2(db: Kysely<Database>): Promise<MigrationResu
   };
 }
 
+async function ensureCategoriesTable(db: Kysely<Database>): Promise<MigrationResult> {
+  const exists = await tableExists(db, 'categories');
+  if (exists) {
+    return { name: 'ensure_categories_table', success: true, message: 'Table already exists' };
+  }
+
+  await sql`
+    CREATE TABLE categories (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      color TEXT,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `.execute(db);
+
+  await sql`CREATE INDEX idx_categories_display_order ON categories(display_order)`.execute(db);
+
+  return { name: 'create_categories_table', success: true, message: 'Table created with index' };
+}
+
+async function ensureUrgenciesTable(db: Kysely<Database>): Promise<MigrationResult> {
+  const exists = await tableExists(db, 'urgencies');
+  if (exists) {
+    return { name: 'ensure_urgencies_table', success: true, message: 'Table already exists' };
+  }
+
+  await sql`
+    CREATE TABLE urgencies (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      level INTEGER NOT NULL,
+      color TEXT NOT NULL,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `.execute(db);
+
+  await sql`CREATE INDEX idx_urgencies_display_order ON urgencies(display_order)`.execute(db);
+  await sql`CREATE INDEX idx_urgencies_level ON urgencies(level)`.execute(db);
+
+  return { name: 'create_urgencies_table', success: true, message: 'Table created with indexes' };
+}
+
+async function seedCategoriesDefaults(db: Kysely<Database>): Promise<MigrationResult> {
+  const result = await sql<{ count: number }>`SELECT COUNT(*) as count FROM categories`.execute(db);
+  const count = result.rows[0]?.count ?? 0;
+  
+  if (count > 0) {
+    return { name: 'seed_categories_defaults', success: true, message: 'Categories already seeded' };
+  }
+
+  const defaultCategories = [
+    { id: 'cat_feature', name: 'feature', color: '#6366f1', display_order: 0 },
+    { id: 'cat_bug', name: 'bug', color: '#ef4444', display_order: 1 },
+    { id: 'cat_refactor', name: 'refactor', color: '#8b5cf6', display_order: 2 },
+    { id: 'cat_research', name: 'research', color: '#06b6d4', display_order: 3 },
+    { id: 'cat_documentation', name: 'documentation', color: '#84cc16', display_order: 4 },
+    { id: 'cat_fix', name: 'fix', color: '#f97316', display_order: 5 },
+  ];
+
+  for (const cat of defaultCategories) {
+    await sql`
+      INSERT INTO categories (id, name, color, display_order)
+      VALUES (${cat.id}, ${cat.name}, ${cat.color}, ${cat.display_order})
+    `.execute(db);
+  }
+
+  return { name: 'seed_categories_defaults', success: true, message: `Inserted ${defaultCategories.length} default categories` };
+}
+
+async function seedUrgenciesDefaults(db: Kysely<Database>): Promise<MigrationResult> {
+  const result = await sql<{ count: number }>`SELECT COUNT(*) as count FROM urgencies`.execute(db);
+  const count = result.rows[0]?.count ?? 0;
+  
+  if (count > 0) {
+    return { name: 'seed_urgencies_defaults', success: true, message: 'Urgencies already seeded' };
+  }
+
+  const defaultUrgencies = [
+    { id: 'urg_alta', name: 'Alta', level: 1, color: '#bc5653', display_order: 0 },
+    { id: 'urg_media', name: 'Média', level: 2, color: '#ebc17a', display_order: 1 },
+    { id: 'urg_baixa', name: 'Baixa', level: 3, color: '#8b7355', display_order: 2 },
+  ];
+
+  for (const urg of defaultUrgencies) {
+    await sql`
+      INSERT INTO urgencies (id, name, level, color, display_order)
+      VALUES (${urg.id}, ${urg.name}, ${urg.level}, ${urg.color}, ${urg.display_order})
+    `.execute(db);
+  }
+
+  return { name: 'seed_urgencies_defaults', success: true, message: `Inserted ${defaultUrgencies.length} default urgencies` };
+}
+
 export async function runMigrations(db: Kysely<Database>): Promise<MigrationResult[]> {
   const results: MigrationResult[] = [];
 
@@ -445,6 +540,10 @@ export async function runMigrations(db: Kysely<Database>): Promise<MigrationResu
     results.push(await migrateTaskStatusValues(db));
     results.push(await migrateTasksSchemaV2(db));
     results.push(await migrateProjectsColor(db));
+    results.push(await ensureCategoriesTable(db));
+    results.push(await ensureUrgenciesTable(db));
+    results.push(await seedCategoriesDefaults(db));
+    results.push(await seedUrgenciesDefaults(db));
   } catch (error) {
     results.push({
       name: 'migration_error',

@@ -3,3 +3,5 @@ export { SqliteSubtaskRepository } from './SqliteSubtaskRepository';
 export { SqliteProjectRepository } from './SqliteProjectRepository';
 export { SqliteExecutionRepository } from './SqliteExecutionRepository';
 export { SqliteSettingsRepository } from './SqliteSettingsRepository';
+export { SqliteCategoryRepository } from './SqliteCategoryRepository';
+export { SqliteUrgencyRepository } from './SqliteUrgencyRepository';

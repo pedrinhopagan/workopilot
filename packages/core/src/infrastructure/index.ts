@@ -10,12 +10,16 @@ import { SqliteSubtaskRepository } from './repositories/SqliteSubtaskRepository'
 import { SqliteProjectRepository } from './repositories/SqliteProjectRepository';
 import { SqliteExecutionRepository } from './repositories/SqliteExecutionRepository';
 import { SqliteSettingsRepository } from './repositories/SqliteSettingsRepository';
+import { SqliteCategoryRepository } from './repositories/SqliteCategoryRepository';
+import { SqliteUrgencyRepository } from './repositories/SqliteUrgencyRepository';
 
 import type { TaskRepository } from '../application/ports/TaskRepository';
 import type { SubtaskRepository } from '../application/ports/SubtaskRepository';
 import type { ProjectRepository } from '../application/ports/ProjectRepository';
 import type { ExecutionRepository } from '../application/ports/ExecutionRepository';
 import type { SettingsRepository } from '../application/ports/SettingsRepository';
+import type { CategoryRepository } from '../application/ports/CategoryRepository';
+import type { UrgencyRepository } from '../application/ports/UrgencyRepository';
 
 export interface Core {
   db: Kysely<Database>;
@@ -26,6 +30,8 @@ export interface Core {
   projects: ProjectRepository;
   executions: ExecutionRepository;
   settings: SettingsRepository;
+  categories: CategoryRepository;
+  urgencies: UrgencyRepository;
   
   migrate(): Promise<MigrationResult[]>;
   close(): Promise<void>;
@@ -48,6 +54,8 @@ export async function createCore(options?: CreateCoreOptions): Promise<Core> {
   const projects = new SqliteProjectRepository(connection.db);
   const executions = new SqliteExecutionRepository(connection.db);
   const settings = new SqliteSettingsRepository(connection.db);
+  const categories = new SqliteCategoryRepository(connection.db);
+  const urgencies = new SqliteUrgencyRepository(connection.db);
 
   return {
     db: connection.db,
@@ -57,6 +65,8 @@ export async function createCore(options?: CreateCoreOptions): Promise<Core> {
     projects,
     executions,
     settings,
+    categories,
+    urgencies,
     migrate: () => runMigrations(connection.db),
     close: () => connection.close(),
   };

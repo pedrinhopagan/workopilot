@@ -125,6 +125,23 @@ export interface UserSessionsTable {
   app_version: string | null;
 }
 
+export interface CategoriesTable {
+  id: string;
+  name: string;
+  color: string | null;
+  display_order: number;
+  created_at: Generated<string>;
+}
+
+export interface UrgenciesTable {
+  id: string;
+  name: string;
+  level: number;
+  color: string;
+  display_order: number;
+  created_at: Generated<string>;
+}
+
 export interface Database {
   projects: ProjectsTable;
   tasks: TasksTable;
@@ -136,6 +153,8 @@ export interface Database {
   task_terminals: TaskTerminalsTable;
   activity_logs: ActivityLogsTable;
   user_sessions: UserSessionsTable;
+  categories: CategoriesTable;
+  urgencies: UrgenciesTable;
 }
 
 export type ProjectRow = Selectable<ProjectsTable>;
@@ -157,3 +176,12 @@ export type ProjectUpdate = Updateable<ProjectsTable>;
 export type TaskUpdate = Updateable<TasksTable>;
 export type SubtaskUpdate = Updateable<SubtasksTable>;
 export type TaskExecutionUpdate = Updateable<TaskExecutionsTable>;
+
+export type CategoryRow = Selectable<CategoriesTable>;
+export type UrgencyRow = Selectable<UrgenciesTable>;
+
+export type NewCategory = Insertable<CategoriesTable>;
+export type NewUrgency = Insertable<UrgenciesTable>;
+
+export type CategoryUpdate = Updateable<CategoriesTable>;
+export type UrgencyUpdate = Updateable<UrgenciesTable>;

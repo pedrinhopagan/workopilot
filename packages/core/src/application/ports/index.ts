@@ -3,3 +3,5 @@ export type { SubtaskRepository } from './SubtaskRepository';
 export type { ProjectRepository } from './ProjectRepository';
 export type { ExecutionRepository } from './ExecutionRepository';
 export type { SettingsRepository } from './SettingsRepository';
+export type { CategoryRepository } from './CategoryRepository';
+export type { UrgencyRepository } from './UrgencyRepository';
