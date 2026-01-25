@@ -121,7 +121,7 @@ export function useTaskForm({
 			}
 			saveTimeoutRef.current = setTimeout(() => {
 				saveTask(values);
-			}, 300);
+			}, 500);
 		},
 		[saveTask],
 	);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type TaskStatus } from "../../../../lib/constants/taskStatus";
 import { openCodeService } from "../../../../services/opencode";
 import { safeInvoke, safeListen } from "../../../../services/tauri";
@@ -22,13 +22,14 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 	const {
 		task,
 		taskFull,
+		project,
 		projectPath,
 		activeExecution,
-		taskImages,
 		isLoading,
 		refetch,
-		refetchImages,
 	} = useGetTaskFullQuery({ taskId });
+
+	const projectColor = project?.color || undefined;
 
 	const {
 		form,
@@ -51,12 +52,14 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 
 	const [isOpenCodeConnected, setIsOpenCodeConnected] = useState(false);
 	const [localTechnicalNotes, setLocalTechnicalNotes] = useState("");
+	const [localDescription, setLocalDescription] = useState("");
+	const isDescriptionFocusedRef = useRef(false);
+	const isTechnicalNotesFocusedRef = useRef(false);
+	const localDescriptionRef = useRef("");
+	const localTechnicalNotesRef = useRef("");
 	const [isAdjusting, setIsAdjusting] = useState(false);
 	const [adjustingPrompt, setAdjustingPrompt] = useState<string | null>(null);
 	const [quickfixInput, setQuickfixInput] = useState("");
-	const [viewingImageId, setViewingImageId] = useState<string | null>(null);
-	const [viewingImageUrl, setViewingImageUrl] = useState<string | null>(null);
-	const [loadedImages, setLoadedImages] = useState<Map<string, { data: string; loading: boolean; error: string | null }>>(new Map());
 
 	const terminalActionMutation = useTerminalActionMutation();
 	const launchQuickfixMutation = useLaunchQuickfixMutation();
@@ -88,52 +91,18 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 
 	useEffect(() => {
 		if (taskFull) {
-			setLocalTechnicalNotes(taskFull.context.technical_notes || "");
+			if (!isTechnicalNotesFocusedRef.current) {
+				setLocalTechnicalNotes(taskFull.context.technical_notes || "");
+				localTechnicalNotesRef.current = taskFull.context.technical_notes || "";
+			}
+			if (!isDescriptionFocusedRef.current) {
+				setLocalDescription(taskFull.context.description || "");
+				localDescriptionRef.current = taskFull.context.description || "";
+			}
 		}
 	}, [taskFull]);
 
-	const loadImage = useCallback(
-		async (imageId: string) => {
-			const existing = loadedImages.get(imageId);
-			if (existing?.data || existing?.loading) return;
 
-			setLoadedImages((prev) => {
-				const next = new Map(prev);
-				next.set(imageId, { data: "", loading: true, error: null });
-				return next;
-			});
-
-			try {
-				const result = await safeInvoke<{ data: string; mime_type: string }>("get_task_image", { imageId });
-				setLoadedImages((prev) => {
-					const next = new Map(prev);
-					next.set(imageId, {
-						data: `data:${result.mime_type};base64,${result.data}`,
-						loading: false,
-						error: null,
-					});
-					return next;
-				});
-			} catch (err) {
-				setLoadedImages((prev) => {
-					const next = new Map(prev);
-					next.set(imageId, {
-						data: "",
-						loading: false,
-						error: err instanceof Error ? err.message : "Erro ao carregar",
-					});
-					return next;
-				});
-			}
-		},
-		[loadedImages],
-	);
-
-	useEffect(() => {
-		for (const img of taskImages) {
-			loadImage(img.id);
-		}
-	}, [taskImages, loadImage]);
 
 	useEffect(() => {
 		let unlistenTask: (() => void) | null = null;
@@ -284,43 +253,38 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 		saveField("priority", priority);
 	}
 
-	function handleDescriptionSave(value: string | null) {
-		saveContextField("description", value);
-	}
+	const handleDescriptionChange = useCallback((value: string) => {
+		setLocalDescription(value);
+		localDescriptionRef.current = value;
+	}, []);
 
-	async function handleImageUpload() {
-		await refetchImages();
-	}
+	const handleDescriptionFocus = useCallback(() => {
+		isDescriptionFocusedRef.current = true;
+	}, []);
 
-	async function handleImageDelete(imageId: string) {
-		try {
-			await safeInvoke("delete_task_image", { imageId });
-			await refetchImages();
-		} catch (e) {
-			console.error("Failed to delete image:", e);
+	const handleDescriptionBlur = useCallback(() => {
+		isDescriptionFocusedRef.current = false;
+		if (localDescriptionRef.current !== (taskFull?.context.description || "")) {
+			saveContextField("description", localDescriptionRef.current || null);
 		}
-	}
-
-	async function handleImageView(imageId: string) {
-		try {
-			const result = await safeInvoke<{ data: string; mime_type: string }>("get_task_image", { imageId });
-			setViewingImageUrl(`data:${result.mime_type};base64,${result.data}`);
-			setViewingImageId(imageId);
-		} catch (e) {
-			console.error("Failed to load image for viewing:", e);
-		}
-	}
-
-	function handleCloseImageModal() {
-		setViewingImageId(null);
-		setViewingImageUrl(null);
-	}
+	}, [taskFull?.context.description, saveContextField]);
 
 	function handleTechnicalNotesSave() {
-		if (localTechnicalNotes !== (taskFull?.context.technical_notes || "")) {
-			saveContextField("technical_notes", localTechnicalNotes || null);
+		if (localTechnicalNotesRef.current !== (taskFull?.context.technical_notes || "")) {
+			saveContextField("technical_notes", localTechnicalNotesRef.current || null);
 		}
 	}
+
+	useEffect(() => {
+		return () => {
+			if (localDescriptionRef.current !== (taskFull?.context.description || "")) {
+				saveContextField("description", localDescriptionRef.current || null);
+			}
+			if (localTechnicalNotesRef.current !== (taskFull?.context.technical_notes || "")) {
+				saveContextField("technical_notes", localTechnicalNotesRef.current || null);
+			}
+		};
+	}, [taskFull?.context.description, taskFull?.context.technical_notes, saveContextField]);
 
 	if (isLoading) {
 		return (
@@ -347,6 +311,7 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 				isSaving={isSaving}
 				aiUpdatedRecently={aiUpdatedRecently}
 				isOpenCodeConnected={isOpenCodeConnected}
+				projectColor={projectColor}
 				onTitleChange={handleTitleChange}
 				onTitleBlur={handleTitleBlur}
 				onCategoryChange={handleCategoryChange}
@@ -369,42 +334,44 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 				onFocusTerminal={handleFocusTerminal}
 			/>
 
-			<ManageTaskForm
-				taskId={taskId}
-				taskFull={taskFull}
-				taskImages={taskImages}
-				loadedImages={loadedImages}
-				activeExecution={activeExecution}
-				isBlocked={isBlocked}
-				isExecuting={isExecuting}
-				isAdjusting={isAdjusting}
-				adjustingPrompt={adjustingPrompt}
-				quickfixInput={quickfixInput}
-				isLaunchingQuickfix={launchQuickfixMutation.isPending}
-				onQuickfixInputChange={setQuickfixInput}
-				onLaunchQuickfix={handleLaunchQuickfix}
-				onDescriptionSave={handleDescriptionSave}
-				onImageUpload={handleImageUpload}
-				onImageDelete={handleImageDelete}
-				onImageView={handleImageView}
-				onAddSubtask={addSubtask}
-				onToggleSubtask={toggleSubtask}
-				onRemoveSubtask={removeSubtask}
-				onUpdateSubtask={updateSubtask}
-				onReorderSubtasks={reorderSubtasks}
-				onAddBusinessRule={addBusinessRule}
-				onRemoveBusinessRule={removeBusinessRule}
-				onAddAcceptanceCriteria={addAcceptanceCriteria}
-				onRemoveAcceptanceCriteria={removeAcceptanceCriteria}
-				onTechnicalNotesChange={setLocalTechnicalNotes}
-				onTechnicalNotesSave={handleTechnicalNotesSave}
-				localTechnicalNotes={localTechnicalNotes}
-				viewingImageId={viewingImageId}
-				viewingImageUrl={viewingImageUrl}
-				onCloseImageModal={handleCloseImageModal}
-			/>
+		<ManageTaskForm
+			taskId={taskId}
+			taskFull={taskFull}
+			activeExecution={activeExecution}
+			isBlocked={isBlocked}
+			isExecuting={isExecuting}
+			isAdjusting={isAdjusting}
+			adjustingPrompt={adjustingPrompt}
+			quickfixInput={quickfixInput}
+			isLaunchingQuickfix={launchQuickfixMutation.isPending}
+			onQuickfixInputChange={setQuickfixInput}
+			onLaunchQuickfix={handleLaunchQuickfix}
+			localDescription={localDescription}
+			onDescriptionChange={handleDescriptionChange}
+			onDescriptionFocus={handleDescriptionFocus}
+			onDescriptionBlur={handleDescriptionBlur}
+			onTechnicalNotesFocus={() => { isTechnicalNotesFocusedRef.current = true; }}
+			onTechnicalNotesBlur={() => {
+				isTechnicalNotesFocusedRef.current = false;
+				handleTechnicalNotesSave();
+			}}
+			onTechnicalNotesChange={(value) => {
+				setLocalTechnicalNotes(value);
+				localTechnicalNotesRef.current = value;
+			}}
+			onAddSubtask={addSubtask}
+			onToggleSubtask={toggleSubtask}
+			onRemoveSubtask={removeSubtask}
+			onUpdateSubtask={updateSubtask}
+			onReorderSubtasks={reorderSubtasks}
+			onAddBusinessRule={addBusinessRule}
+			onRemoveBusinessRule={removeBusinessRule}
+			onAddAcceptanceCriteria={addAcceptanceCriteria}
+			onRemoveAcceptanceCriteria={removeAcceptanceCriteria}
+			localTechnicalNotes={localTechnicalNotes}
+		/>
 
-			<div className="p-4 border-t border-border">
+			<div className="p-4 border-t border-border animate-slide-up-fade" style={{ animationDelay: "0.4s" }}>
 				<ManageTaskMetadata taskFull={taskFull} />
 			</div>
 		</>

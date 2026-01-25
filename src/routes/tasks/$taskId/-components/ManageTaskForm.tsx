@@ -17,7 +17,10 @@ interface ManageTaskFormProps {
 	isLaunchingQuickfix: boolean;
 	onQuickfixInputChange: (value: string) => void;
 	onLaunchQuickfix: () => void;
-	onDescriptionSave: (value: string | null) => void;
+	localDescription: string;
+	onDescriptionChange: (value: string) => void;
+	onDescriptionFocus: () => void;
+	onDescriptionBlur: () => void;
 	onAddSubtask: (title: string) => void;
 	onToggleSubtask: (id: string) => void;
 	onRemoveSubtask: (id: string) => void;
@@ -28,7 +31,8 @@ interface ManageTaskFormProps {
 	onAddAcceptanceCriteria: (criteria: string) => void;
 	onRemoveAcceptanceCriteria: (index: number) => void;
 	onTechnicalNotesChange: (value: string) => void;
-	onTechnicalNotesSave: () => void;
+	onTechnicalNotesFocus: () => void;
+	onTechnicalNotesBlur: () => void;
 	localTechnicalNotes: string;
 }
 
@@ -43,7 +47,10 @@ export function ManageTaskForm({
 	isLaunchingQuickfix,
 	onQuickfixInputChange,
 	onLaunchQuickfix,
-	onDescriptionSave,
+	localDescription,
+	onDescriptionChange,
+	onDescriptionFocus,
+	onDescriptionBlur,
 	onAddSubtask,
 	onToggleSubtask,
 	onRemoveSubtask,
@@ -54,7 +61,8 @@ export function ManageTaskForm({
 	onAddAcceptanceCriteria,
 	onRemoveAcceptanceCriteria,
 	onTechnicalNotesChange,
-	onTechnicalNotesSave,
+	onTechnicalNotesFocus,
+	onTechnicalNotesBlur,
 	localTechnicalNotes,
 }: ManageTaskFormProps) {
 	const [newRule, setNewRule] = useState("");
@@ -155,9 +163,10 @@ export function ManageTaskForm({
 					onToggle={() => {}}
 				>
 					<textarea
-						value={taskFull.context.description || ""}
-						onChange={(e) => onDescriptionSave(e.target.value)}
-						onBlur={() => onDescriptionSave(taskFull.context.description || "")}
+						value={localDescription}
+						onChange={(e) => onDescriptionChange(e.target.value)}
+						onFocus={onDescriptionFocus}
+						onBlur={onDescriptionBlur}
 						placeholder="Descrição da tarefa..."
 						rows={4}
 						disabled={isBlocked}
@@ -227,7 +236,8 @@ export function ManageTaskForm({
 					<textarea
 						value={localTechnicalNotes}
 						onChange={(e) => onTechnicalNotesChange(e.target.value)}
-						onBlur={onTechnicalNotesSave}
+						onFocus={onTechnicalNotesFocus}
+						onBlur={onTechnicalNotesBlur}
 						placeholder="Stack, libs, padrões relevantes..."
 						rows={2}
 						disabled={isBlocked}
