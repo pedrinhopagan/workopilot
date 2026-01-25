@@ -160,9 +160,8 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 				params={{ taskId: task.id }}
 				className={cn(
 					"flex items-center gap-2 p-2 bg-background/50 border border-border/50",
-					"hover:bg-secondary/50 hover:border-border hover:translate-x-1",
-					"transition-all duration-200 group",
-					"active:scale-[0.99]"
+					"hover:bg-secondary/50 hover:border-border",
+					"transition-colors duration-200 group"
 				)}
 			>
 				{showProgress && indicator === "spinner" && (
@@ -177,14 +176,14 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 				{showProgress && (
 					<Badge 
 						variant={badgeVariant} 
-						className="text-xs transition-transform duration-200 group-hover:scale-105"
+						className="text-xs"
 					>
 						{progressLabel}
 					</Badge>
 				)}
 				<ChevronRight
 					size={14}
-					className="text-muted-foreground/50 group-hover:text-primary group-hover:translate-x-0.5 transition-all duration-200"
+					className="text-muted-foreground/50 group-hover:text-primary transition-colors duration-200"
 				/>
 			</Link>
 		);
@@ -247,8 +246,7 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 						className={cn(
 							"p-1.5 text-muted-foreground flex-shrink-0",
 							"hover:text-foreground hover:bg-secondary",
-							"transition-all duration-200",
-							"hover:rotate-90 active:scale-90"
+							"transition-colors duration-200"
 						)}
 						title="Fechar painel"
 					>
@@ -261,27 +259,26 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 				<div className="flex gap-2 animate-slide-up-fade" style={{ animationDelay: "0.05s" }}>
 					<Button
 						onClick={handleLaunchTmux}
-						className="flex-1 gap-2 group transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
+						className="flex-1 gap-2 group transition-colors duration-200"
 						style={{
 							background: `linear-gradient(135deg, ${projectColor} 0%, ${projectColor}cc 100%)`,
 						}}
 					>
-						<Terminal size={16} className="transition-transform duration-200 group-hover:rotate-6" />
+						<Terminal size={16} />
 						Codar
 					</Button>
 					<Button 
 						variant="outline" 
 						size="icon" 
 						asChild
-						className="transition-all duration-200 hover:scale-105 active:scale-95"
+						className="transition-colors duration-200"
 					>
 						<Link
 							to="/projects/settings"
 							search={{ projectId: project.id }}
 							title="Configurações"
-							className="group"
 						>
-							<Settings size={16} className="transition-transform duration-300 group-hover:rotate-90" />
+							<Settings size={16} />
 						</Link>
 					</Button>
 				</div>
@@ -403,7 +400,7 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 						<p className="text-muted-foreground text-sm mb-3">
 							Nenhuma tarefa neste projeto
 						</p>
-						<Button asChild variant="outline" className="transition-all duration-200 hover:scale-105 active:scale-95">
+						<Button asChild variant="outline" className="transition-colors duration-200">
 							<Link to="/tasks">+ Criar tarefa</Link>
 						</Button>
 					</div>

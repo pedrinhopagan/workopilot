@@ -1,3 +1,4 @@
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/types";
@@ -70,33 +71,10 @@ const EmptyState = memo(function EmptyState({
 	);
 });
 
-type PageHeaderProps = {
-	projectCount: number;
-	onNewProject: () => void;
-};
-
-const PageHeader = memo(function PageHeader({
-	projectCount,
-	onNewProject,
-}: PageHeaderProps) {
-	return (
-		<div className="flex items-center justify-between mb-6 animate-fade-in">
-			<div>
-				<h1 className="text-xl text-foreground font-medium">Projetos</h1>
-				<p className="text-sm text-muted-foreground mt-0.5">
-					{projectCount === 0
-						? "Comece criando seu primeiro projeto"
-						: `${projectCount} ${projectCount === 1 ? "projeto" : "projetos"} cadastrado${projectCount === 1 ? "" : "s"}`}
-				</p>
-			</div>
-
-			<Button onClick={onNewProject} className="gap-2">
-				<Plus size={16} />
-				Novo Projeto
-			</Button>
-		</div>
-	);
-});
+function getProjectSubtitle(count: number): string {
+	if (count === 0) return "Comece criando seu primeiro projeto";
+	return `${count} ${count === 1 ? "projeto" : "projetos"} cadastrado${count === 1 ? "" : "s"}`;
+}
 
 function ProjectsPage() {
 	const search = useSearch({ from: "/projects/" });
@@ -143,26 +121,35 @@ function ProjectsPage() {
 		);
 	}
 
+	const newProjectButton = (
+		<Button onClick={() => setShowNewProjectForm(true)} className="gap-2">
+			<Plus size={16} />
+			Novo Projeto
+		</Button>
+	);
+
 	if (projectsData.length === 0) {
 		return (
 			<div className="flex-1 overflow-y-auto p-6">
 				<PageHeader
-					projectCount={0}
-					onNewProject={() => setShowNewProjectForm(true)}
+					title="Projetos"
+					subtitle={getProjectSubtitle(0)}
+					icon={FolderOpen}
+					action={newProjectButton}
 				/>
 				<EmptyState onCreateClick={() => setShowNewProjectForm(true)} />
 			</div>
 		);
 	}
 
-	const displayCount = projectsData.length;
-
 	return (
 		<>
 			<div className="flex-1 overflow-y-auto p-6">
 				<PageHeader
-					projectCount={projectsData.length}
-					onNewProject={() => setShowNewProjectForm(true)}
+					title="Projetos"
+					subtitle={getProjectSubtitle(projectsData.length)}
+					icon={FolderOpen}
+					action={newProjectButton}
 				/>
 
 				{/* <ProjectsFilterBar 
@@ -188,7 +175,7 @@ function ProjectsPage() {
 							gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
 						}}
 					>
-						{projectsData.map((project, index) => (
+						{projectsData.map((project) => (
 							<ProjectCard
 								key={project.id}
 								project={{
@@ -196,7 +183,6 @@ function ProjectsPage() {
 									description: project.description ?? undefined,
 									color: project.color ?? undefined,
 								}}
-								index={index}
 								isSelected={project.id === selectedProjectId}
 								onClick={() => handleProjectClick(project.id)}
 							/>

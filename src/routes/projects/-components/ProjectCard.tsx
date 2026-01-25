@@ -1,14 +1,11 @@
-import { memo, useMemo, useState, useEffect, useRef } from "react";
+import { memo, useMemo, useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { FolderOpen, Clock, CheckCircle2, ListTodo, Activity } from "lucide-react";
 import type { Project } from "@/types";
 
-const animatedProjectIds = new Set<string>();
-
 type ProjectCardProps = {
 	project: Project;
-	index: number;
 	isSelected: boolean;
 	onClick: () => void;
 	taskMetrics?: { pending: number; done: number; total: number; lastModified?: string | null };
@@ -16,7 +13,6 @@ type ProjectCardProps = {
 
 export const ProjectCard = memo(function ProjectCard({
 	project,
-	index,
 	isSelected,
 	onClick,
 	taskMetrics,
@@ -27,19 +23,8 @@ export const ProjectCard = memo(function ProjectCard({
 			? Math.round((taskMetrics.done / taskMetrics.total) * 100)
 			: 0;
 
-	const hasAnimatedBefore = animatedProjectIds.has(project.id);
-	const [shouldAnimate] = useState(() => !hasAnimatedBefore);
-	const animationMarkedRef = useRef(false);
-
 	const [wasSelected, setWasSelected] = useState(isSelected);
 	const [showSelectionRing, setShowSelectionRing] = useState(false);
-
-	useEffect(() => {
-		if (!animationMarkedRef.current) {
-			animationMarkedRef.current = true;
-			animatedProjectIds.add(project.id);
-		}
-	}, [project.id]);
 
 	useEffect(() => {
 		if (isSelected && !wasSelected) {
@@ -80,17 +65,12 @@ export const ProjectCard = memo(function ProjectCard({
 			className={cn(
 				"group relative w-full text-left",
 				"border border-border bg-card",
-				"transition-all duration-300 ease-out",
-				"hover:translate-y-[-3px] hover:border-primary/40",
+				"transition-colors duration-200",
+				"hover:border-primary/40 hover:bg-secondary/30",
 				"focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-				shouldAnimate && "animate-stagger-fade-in opacity-0",
-				"active:scale-[0.99] active:transition-transform active:duration-100",
 				isSelected && "ring-2 ring-primary/60 border-primary/50",
 				showSelectionRing && "animate-selection-ring"
 			)}
-			style={{
-				animationDelay: `${index * 0.08}s`,
-			}}
 		>
 			<div
 				className={cn(
@@ -111,9 +91,8 @@ export const ProjectCard = memo(function ProjectCard({
 
 			<div
 				className={cn(
-					"absolute bottom-0 left-0 right-0 h-[2px] transition-all duration-300",
-					"opacity-0 group-hover:opacity-100",
-					"scale-x-0 group-hover:scale-x-100 origin-left"
+					"absolute bottom-0 left-0 right-0 h-[2px] transition-opacity duration-200",
+					"opacity-0 group-hover:opacity-100"
 				)}
 				style={{
 					background: `linear-gradient(90deg, ${projectColor} 0%, ${projectColor}60 50%, transparent 100%)`,
@@ -137,8 +116,8 @@ export const ProjectCard = memo(function ProjectCard({
 				<div className="flex items-start gap-3 mb-4">
 					<div
 						className={cn(
-							"relative p-2.5 bg-background/60 transition-all duration-300",
-							"group-hover:bg-background/80 group-hover:scale-105"
+							"relative p-2.5 bg-background/60 transition-colors duration-200",
+							"group-hover:bg-background/80"
 						)}
 						style={{
 							boxShadow: `inset 0 0 0 1px ${projectColor}30`,
@@ -147,7 +126,6 @@ export const ProjectCard = memo(function ProjectCard({
 						<FolderOpen
 							size={18}
 							style={{ color: projectColor }}
-							className="transition-all duration-300 group-hover:scale-110"
 						/>
 						<div
 							className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none"
@@ -157,7 +135,7 @@ export const ProjectCard = memo(function ProjectCard({
 						/>
 					</div>
 					<div className="flex-1 min-w-0">
-						<h3 className="text-foreground font-medium text-base truncate transition-all duration-200 group-hover:text-primary group-hover:translate-x-0.5">
+						<h3 className="text-foreground font-medium text-base truncate transition-colors duration-200 group-hover:text-primary">
 							{project.name}
 						</h3>
 						{project.description && (
@@ -186,7 +164,7 @@ export const ProjectCard = memo(function ProjectCard({
 							</Badge>
 							<Badge
 								variant="outline"
-								className="gap-1.5 px-2 py-0.5 text-xs font-normal transition-all duration-200 group-hover:scale-105"
+								className="gap-1.5 px-2 py-0.5 text-xs font-normal"
 								style={{
 									borderColor: `${projectColor}40`,
 									color: projectColor,
@@ -235,22 +213,15 @@ export const ProjectCard = memo(function ProjectCard({
 				)}
 
 				<div className="flex items-center justify-between text-xs text-muted-foreground/70">
-					<div className="flex items-center gap-1.5 transition-all duration-200 group-hover:text-muted-foreground group-hover:gap-2">
-						<Clock size={11} className="transition-transform duration-200 group-hover:rotate-12" />
+					<div className="flex items-center gap-1.5 transition-colors duration-200 group-hover:text-muted-foreground">
+						<Clock size={11} />
 						<span>Atualizado {lastActivityLabel}</span>
 					</div>
 
 					<div className="relative">
 						<div
-							className="w-2 h-2 transition-all duration-300 opacity-60 group-hover:opacity-100 group-hover:scale-150"
+							className="w-2 h-2 transition-opacity duration-200 opacity-60 group-hover:opacity-100"
 							style={{ backgroundColor: projectColor }}
-						/>
-						<div
-							className="absolute inset-0 opacity-0 group-hover:opacity-80 transition-all duration-300"
-							style={{
-								backgroundColor: projectColor,
-								boxShadow: `0 0 12px ${projectColor}`,
-							}}
 						/>
 					</div>
 				</div>

@@ -1,8 +1,10 @@
 import { useState, useEffect, useImperativeHandle, forwardRef } from "react";
+import { Check, ChevronDown, FolderKanban } from "lucide-react";
 import { trpc } from "../../../services/trpc";
 import { useDbRefetchStore } from "../../../stores/dbRefetch";
 import type { Project } from "../../../types";
-import { Select } from "../../../components/Select";
+import { CustomSelect } from "../../../components/ui/custom-select";
+import { cn } from "../../../lib/utils";
 import { UnscheduledTask } from "./UnscheduledTask";
 import { useAgendaStore } from "../../../stores/agenda";
 import {
@@ -11,11 +13,20 @@ import {
   type TaskForDistribution,
 } from "../../../services/aiDistribution";
 
-const categories = ["feature", "bug", "refactor", "test", "docs"];
-const priorities = [
-  { value: "1", label: "Alta" },
-  { value: "2", label: "Média" },
-  { value: "3", label: "Baixa" },
+const CATEGORIES = [
+  { id: "__all__", name: "Categoria", color: null as string | null },
+  { id: "feature", name: "feature", color: "#61afef" },
+  { id: "bug", name: "bug", color: "#e06c75" },
+  { id: "refactor", name: "refactor", color: "#98c379" },
+  { id: "test", name: "test", color: "#e5c07b" },
+  { id: "docs", name: "docs", color: "#c678dd" },
+];
+
+const PRIORITIES = [
+  { id: "__all__", name: "Prioridade", color: null as string | null },
+  { id: "1", name: "Alta", color: "#bc5653" },
+  { id: "2", name: "Média", color: "#ebc17a" },
+  { id: "3", name: "Baixa", color: "#8b7355" },
 ];
 
 type UnscheduledPanelProps = {
@@ -51,13 +62,13 @@ export const UnscheduledPanel = forwardRef<UnscheduledPanelRef, UnscheduledPanel
     const utils = trpc.useUtils();
 
     const { data: rawTasks = [], isLoading, refetch: refetchTasks } = trpc.tasks.listUnscheduled.useQuery(
-      filterProject ? { projectId: filterProject } : undefined,
+      filterProject && filterProject !== "__all__" ? { projectId: filterProject } : undefined,
       { staleTime: 1000 * 60 }
     );
 
     const tasks = rawTasks.filter((t) => {
-      if (filterCategory && t.category !== filterCategory) return false;
-      if (filterPriority && t.priority !== parseInt(filterPriority)) return false;
+      if (filterCategory && filterCategory !== "__all__" && t.category !== filterCategory) return false;
+      if (filterPriority && filterPriority !== "__all__" && t.priority !== parseInt(filterPriority, 10)) return false;
       return true;
     });
 
@@ -94,20 +105,10 @@ export const UnscheduledPanel = forwardRef<UnscheduledPanelRef, UnscheduledPanel
       setIsDragOver(false);
     }
 
-    function getProjectOptions() {
-      return [
-        { value: "", label: "Todos projetos" },
-        ...projects.map((p) => ({ value: p.id, label: p.name })),
-      ];
-    }
-
-    function getCategoryOptions() {
-      return [{ value: "", label: "Categoria" }, ...categories.map((c) => ({ value: c, label: c }))];
-    }
-
-    function getPriorityOptions() {
-      return [{ value: "", label: "Prioridade" }, ...priorities];
-    }
+    const projectItems = [
+      { id: "__all__", name: "Todos projetos", color: null as string | null },
+      ...projects.map((p) => ({ id: p.id, name: p.name, color: p.color })),
+    ];
 
     function handleStartDistribution() {
       setDistributionMode(true);
@@ -214,24 +215,148 @@ export const UnscheduledPanel = forwardRef<UnscheduledPanelRef, UnscheduledPanel
 
           {!isDistributionMode && (
             <div className="flex flex-col gap-2">
-              <Select
-                value={filterProject}
-                options={getProjectOptions()}
-                onChange={(v) => setFilterProject(v)}
-                className="w-full"
+              <CustomSelect
+                items={projectItems}
+                value={filterProject || "__all__"}
+                onValueChange={(id) => setFilterProject(id === "__all__" ? "" : id)}
+                triggerClassName="flex items-center gap-2 px-2 py-1.5 h-8 w-full border border-border bg-card rounded-md hover:bg-popover hover:border-muted-foreground transition-colors"
+                contentClassName="min-w-[180px]"
+                renderTrigger={() => {
+                  const selected = projectItems.find((p) => p.id === (filterProject || "__all__"));
+                  return (
+                    <>
+                      {selected?.color ? (
+                        <span
+                          className="size-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: selected.color }}
+                        />
+                      ) : (
+                        <FolderKanban className="size-3 text-muted-foreground flex-shrink-0" />
+                      )}
+                      <span className="flex-1 text-sm text-foreground truncate text-left">
+                        {selected?.name || "Todos projetos"}
+                      </span>
+                      <ChevronDown className="size-3 text-muted-foreground flex-shrink-0" />
+                    </>
+                  );
+                }}
+                renderItem={(item, isSelected) => (
+                  <div
+                    className={cn(
+                      "flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors",
+                      isSelected ? "bg-popover" : "hover:bg-popover"
+                    )}
+                  >
+                    {item.color ? (
+                      <span
+                        className="size-2 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: item.color }}
+                      />
+                    ) : (
+                      <FolderKanban className="size-3 text-muted-foreground flex-shrink-0" />
+                    )}
+                    <span className={cn(
+                      "flex-1 text-sm truncate",
+                      isSelected ? "text-foreground font-medium" : "text-foreground"
+                    )}>
+                      {item.name}
+                    </span>
+                    {isSelected && <Check className="size-3 text-primary flex-shrink-0" />}
+                  </div>
+                )}
               />
               <div className="flex gap-2">
-                <Select
-                  value={filterCategory}
-                  options={getCategoryOptions()}
-                  onChange={(v) => setFilterCategory(v)}
-                  className="flex-1"
+                <CustomSelect
+                  items={CATEGORIES}
+                  value={filterCategory || "__all__"}
+                  onValueChange={(id) => setFilterCategory(id === "__all__" ? "" : id)}
+                  triggerClassName="flex items-center gap-2 px-2 py-1.5 h-8 flex-1 border border-border bg-card rounded-md hover:bg-popover hover:border-muted-foreground transition-colors"
+                  contentClassName="min-w-[140px]"
+                  renderTrigger={() => {
+                    const selected = CATEGORIES.find((c) => c.id === (filterCategory || "__all__"));
+                    return (
+                      <>
+                        {selected?.color && (
+                          <span
+                            className="size-2 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: selected.color }}
+                          />
+                        )}
+                        <span className="flex-1 text-sm text-foreground truncate text-left">
+                          {selected?.name || "Categoria"}
+                        </span>
+                        <ChevronDown className="size-3 text-muted-foreground flex-shrink-0" />
+                      </>
+                    );
+                  }}
+                  renderItem={(item, isSelected) => (
+                    <div
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors",
+                        isSelected ? "bg-popover" : "hover:bg-popover"
+                      )}
+                    >
+                      {item.color && (
+                        <span
+                          className="size-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: item.color }}
+                        />
+                      )}
+                      <span className={cn(
+                        "flex-1 text-sm truncate",
+                        isSelected ? "text-foreground font-medium" : "text-foreground"
+                      )}>
+                        {item.name}
+                      </span>
+                      {isSelected && <Check className="size-3 text-primary flex-shrink-0" />}
+                    </div>
+                  )}
                 />
-                <Select
-                  value={filterPriority}
-                  options={getPriorityOptions()}
-                  onChange={(v) => setFilterPriority(v)}
-                  className="flex-1"
+                <CustomSelect
+                  items={PRIORITIES}
+                  value={filterPriority || "__all__"}
+                  onValueChange={(id) => setFilterPriority(id === "__all__" ? "" : id)}
+                  triggerClassName="flex items-center gap-2 px-2 py-1.5 h-8 flex-1 border border-border bg-card rounded-md hover:bg-popover hover:border-muted-foreground transition-colors"
+                  contentClassName="min-w-[120px]"
+                  renderTrigger={() => {
+                    const selected = PRIORITIES.find((p) => p.id === (filterPriority || "__all__"));
+                    return (
+                      <>
+                        {selected?.color && (
+                          <span
+                            className="size-2 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: selected.color }}
+                          />
+                        )}
+                        <span className="flex-1 text-sm text-foreground truncate text-left">
+                          {selected?.name || "Prioridade"}
+                        </span>
+                        <ChevronDown className="size-3 text-muted-foreground flex-shrink-0" />
+                      </>
+                    );
+                  }}
+                  renderItem={(item, isSelected) => (
+                    <div
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors",
+                        isSelected ? "bg-popover" : "hover:bg-popover"
+                      )}
+                    >
+                      {item.color && (
+                        <span
+                          className="size-2 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: item.color }}
+                        />
+                      )}
+                      <span className={cn(
+                        "flex-1 text-sm truncate",
+                        isSelected ? "text-foreground font-medium" : "text-foreground"
+                      )}>
+                        {item.name}
+                      </span>
+                      {isSelected && <Check className="size-3 text-primary flex-shrink-0" />}
+                    </div>
+                  )}
                 />
               </div>
             </div>

@@ -1,7 +1,8 @@
 import { memo, useCallback } from "react";
 import { Input } from "@/components/ui/input";
+import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
-import { Search, SortAsc, SortDesc, Filter, X } from "lucide-react";
+import { Check, ChevronDown, Search, SortAsc, SortDesc, Filter, X } from "lucide-react";
 
 export type ProjectSortBy = "name" | "activity" | "pending_tasks" | "created_at";
 export type ProjectSortOrder = "asc" | "desc";
@@ -19,17 +20,17 @@ type ProjectsFilterBarProps = {
 	onFiltersChange: (filters: ProjectFilters) => void;
 };
 
-const sortOptions: { value: ProjectSortBy; label: string }[] = [
-	{ value: "name", label: "Nome" },
-	{ value: "activity", label: "Atividade" },
-	{ value: "pending_tasks", label: "Tarefas Pendentes" },
-	{ value: "created_at", label: "Data de Criacao" },
+const sortOptions = [
+	{ id: "name", name: "Nome" },
+	{ id: "activity", name: "Atividade" },
+	{ id: "pending_tasks", name: "Tarefas Pendentes" },
+	{ id: "created_at", name: "Data de Criacao" },
 ];
 
-const statusOptions: { value: ProjectStatusFilter; label: string }[] = [
-	{ value: "all", label: "Todos" },
-	{ value: "active", label: "Ativos" },
-	{ value: "archived", label: "Arquivados" },
+const statusOptions = [
+	{ id: "all", name: "Todos" },
+	{ id: "active", name: "Ativos" },
+	{ id: "archived", name: "Arquivados" },
 ];
 
 export const ProjectsFilterBar = memo(function ProjectsFilterBar({
@@ -48,8 +49,8 @@ export const ProjectsFilterBar = memo(function ProjectsFilterBar({
 	}, [filters, onFiltersChange]);
 
 	const handleSortByChange = useCallback(
-		(e: React.ChangeEvent<HTMLSelectElement>) => {
-			onFiltersChange({ ...filters, sortBy: e.target.value as ProjectSortBy });
+		(value: string) => {
+			onFiltersChange({ ...filters, sortBy: value as ProjectSortBy });
 		},
 		[filters, onFiltersChange]
 	);
@@ -62,8 +63,8 @@ export const ProjectsFilterBar = memo(function ProjectsFilterBar({
 	}, [filters, onFiltersChange]);
 
 	const handleStatusChange = useCallback(
-		(e: React.ChangeEvent<HTMLSelectElement>) => {
-			onFiltersChange({ ...filters, status: e.target.value as ProjectStatusFilter });
+		(value: string) => {
+			onFiltersChange({ ...filters, status: value as ProjectStatusFilter });
 		},
 		[filters, onFiltersChange]
 	);
@@ -98,51 +99,77 @@ export const ProjectsFilterBar = memo(function ProjectsFilterBar({
 
 			<div className="flex items-center gap-2">
 				<Filter size={14} className="text-muted-foreground" />
-				<select
+				<CustomSelect
+					items={statusOptions}
 					value={filters.status}
-					onChange={handleStatusChange}
-					className={cn(
-						"h-8 px-3 text-sm bg-card/50 border border-border/60 text-foreground",
-						"focus:outline-none focus:border-primary cursor-pointer appearance-none",
-						"pr-8"
-					)}
-					style={{
-						backgroundImage: `url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27hsl(130 3%25 52%25)%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')`,
-						backgroundRepeat: "no-repeat",
-						backgroundPosition: "right 0.5rem center",
-						backgroundSize: "1em",
+					onValueChange={handleStatusChange}
+					triggerClassName="flex items-center gap-2 px-3 py-1 h-8 border border-border/60 bg-card/50 rounded-md min-w-[100px] hover:bg-popover hover:border-muted-foreground transition-colors"
+					contentClassName="min-w-[120px]"
+					renderTrigger={() => {
+						const selected = statusOptions.find((s) => s.id === filters.status);
+						return (
+							<>
+								<span className="flex-1 text-sm text-foreground truncate text-left">
+									{selected?.name || "Status"}
+								</span>
+								<ChevronDown className="size-3 text-muted-foreground flex-shrink-0" />
+							</>
+						);
 					}}
-				>
-					{statusOptions.map((opt) => (
-						<option key={opt.value} value={opt.value} className="bg-background text-foreground">
-							{opt.label}
-						</option>
-					))}
-				</select>
+					renderItem={(item, isSelected) => (
+						<div
+							className={cn(
+								"flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors",
+								isSelected ? "bg-popover" : "hover:bg-popover"
+							)}
+						>
+							<span className={cn(
+								"flex-1 text-sm truncate",
+								isSelected ? "text-foreground font-medium" : "text-foreground"
+							)}>
+								{item.name}
+							</span>
+							{isSelected && <Check className="size-3 text-primary flex-shrink-0" />}
+						</div>
+					)}
+				/>
 			</div>
 
 			<div className="flex items-center gap-1">
-				<select
+				<CustomSelect
+					items={sortOptions}
 					value={filters.sortBy}
-					onChange={handleSortByChange}
-					className={cn(
-						"h-8 px-3 text-sm bg-card/50 border border-border/60 text-foreground",
-						"focus:outline-none focus:border-primary cursor-pointer appearance-none",
-						"pr-8"
-					)}
-					style={{
-						backgroundImage: `url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27hsl(130 3%25 52%25)%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e')`,
-						backgroundRepeat: "no-repeat",
-						backgroundPosition: "right 0.5rem center",
-						backgroundSize: "1em",
+					onValueChange={handleSortByChange}
+					triggerClassName="flex items-center gap-2 px-3 py-1 h-8 border border-border/60 bg-card/50 rounded-md min-w-[140px] hover:bg-popover hover:border-muted-foreground transition-colors"
+					contentClassName="min-w-[160px]"
+					renderTrigger={() => {
+						const selected = sortOptions.find((s) => s.id === filters.sortBy);
+						return (
+							<>
+								<span className="flex-1 text-sm text-foreground truncate text-left">
+									{selected?.name || "Ordenar"}
+								</span>
+								<ChevronDown className="size-3 text-muted-foreground flex-shrink-0" />
+							</>
+						);
 					}}
-				>
-					{sortOptions.map((opt) => (
-						<option key={opt.value} value={opt.value} className="bg-background text-foreground">
-							{opt.label}
-						</option>
-					))}
-				</select>
+					renderItem={(item, isSelected) => (
+						<div
+							className={cn(
+								"flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors",
+								isSelected ? "bg-popover" : "hover:bg-popover"
+							)}
+						>
+							<span className={cn(
+								"flex-1 text-sm truncate",
+								isSelected ? "text-foreground font-medium" : "text-foreground"
+							)}>
+								{item.name}
+							</span>
+							{isSelected && <Check className="size-3 text-primary flex-shrink-0" />}
+						</div>
+					)}
+				/>
 
 				<button
 					type="button"
