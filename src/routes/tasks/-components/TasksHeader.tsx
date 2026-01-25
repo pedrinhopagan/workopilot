@@ -1,5 +1,5 @@
-import { CustomSelect } from "@/components/ui/custom-select";
 import { Button } from "@/components/ui/button";
+import { CustomSelect } from "@/components/ui/custom-select";
 import { Input } from "@/components/ui/input";
 import {
 	getProgressStateFilterOptions,
@@ -75,7 +75,8 @@ export function TasksHeader({ queryState }: TasksHeaderProps) {
 		...progressStateOptions.map((opt) => ({
 			id: opt.value,
 			label: opt.label,
-			color: PROGRESS_STATE_COLORS[opt.value as keyof typeof PROGRESS_STATE_COLORS],
+			color:
+				PROGRESS_STATE_COLORS[opt.value as keyof typeof PROGRESS_STATE_COLORS],
 		})),
 	];
 
@@ -112,13 +113,15 @@ export function TasksHeader({ queryState }: TasksHeaderProps) {
 				triggerClassName="flex items-center gap-2 px-2 py-1 h-8 border border-border bg-card rounded-md min-w-[100px] hover:bg-popover hover:border-muted-foreground transition-colors"
 				contentClassName="min-w-[140px]"
 				renderTrigger={() => {
-					const selected = categoryItems.find((c) => c.id === (filters.category || "__all__"));
+					const selected = categoryItems.find(
+						(c) => c.id === (filters.category || "__all__"),
+					);
 					return (
 						<>
 							<span className="flex-1 text-sm text-foreground truncate text-left">
 								{selected?.label || "Categoria"}
 							</span>
-							<ChevronDown className="size-3 text-muted-foreground flex-shrink-0" />
+							<ChevronDown className="size-3 text-muted-foreground shrink-0" />
 						</>
 					);
 				}}
@@ -126,16 +129,18 @@ export function TasksHeader({ queryState }: TasksHeaderProps) {
 					<div
 						className={cn(
 							"flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors",
-							isSelected ? "bg-popover" : "hover:bg-popover"
+							isSelected ? "bg-popover" : "hover:bg-popover",
 						)}
 					>
-						<span className={cn(
-							"flex-1 text-sm truncate",
-							isSelected ? "text-foreground font-medium" : "text-foreground"
-						)}>
+						<span
+							className={cn(
+								"flex-1 text-sm truncate",
+								isSelected ? "text-foreground font-medium" : "text-foreground",
+							)}
+						>
 							{item.label}
 						</span>
-						{isSelected && <Check className="size-3 text-primary flex-shrink-0" />}
+						{isSelected && <Check className="size-3 text-primary shrink-0" />}
 					</div>
 				)}
 			/>
@@ -143,23 +148,29 @@ export function TasksHeader({ queryState }: TasksHeaderProps) {
 			<CustomSelect
 				items={priorityItems}
 				value={filters.priority ? String(filters.priority) : "__all__"}
-				onValueChange={(id) => setPriorityFilter(id === "__all__" ? null : Number.parseInt(id, 10))}
+				onValueChange={(id) =>
+					setPriorityFilter(id === "__all__" ? null : Number.parseInt(id, 10))
+				}
 				triggerClassName="flex items-center gap-2 px-2 py-1 h-8 border border-border bg-card rounded-md min-w-[100px] hover:bg-popover hover:border-muted-foreground transition-colors"
 				contentClassName="min-w-[140px]"
 				renderTrigger={() => {
-					const selected = priorityItems.find((p) => p.id === (filters.priority ? String(filters.priority) : "__all__"));
+					const selected = priorityItems.find(
+						(p) =>
+							p.id ===
+							(filters.priority ? String(filters.priority) : "__all__"),
+					);
 					return (
 						<>
 							{selected?.color && (
 								<span
-									className="size-2 rounded-full flex-shrink-0"
+									className="size-2 rounded-full shrink-0"
 									style={{ backgroundColor: selected.color }}
 								/>
 							)}
 							<span className="flex-1 text-sm text-foreground truncate text-left">
 								{selected?.label || "Prioridade"}
 							</span>
-							<ChevronDown className="size-3 text-muted-foreground flex-shrink-0" />
+							<ChevronDown className="size-3 text-muted-foreground shrink-0" />
 						</>
 					);
 				}}
@@ -167,22 +178,24 @@ export function TasksHeader({ queryState }: TasksHeaderProps) {
 					<div
 						className={cn(
 							"flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors",
-							isSelected ? "bg-popover" : "hover:bg-popover"
+							isSelected ? "bg-popover" : "hover:bg-popover",
 						)}
 					>
 						{item.color && (
 							<span
-								className="size-2 rounded-full flex-shrink-0"
+								className="size-2 rounded-full shrink-0"
 								style={{ backgroundColor: item.color }}
 							/>
 						)}
-						<span className={cn(
-							"flex-1 text-sm truncate",
-							isSelected ? "text-foreground font-medium" : "text-foreground"
-						)}>
+						<span
+							className={cn(
+								"flex-1 text-sm truncate",
+								isSelected ? "text-foreground font-medium" : "text-foreground",
+							)}
+						>
 							{item.label}
 						</span>
-						{isSelected && <Check className="size-3 text-primary flex-shrink-0" />}
+						{isSelected && <Check className="size-3 text-primary shrink-0" />}
 					</div>
 				)}
 			/>
@@ -192,25 +205,29 @@ export function TasksHeader({ queryState }: TasksHeaderProps) {
 				value={filters.progressState || "__all__"}
 				onValueChange={(id) =>
 					setProgressStateFilter(
-						(id === "__all__" ? null : id) as Parameters<typeof setProgressStateFilter>[0],
+						(id === "__all__" ? null : id) as Parameters<
+							typeof setProgressStateFilter
+						>[0],
 					)
 				}
 				triggerClassName="flex items-center gap-2 px-2 py-1 h-8 border border-border bg-card rounded-md min-w-[100px] hover:bg-popover hover:border-muted-foreground transition-colors"
 				contentClassName="min-w-[160px]"
 				renderTrigger={() => {
-					const selected = progressStateItems.find((s) => s.id === (filters.progressState || "__all__"));
+					const selected = progressStateItems.find(
+						(s) => s.id === (filters.progressState || "__all__"),
+					);
 					return (
 						<>
 							{selected?.color && (
 								<span
-									className="size-2 rounded-full flex-shrink-0"
+									className="size-2 rounded-full shrink-0"
 									style={{ backgroundColor: selected.color }}
 								/>
 							)}
 							<span className="flex-1 text-sm text-foreground truncate text-left">
 								{selected?.label || "Estado"}
 							</span>
-							<ChevronDown className="size-3 text-muted-foreground flex-shrink-0" />
+							<ChevronDown className="size-3 text-muted-foreground shrink-0" />
 						</>
 					);
 				}}
@@ -218,22 +235,24 @@ export function TasksHeader({ queryState }: TasksHeaderProps) {
 					<div
 						className={cn(
 							"flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors",
-							isSelected ? "bg-popover" : "hover:bg-popover"
+							isSelected ? "bg-popover" : "hover:bg-popover",
 						)}
 					>
 						{item.color && (
 							<span
-								className="size-2 rounded-full flex-shrink-0"
+								className="size-2 rounded-full shrink-0"
 								style={{ backgroundColor: item.color }}
 							/>
 						)}
-						<span className={cn(
-							"flex-1 text-sm truncate",
-							isSelected ? "text-foreground font-medium" : "text-foreground"
-						)}>
+						<span
+							className={cn(
+								"flex-1 text-sm truncate",
+								isSelected ? "text-foreground font-medium" : "text-foreground",
+							)}
+						>
 							{item.label}
 						</span>
-						{isSelected && <Check className="size-3 text-primary flex-shrink-0" />}
+						{isSelected && <Check className="size-3 text-primary shrink-0" />}
 					</div>
 				)}
 			/>

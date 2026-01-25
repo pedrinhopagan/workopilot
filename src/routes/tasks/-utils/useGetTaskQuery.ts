@@ -34,7 +34,7 @@ export function useGetTaskQuery(
 	initialProjectId: string | null = null,
 ): TaskQueryState {
 	const search = useSearch({ from: "/tasks/" });
-	const navigate = useNavigate();
+	const navigate = useNavigate({ from: "/tasks/" });
 
 	const filters: TaskQueryFilters = useMemo(
 		() => ({

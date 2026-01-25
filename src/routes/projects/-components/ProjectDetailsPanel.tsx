@@ -1,28 +1,28 @@
-import { memo, useMemo, useEffect } from "react";
-import { Link } from "@tanstack/react-router";
-import { trpc } from "../../../services/trpc";
-import { safeInvoke } from "../../../services/tauri";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { Project, Task } from "@/types";
+import { Link } from "@tanstack/react-router";
 import {
-	X,
+	CheckCircle2,
+	ChevronRight,
+	Clock,
+	FolderOpen,
+	ListTodo,
+	Loader2,
 	Settings,
 	Terminal,
-	ListTodo,
-	CheckCircle2,
-	Clock,
 	TrendingUp,
-	FolderOpen,
-	ChevronRight,
-	Loader2,
+	X,
 } from "lucide-react";
+import { memo, useEffect, useMemo } from "react";
 import {
-	getTaskProgressStateLabel,
 	getTaskProgressStateBadgeVariant,
 	getTaskProgressStateIndicator,
+	getTaskProgressStateLabel,
 } from "../../../lib/constants/taskStatus";
+import { safeInvoke } from "../../../services/tauri";
+import { trpc } from "../../../services/trpc";
 
 type ProjectStats = {
 	pending: number;
@@ -46,12 +46,12 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 
 	const { data: projectConfig } = trpc.projects.get.useQuery(
 		{ id: project.id },
-		{ enabled: !!project.id, staleTime: 30000 }
+		{ enabled: !!project.id, staleTime: 30000 },
 	);
 
 	const { data: allStats = [] } = trpc.projects.getAllStats.useQuery(
 		undefined,
-		{ staleTime: 30000 }
+		{ staleTime: 30000 },
 	);
 	const stats = useMemo(() => {
 		if (initialStats) {
@@ -67,24 +67,22 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 		return allStats.find((s) => s.project_id === project.id);
 	}, [allStats, project.id, initialStats]);
 
-	const { data: activeTasks = [] } = trpc.tasks.listActive.useQuery(
-		undefined,
-		{ staleTime: 30000 }
-	);
+	const { data: activeTasks = [] } = trpc.tasks.listActive.useQuery(undefined, {
+		staleTime: 30000,
+	});
 	const projectActiveTasks = useMemo(() => {
 		return activeTasks.filter((t) => t.project_id === project.id).slice(0, 3);
 	}, [activeTasks, project.id]);
 
-	const { data: urgentTasks = [] } = trpc.tasks.listUrgent.useQuery(
-		undefined,
-		{ staleTime: 30000 }
-	);
+	const { data: urgentTasks = [] } = trpc.tasks.listUrgent.useQuery(undefined, {
+		staleTime: 30000,
+	});
 	const projectUrgentTasks = useMemo(() => {
 		return urgentTasks.filter((t) => t.project_id === project.id).slice(0, 5);
 	}, [urgentTasks, project.id]);
 
 	const activeTaskFullQueries = trpc.useQueries((t) =>
-		projectActiveTasks.map((task) => t.tasks.getFull({ id: task.id }))
+		projectActiveTasks.map((task) => t.tasks.getFull({ id: task.id })),
 	);
 	const activeTasksFullCache = useMemo(() => {
 		const map = new Map();
@@ -131,7 +129,10 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 
 	async function handleLaunchTmux() {
 		try {
-			await safeInvoke("terminal_action", { action: "launch_project", projectId: project.id });
+			await safeInvoke("terminal_action", {
+				action: "launch_project",
+				projectId: project.id,
+			});
 		} catch (e) {
 			console.error("Failed to launch tmux:", e);
 		}
@@ -161,12 +162,12 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 				className={cn(
 					"flex items-center gap-2 p-2 bg-background/50 border border-border/50",
 					"hover:bg-secondary/50 hover:border-border",
-					"transition-colors duration-200 group"
+					"transition-colors duration-200 group",
 				)}
 			>
 				{showProgress && indicator === "spinner" && (
 					<Loader2
-						className="size-3.5 animate-spin flex-shrink-0 text-chart-4"
+						className="size-3.5 animate-spin shrink-0 text-chart-4"
 						aria-label="IA trabalhando"
 					/>
 				)}
@@ -174,10 +175,7 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 					{task.title}
 				</span>
 				{showProgress && (
-					<Badge 
-						variant={badgeVariant} 
-						className="text-xs"
-					>
+					<Badge variant={badgeVariant} className="text-xs">
 						{progressLabel}
 					</Badge>
 				)}
@@ -204,223 +202,254 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 					background: `linear-gradient(180deg, ${projectColor}08 0%, var(--card) 30%), var(--card)`,
 				}}
 			>
-			<div
-				className="relative p-4 border-b border-border"
-				style={{
-					background: `linear-gradient(135deg, ${projectColor}15 0%, transparent 60%)`,
-				}}
-			>
 				<div
-					className="absolute left-0 top-0 bottom-0 w-1"
+					className="relative p-4 border-b border-border"
 					style={{
-						background: `linear-gradient(180deg, ${projectColor} 0%, ${projectColor}60 100%)`,
+						background: `linear-gradient(135deg, ${projectColor}15 0%, transparent 60%)`,
 					}}
-				/>
-
-				<div className="flex items-start justify-between gap-3 pl-3">
-					<div className="flex-1 min-w-0 animate-fade-in">
-						<div className="flex items-center gap-2 mb-1">
-							<FolderOpen
-								size={18}
-								style={{ color: projectColor }}
-								className="flex-shrink-0 animate-scale-in"
-							/>
-							<h2 className="text-lg font-medium text-foreground truncate">
-								{project.name}
-							</h2>
-						</div>
-						{project.description && (
-							<p className="text-sm text-muted-foreground line-clamp-2 mt-1">
-								{project.description}
-							</p>
-						)}
-						{projectConfig?.path && (
-							<p className="text-xs text-muted-foreground/70 mt-2 font-mono truncate">
-								{projectConfig.path}
-							</p>
-						)}
-					</div>
-					<button
-						type="button"
-						onClick={onClose}
-						className={cn(
-							"p-1.5 text-muted-foreground flex-shrink-0",
-							"hover:text-foreground hover:bg-secondary",
-							"transition-colors duration-200"
-						)}
-						title="Fechar painel"
-					>
-						<X size={18} />
-					</button>
-				</div>
-			</div>
-
-			<div className="flex-1 overflow-y-auto p-4 space-y-5">
-				<div className="flex gap-2 animate-slide-up-fade" style={{ animationDelay: "0.05s" }}>
-					<Button
-						onClick={handleLaunchTmux}
-						className="flex-1 gap-2 group transition-colors duration-200"
+				>
+					<div
+						className="absolute left-0 top-0 bottom-0 w-1"
 						style={{
-							background: `linear-gradient(135deg, ${projectColor} 0%, ${projectColor}cc 100%)`,
+							background: `linear-gradient(180deg, ${projectColor} 0%, ${projectColor}60 100%)`,
 						}}
-					>
-						<Terminal size={16} />
-						Codar
-					</Button>
-					<Button 
-						variant="outline" 
-						size="icon" 
-						asChild
-						className="transition-colors duration-200"
-					>
-						<Link
-							to="/projects/settings"
-							search={{ projectId: project.id }}
-							title="Configurações"
+					/>
+
+					<div className="flex items-start justify-between gap-3 pl-3">
+						<div className="flex-1 min-w-0 animate-fade-in">
+							<div className="flex items-center gap-2 mb-1">
+								<FolderOpen
+									size={18}
+									style={{ color: projectColor }}
+									className="shrink-0 animate-scale-in"
+								/>
+								<h2 className="text-lg font-medium text-foreground truncate">
+									{project.name}
+								</h2>
+							</div>
+							{project.description && (
+								<p className="text-sm text-muted-foreground line-clamp-2 mt-1">
+									{project.description}
+								</p>
+							)}
+							{projectConfig?.path && (
+								<p className="text-xs text-muted-foreground/70 mt-2 font-mono truncate">
+									{projectConfig.path}
+								</p>
+							)}
+						</div>
+						<button
+							type="button"
+							onClick={onClose}
+							className={cn(
+								"p-1.5 text-muted-foreground shrink-0",
+								"hover:text-foreground hover:bg-secondary",
+								"transition-colors duration-200",
+							)}
+							title="Fechar painel"
 						>
-							<Settings size={16} />
-						</Link>
-					</Button>
-				</div>
-
-				<div className="grid grid-cols-2 gap-3 animate-slide-up-fade" style={{ animationDelay: "0.1s" }}>
-					<div className="p-3 bg-background/50 border border-border/50 transition-all duration-200 hover:bg-background/70 hover:border-border">
-						<div className="flex items-center gap-2 text-muted-foreground mb-1">
-							<ListTodo size={14} />
-							<span className="text-xs uppercase tracking-wide">Total</span>
-						</div>
-						<p className="text-2xl font-medium text-foreground">
-							{metrics.total}
-						</p>
-					</div>
-					<div className="p-3 bg-background/50 border border-border/50 transition-all duration-200 hover:bg-background/70 hover:border-border">
-						<div className="flex items-center gap-2 text-muted-foreground mb-1">
-							<TrendingUp size={14} />
-							<span className="text-xs uppercase tracking-wide">Progresso</span>
-						</div>
-						<p className="text-2xl font-medium" style={{ color: projectColor }}>
-							{metrics.completionPercent}%
-						</p>
-					</div>
-					<div className="p-3 bg-background/50 border border-border/50 transition-all duration-200 hover:bg-background/70 hover:border-border">
-						<div className="flex items-center gap-2 text-muted-foreground mb-1">
-							<Clock size={14} />
-							<span className="text-xs uppercase tracking-wide">Pendentes</span>
-						</div>
-						<p className="text-2xl font-medium text-foreground">
-							{metrics.pending + metrics.inProgress}
-						</p>
-					</div>
-					<div className="p-3 bg-background/50 border border-border/50 transition-all duration-200 hover:bg-background/70 hover:border-border">
-						<div className="flex items-center gap-2 text-muted-foreground mb-1">
-							<CheckCircle2 size={14} />
-							<span className="text-xs uppercase tracking-wide">Concluídas</span>
-						</div>
-						<p className="text-2xl font-medium text-foreground">
-							{metrics.done}
-						</p>
+							<X size={18} />
+						</button>
 					</div>
 				</div>
 
-				{metrics.total > 0 && (
-					<div className="animate-slide-up-fade" style={{ animationDelay: "0.15s" }}>
-						<div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-							<span>Progresso geral</span>
-							<span>{metrics.completionPercent}%</span>
-						</div>
-						<div className="h-2 bg-secondary/60 overflow-hidden">
-							<div
-								className="h-full transition-all duration-700 ease-out animate-progress-shine"
-								style={{
-									width: `${metrics.completionPercent}%`,
-									background: `linear-gradient(90deg, ${projectColor} 0%, ${projectColor}cc 100%)`,
-									boxShadow: `0 0 12px ${projectColor}60`,
-								}}
-							/>
-						</div>
-					</div>
-				)}
-
-				{projectActiveTasks.length > 0 && (
-					<div className="animate-slide-up-fade" style={{ animationDelay: "0.2s" }}>
-						<div className="flex items-center justify-between mb-3">
-							<h3 className="text-xs uppercase tracking-wide text-muted-foreground">
-								Em andamento
-							</h3>
+				<div className="flex-1 overflow-y-auto p-4 space-y-5">
+					<div
+						className="flex gap-2 animate-slide-up-fade"
+						style={{ animationDelay: "0.05s" }}
+					>
+						<Button
+							onClick={handleLaunchTmux}
+							className="flex-1 gap-2 group transition-colors duration-200"
+							style={{
+								background: `linear-gradient(135deg, ${projectColor} 0%, ${projectColor}cc 100%)`,
+							}}
+						>
+							<Terminal size={16} />
+							Codar
+						</Button>
+						<Button
+							variant="outline"
+							size="icon"
+							asChild
+							className="transition-colors duration-200"
+						>
 							<Link
-								to="/tasks"
-								className="text-xs text-muted-foreground hover:text-primary transition-colors"
+								to="/projects/settings"
+								search={{ projectId: project.id }}
+								title="Configurações"
 							>
-								ver todas
+								<Settings size={16} />
 							</Link>
-						</div>
-						<div className="space-y-2">
-							{projectActiveTasks.map((task, index) => (
-								<div 
-									key={task.id} 
-									className="animate-content-reveal" 
-									style={{ animationDelay: `${0.25 + index * 0.05}s` }}
-								>
-									{renderTaskItem(task, true)}
-								</div>
-							))}
-						</div>
-					</div>
-				)}
-
-				{projectUrgentTasks.length > 0 && projectActiveTasks.length === 0 && (
-					<div className="animate-slide-up-fade" style={{ animationDelay: "0.2s" }}>
-						<div className="flex items-center justify-between mb-3">
-							<h3 className="text-xs uppercase tracking-wide text-muted-foreground">
-								Tarefas urgentes
-							</h3>
-							<Link
-								to="/tasks"
-								className="text-xs text-muted-foreground hover:text-primary transition-colors"
-							>
-								ver todas
-							</Link>
-						</div>
-						<div className="space-y-2">
-							{projectUrgentTasks.map((task, index) => (
-								<div 
-									key={task.id} 
-									className="animate-content-reveal" 
-									style={{ animationDelay: `${0.25 + index * 0.05}s` }}
-								>
-									{renderTaskItem(task, false)}
-								</div>
-							))}
-						</div>
-					</div>
-				)}
-
-				{metrics.total === 0 && (
-					<div className="text-center py-6 animate-fade-in">
-						<p className="text-muted-foreground text-sm mb-3">
-							Nenhuma tarefa neste projeto
-						</p>
-						<Button asChild variant="outline" className="transition-colors duration-200">
-							<Link to="/tasks">+ Criar tarefa</Link>
 						</Button>
 					</div>
-				)}
-			</div>
 
-			<div className="p-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground animate-fade-in" style={{ animationDelay: "0.3s" }}>
-				<div className="flex items-center gap-1.5">
-					<Clock size={12} className="animate-pulse" />
-					<span>Última atividade {lastActivityLabel}</span>
+					<div
+						className="grid grid-cols-2 gap-3 animate-slide-up-fade"
+						style={{ animationDelay: "0.1s" }}
+					>
+						<div className="p-3 bg-background/50 border border-border/50 transition-all duration-200 hover:bg-background/70 hover:border-border">
+							<div className="flex items-center gap-2 text-muted-foreground mb-1">
+								<ListTodo size={14} />
+								<span className="text-xs uppercase tracking-wide">Total</span>
+							</div>
+							<p className="text-2xl font-medium text-foreground">
+								{metrics.total}
+							</p>
+						</div>
+						<div className="p-3 bg-background/50 border border-border/50 transition-all duration-200 hover:bg-background/70 hover:border-border">
+							<div className="flex items-center gap-2 text-muted-foreground mb-1">
+								<TrendingUp size={14} />
+								<span className="text-xs uppercase tracking-wide">
+									Progresso
+								</span>
+							</div>
+							<p
+								className="text-2xl font-medium"
+								style={{ color: projectColor }}
+							>
+								{metrics.completionPercent}%
+							</p>
+						</div>
+						<div className="p-3 bg-background/50 border border-border/50 transition-all duration-200 hover:bg-background/70 hover:border-border">
+							<div className="flex items-center gap-2 text-muted-foreground mb-1">
+								<Clock size={14} />
+								<span className="text-xs uppercase tracking-wide">
+									Pendentes
+								</span>
+							</div>
+							<p className="text-2xl font-medium text-foreground">
+								{metrics.pending + metrics.inProgress}
+							</p>
+						</div>
+						<div className="p-3 bg-background/50 border border-border/50 transition-all duration-200 hover:bg-background/70 hover:border-border">
+							<div className="flex items-center gap-2 text-muted-foreground mb-1">
+								<CheckCircle2 size={14} />
+								<span className="text-xs uppercase tracking-wide">
+									Concluídas
+								</span>
+							</div>
+							<p className="text-2xl font-medium text-foreground">
+								{metrics.done}
+							</p>
+						</div>
+					</div>
+
+					{metrics.total > 0 && (
+						<div
+							className="animate-slide-up-fade"
+							style={{ animationDelay: "0.15s" }}
+						>
+							<div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+								<span>Progresso geral</span>
+								<span>{metrics.completionPercent}%</span>
+							</div>
+							<div className="h-2 bg-secondary/60 overflow-hidden">
+								<div
+									className="h-full transition-all duration-700 ease-out animate-progress-shine"
+									style={{
+										width: `${metrics.completionPercent}%`,
+										background: `linear-gradient(90deg, ${projectColor} 0%, ${projectColor}cc 100%)`,
+										boxShadow: `0 0 12px ${projectColor}60`,
+									}}
+								/>
+							</div>
+						</div>
+					)}
+
+					{projectActiveTasks.length > 0 && (
+						<div
+							className="animate-slide-up-fade"
+							style={{ animationDelay: "0.2s" }}
+						>
+							<div className="flex items-center justify-between mb-3">
+								<h3 className="text-xs uppercase tracking-wide text-muted-foreground">
+									Em andamento
+								</h3>
+								<Link
+									to="/tasks"
+									className="text-xs text-muted-foreground hover:text-primary transition-colors"
+								>
+									ver todas
+								</Link>
+							</div>
+							<div className="space-y-2">
+								{projectActiveTasks.map((task, index) => (
+									<div
+										key={task.id}
+										className="animate-content-reveal"
+										style={{ animationDelay: `${0.25 + index * 0.05}s` }}
+									>
+										{renderTaskItem(task, true)}
+									</div>
+								))}
+							</div>
+						</div>
+					)}
+
+					{projectUrgentTasks.length > 0 && projectActiveTasks.length === 0 && (
+						<div
+							className="animate-slide-up-fade"
+							style={{ animationDelay: "0.2s" }}
+						>
+							<div className="flex items-center justify-between mb-3">
+								<h3 className="text-xs uppercase tracking-wide text-muted-foreground">
+									Tarefas urgentes
+								</h3>
+								<Link
+									to="/tasks"
+									className="text-xs text-muted-foreground hover:text-primary transition-colors"
+								>
+									ver todas
+								</Link>
+							</div>
+							<div className="space-y-2">
+								{projectUrgentTasks.map((task, index) => (
+									<div
+										key={task.id}
+										className="animate-content-reveal"
+										style={{ animationDelay: `${0.25 + index * 0.05}s` }}
+									>
+										{renderTaskItem(task, false)}
+									</div>
+								))}
+							</div>
+						</div>
+					)}
+
+					{metrics.total === 0 && (
+						<div className="text-center py-6 animate-fade-in">
+							<p className="text-muted-foreground text-sm mb-3">
+								Nenhuma tarefa neste projeto
+							</p>
+							<Button
+								asChild
+								variant="outline"
+								className="transition-colors duration-200"
+							>
+								<Link to="/tasks">+ Criar tarefa</Link>
+							</Button>
+						</div>
+					)}
 				</div>
+
 				<div
-					className="w-2 h-2 animate-glow-pulse"
-					style={{
-						backgroundColor: projectColor,
-						boxShadow: `0 0 8px ${projectColor}80`,
-					}}
-				/>
+					className="p-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground animate-fade-in"
+					style={{ animationDelay: "0.3s" }}
+				>
+					<div className="flex items-center gap-1.5">
+						<Clock size={12} className="animate-pulse" />
+						<span>Última atividade {lastActivityLabel}</span>
+					</div>
+					<div
+						className="w-2 h-2 animate-glow-pulse"
+						style={{
+							backgroundColor: projectColor,
+							boxShadow: `0 0 8px ${projectColor}80`,
+						}}
+					/>
+				</div>
 			</div>
-		</div>
 		</>
 	);
 });

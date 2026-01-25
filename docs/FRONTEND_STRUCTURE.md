@@ -57,7 +57,6 @@ src/
 │   │
 │   ├── TabBar.tsx              # Barra de navegacao principal
 │   ├── ConfirmDialog.tsx       # Dialog de confirmacao generico
-│   ├── StructuringCompleteModal.tsx  # Modal de estruturacao concluida
 │   ├── Select.tsx              # Select customizado
 │   ├── HotkeyInput.tsx         # Input de atalhos de teclado
 │   ├── ProjectSelect.tsx       # Seletor de projeto

@@ -37,10 +37,11 @@ export function TasksListItem({
 	projectColor,
 	isDone = false,
 	onToggle,
-	onEdit,
 	onToggleSubtask,
 	onDelete,
 }: TasksListItemProps) {
+	const navigate = useNavigate({ from: "/tasks/" });
+
 	const isExecuting = execution && execution.status === "running";
 
 	const progressLabel = getTaskProgressStateLabel(taskFull);
@@ -75,17 +76,21 @@ export function TasksListItem({
 	function handleKeyDown(e: React.KeyboardEvent) {
 		if (e.key === "Enter" || e.key === " ") {
 			e.preventDefault();
-			onEdit();
+			handleEdit();
 		}
+	}
+
+	function handleEdit() {
+		navigate({ to: "/tasks/$taskId", params: { taskId: task.id } });
 	}
 
 	if (isDone) {
 		return (
 			<button
 				type="button"
-				onClick={onEdit}
+				onClick={handleEdit}
 				onKeyDown={handleKeyDown}
-				className="flex items-center gap-3 px-3 py-2 bg-card border border-transparent hover:border-border hover:bg-secondary/50 transition-all duration-200 group cursor-pointer w-full text-left"
+				className="flex items-center gap-3 px-3 py-2 bg-card border border-transparent hover:border-border hover:bg-secondary/50 transition-all duration-200 group  w-full text-left"
 			>
 				{projectColor && (
 					<span
@@ -97,7 +102,7 @@ export function TasksListItem({
 				<Checkbox
 					checked={isDone}
 					onCheckedChange={onToggle}
-					className="text-primary shrink-0 cursor-pointer"
+					className="text-primary shrink-0 "
 				/>
 				<span className="flex-1 text-foreground text-sm line-through text-left">
 					{task.title}
@@ -111,9 +116,12 @@ export function TasksListItem({
 	}
 
 	return (
-		<div
+		<button
+			type="button"
+			onClick={handleEdit}
+			onKeyDown={handleKeyDown}
 			className={cn(
-				"relative border border-transparent transition-colors duration-200 group",
+				"relative cursor-pointer border border-transparent w-full transition-colors duration-200 group",
 				"hover:border-border hover:bg-secondary/30",
 				containerClass,
 				isExecuting && "ring-1 ring-primary",
@@ -127,12 +135,7 @@ export function TasksListItem({
 					: undefined
 			}
 		>
-			<button
-				type="button"
-				onClick={onEdit}
-				onKeyDown={handleKeyDown}
-				className="flex items-center gap-3 px-3 py-2 cursor-pointer w-full text-left"
-			>
+			<div className="flex items-center gap-3 px-3 py-2  w-full text-left">
 				{showSpinner ? (
 					<Loader2
 						size={14}
@@ -143,7 +146,7 @@ export function TasksListItem({
 					<Checkbox
 						checked={isDone}
 						onCheckedChange={onToggle}
-						className="text-muted-foreground hover:text-primary transition-colors shrink-0 cursor-pointer"
+						className="text-muted-foreground hover:text-primary transition-colors shrink-0 "
 					/>
 				)}
 
@@ -180,10 +183,10 @@ export function TasksListItem({
 				<PriorityBadge priority={task.priority} />
 
 				<DeleteButton isConfirming={isDeleteConfirming} onDelete={onDelete} />
-			</button>
+			</div>
 
 			{subtasks.length > 0 && (
-				<div className="pl-8 pr-3 pb-2 space-y-1">
+				<div className="pl-8 pr-3 pb-2 space-y-1 flex flex-col items-start">
 					{allSubtasksDone ? (
 						<span className="text-xs text-muted-foreground italic">
 							(subtasks concluídas)
@@ -221,7 +224,7 @@ export function TasksListItem({
 					)}
 				</div>
 			)}
-		</div>
+		</button>
 	);
 }
 
@@ -293,19 +296,13 @@ type SubtaskRowProps = {
 };
 
 function SubtaskRow({ subtask, taskId, onToggle }: SubtaskRowProps) {
-	const navigate = useNavigate();
 	const isDone = subtask.status === "done";
-
-	function handleClick() {
-		navigate({ to: "/tasks/$taskId", params: { taskId } });
-	}
 
 	return (
 		<button
 			type="button"
-			onClick={handleClick}
 			className={cn(
-				"flex items-center gap-2 text-sm cursor-pointer transition-colors hover:bg-secondary/50 rounded px-1 -mx-1",
+				"flex items-center gap-2 text-sm  transition-colors hover:bg-secondary/50 rounded px-1 -mx-1",
 				isDone && "opacity-50",
 			)}
 		>

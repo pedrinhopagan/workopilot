@@ -1,10 +1,22 @@
-import { memo, useCallback } from "react";
-import { Input } from "@/components/ui/input";
 import { CustomSelect } from "@/components/ui/custom-select";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { Check, ChevronDown, Search, SortAsc, SortDesc, Filter, X } from "lucide-react";
+import {
+	Check,
+	ChevronDown,
+	Filter,
+	Search,
+	SortAsc,
+	SortDesc,
+	X,
+} from "lucide-react";
+import { memo, useCallback } from "react";
 
-export type ProjectSortBy = "name" | "activity" | "pending_tasks" | "created_at";
+export type ProjectSortBy =
+	| "name"
+	| "activity"
+	| "pending_tasks"
+	| "created_at";
 export type ProjectSortOrder = "asc" | "desc";
 export type ProjectStatusFilter = "all" | "active" | "archived";
 
@@ -41,7 +53,7 @@ export const ProjectsFilterBar = memo(function ProjectsFilterBar({
 		(e: React.ChangeEvent<HTMLInputElement>) => {
 			onFiltersChange({ ...filters, search: e.target.value });
 		},
-		[filters, onFiltersChange]
+		[filters, onFiltersChange],
 	);
 
 	const handleClearSearch = useCallback(() => {
@@ -52,7 +64,7 @@ export const ProjectsFilterBar = memo(function ProjectsFilterBar({
 		(value: string) => {
 			onFiltersChange({ ...filters, sortBy: value as ProjectSortBy });
 		},
-		[filters, onFiltersChange]
+		[filters, onFiltersChange],
 	);
 
 	const handleToggleSortOrder = useCallback(() => {
@@ -66,7 +78,7 @@ export const ProjectsFilterBar = memo(function ProjectsFilterBar({
 		(value: string) => {
 			onFiltersChange({ ...filters, status: value as ProjectStatusFilter });
 		},
-		[filters, onFiltersChange]
+		[filters, onFiltersChange],
 	);
 
 	const hasActiveFilters = filters.search || filters.status !== "all";
@@ -74,9 +86,9 @@ export const ProjectsFilterBar = memo(function ProjectsFilterBar({
 	return (
 		<div className="flex items-center gap-3 mb-5 animate-fade-in">
 			<div className="relative flex-1 max-w-xs">
-				<Search 
-					size={14} 
-					className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" 
+				<Search
+					size={14}
+					className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none"
 				/>
 				<Input
 					type="text"
@@ -112,7 +124,7 @@ export const ProjectsFilterBar = memo(function ProjectsFilterBar({
 								<span className="flex-1 text-sm text-foreground truncate text-left">
 									{selected?.name || "Status"}
 								</span>
-								<ChevronDown className="size-3 text-muted-foreground flex-shrink-0" />
+								<ChevronDown className="size-3 text-muted-foreground shrink-0" />
 							</>
 						);
 					}}
@@ -120,16 +132,20 @@ export const ProjectsFilterBar = memo(function ProjectsFilterBar({
 						<div
 							className={cn(
 								"flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors",
-								isSelected ? "bg-popover" : "hover:bg-popover"
+								isSelected ? "bg-popover" : "hover:bg-popover",
 							)}
 						>
-							<span className={cn(
-								"flex-1 text-sm truncate",
-								isSelected ? "text-foreground font-medium" : "text-foreground"
-							)}>
+							<span
+								className={cn(
+									"flex-1 text-sm truncate",
+									isSelected
+										? "text-foreground font-medium"
+										: "text-foreground",
+								)}
+							>
 								{item.name}
 							</span>
-							{isSelected && <Check className="size-3 text-primary flex-shrink-0" />}
+							{isSelected && <Check className="size-3 text-primary shrink-0" />}
 						</div>
 					)}
 				/>
@@ -149,7 +165,7 @@ export const ProjectsFilterBar = memo(function ProjectsFilterBar({
 								<span className="flex-1 text-sm text-foreground truncate text-left">
 									{selected?.name || "Ordenar"}
 								</span>
-								<ChevronDown className="size-3 text-muted-foreground flex-shrink-0" />
+								<ChevronDown className="size-3 text-muted-foreground shrink-0" />
 							</>
 						);
 					}}
@@ -157,16 +173,20 @@ export const ProjectsFilterBar = memo(function ProjectsFilterBar({
 						<div
 							className={cn(
 								"flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors",
-								isSelected ? "bg-popover" : "hover:bg-popover"
+								isSelected ? "bg-popover" : "hover:bg-popover",
 							)}
 						>
-							<span className={cn(
-								"flex-1 text-sm truncate",
-								isSelected ? "text-foreground font-medium" : "text-foreground"
-							)}>
+							<span
+								className={cn(
+									"flex-1 text-sm truncate",
+									isSelected
+										? "text-foreground font-medium"
+										: "text-foreground",
+								)}
+							>
 								{item.name}
 							</span>
-							{isSelected && <Check className="size-3 text-primary flex-shrink-0" />}
+							{isSelected && <Check className="size-3 text-primary shrink-0" />}
 						</div>
 					)}
 				/>
@@ -177,16 +197,27 @@ export const ProjectsFilterBar = memo(function ProjectsFilterBar({
 					className={cn(
 						"h-8 w-8 flex items-center justify-center",
 						"bg-card/50 border border-border/60 text-muted-foreground",
-						"hover:text-foreground hover:border-primary/50 transition-colors"
+						"hover:text-foreground hover:border-primary/50 transition-colors",
 					)}
-					title={filters.sortOrder === "asc" ? "Ordenar crescente" : "Ordenar decrescente"}
+					title={
+						filters.sortOrder === "asc"
+							? "Ordenar crescente"
+							: "Ordenar decrescente"
+					}
 				>
-					{filters.sortOrder === "asc" ? <SortAsc size={14} /> : <SortDesc size={14} />}
+					{filters.sortOrder === "asc" ? (
+						<SortAsc size={14} />
+					) : (
+						<SortDesc size={14} />
+					)}
 				</button>
 			</div>
 
 			{hasActiveFilters && (
-				<div className="h-2 w-2 rounded-full bg-primary animate-pulse" title="Filtros ativos" />
+				<div
+					className="h-2 w-2 rounded-full bg-primary animate-pulse"
+					title="Filtros ativos"
+				/>
 			)}
 		</div>
 	);

@@ -1,14 +1,3 @@
-import { useMutation } from "@tanstack/react-query";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import {
-	Activity,
-	Calendar,
-	CheckCircle2,
-	ChevronRight,
-	LayoutDashboard,
-	Loader2,
-} from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { DayDrawer } from "@/components/agenda";
 import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +14,17 @@ import { cn } from "@/lib/utils";
 import { safeInvoke } from "@/services/tauri";
 import { trpc } from "@/services/trpc";
 import type { Task, TaskFull } from "@/types";
+import { useMutation } from "@tanstack/react-query";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import {
+	Activity,
+	Calendar,
+	CheckCircle2,
+	ChevronRight,
+	LayoutDashboard,
+	Loader2,
+} from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { HomeSidebar } from "./-components/HomeSidebar";
 
 function useInProgressTasks() {
@@ -723,7 +723,7 @@ function HomePage() {
 					onActionClick={handleActionClick}
 					onNavigate={handleNavigate}
 					isActionLoading={terminalActionMutation.isPending}
-					className="w-[340px] min-w-[340px] flex-shrink-0 border-r border-border bg-background"
+					className="w-[340px] min-w-[340px] shrink-0 border-r border-border bg-background"
 				/>
 
 				<main className="flex-1 overflow-y-auto p-6">

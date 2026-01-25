@@ -1,3 +1,15 @@
+import { TaskStatusSelect } from "@/components/tasks/TaskStatusSelect";
+import { CustomSelect } from "@/components/ui/custom-select";
+import {
+	deriveProgressState,
+	getSuggestedAction,
+	getTaskProgressStateColor,
+	getTaskProgressStateContainerClass,
+	getTaskProgressStateHighlight,
+	getTaskProgressStateLabel,
+	type TaskStatus,
+} from "@/lib/constants/taskStatus";
+import type { Subtask, TaskFull } from "@/types";
 import {
 	AlertTriangle,
 	Copy,
@@ -11,18 +23,6 @@ import {
 	X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { TaskStatusSelect } from "@/components/tasks/TaskStatusSelect";
-import { CustomSelect } from "@/components/ui/custom-select";
-import {
-	type TaskStatus,
-	getSuggestedAction,
-	getTaskProgressStateColor,
-	getTaskProgressStateLabel,
-	getTaskProgressStateHighlight,
-	getTaskProgressStateContainerClass,
-	deriveProgressState,
-} from "@/lib/constants/taskStatus";
-import type { Subtask, TaskFull } from "@/types";
 
 function generateStructurePrompt(taskTitle: string, taskId: string): string {
 	return `Estruturar: ${taskTitle}, utilize a skill workopilot-structure para estruturar a task de id: ${taskId}`;
@@ -156,8 +156,7 @@ export function ManageTaskStatus({
 								</svg>
 							</span>
 							<span>
-								Última ação:{" "}
-								<span className="text-primary">{lastAction}</span>
+								Última ação: <span className="text-primary">{lastAction}</span>
 							</span>
 						</div>
 					)}
@@ -171,14 +170,25 @@ export function ManageTaskStatus({
 						/>
 						<span
 							className={`w-4 h-px ${
-								["ready-to-start", "in-execution", "ready-to-review", "ai-working", "done"].includes(progressState)
+								[
+									"ready-to-start",
+									"in-execution",
+									"ready-to-review",
+									"ai-working",
+									"done",
+								].includes(progressState)
 									? "bg-primary"
 									: "bg-border"
 							}`}
 						/>
 						<span
 							className={`w-1.5 h-1.5 rounded-full transition-colors ${
-								["in-execution", "ready-to-review", "ai-working", "done"].includes(progressState)
+								[
+									"in-execution",
+									"ready-to-review",
+									"ai-working",
+									"done",
+								].includes(progressState)
 									? "bg-primary"
 									: "bg-border"
 							}`}
@@ -200,7 +210,10 @@ export function ManageTaskStatus({
 					</div>
 				</div>
 
-				<div className="px-4 py-4 flex items-stretch gap-3 animate-slide-up-fade" style={{ animationDelay: "0.1s" }}>
+				<div
+					className="px-4 py-4 flex items-stretch gap-3 animate-slide-up-fade"
+					style={{ animationDelay: "0.1s" }}
+				>
 					<ActionButton
 						label="Estruturar"
 						icon={<FileText size={20} />}
@@ -245,10 +258,7 @@ export function ManageTaskStatus({
 								</>
 							)}
 							renderItem={(subtask) => (
-								<SubtaskSelectItem
-									subtask={subtask}
-									taskFull={taskFull}
-								/>
+								<SubtaskSelectItem subtask={subtask} taskFull={taskFull} />
 							)}
 						/>
 						{suggestedAction === "execute_subtask" && (
@@ -322,9 +332,10 @@ function ActionButton({
 		}
 	}
 
-	const suggestedClasses = suggestedColor === "primary"
-		? "border-primary bg-primary/10 text-primary shadow-lg shadow-primary/10"
-		: "border-accent bg-accent/10 text-accent shadow-lg shadow-accent/10";
+	const suggestedClasses =
+		suggestedColor === "primary"
+			? "border-primary bg-primary/10 text-primary shadow-lg shadow-primary/10"
+			: "border-accent bg-accent/10 text-accent shadow-lg shadow-accent/10";
 
 	return (
 		<div className="flex-1 relative" ref={menuRef}>
@@ -407,7 +418,7 @@ function SubtaskSelectItem({ subtask, taskFull }: SubtaskSelectItemProps) {
 	return (
 		<div className="flex items-center min-w-0 hover:bg-secondary transition-colors">
 			<div className="flex-1 min-w-0 px-3 py-2.5 text-left text-sm text-foreground flex items-center gap-2">
-				<span className="w-5 h-5 flex-shrink-0 flex items-center justify-center bg-border text-[10px] text-primary">
+				<span className="w-5 h-5 shrink-0 flex items-center justify-center bg-border text-[10px] text-primary">
 					{subtask.order + 1}
 				</span>
 				<span className="flex-1 min-w-0 truncate">{subtask.title}</span>
@@ -416,10 +427,14 @@ function SubtaskSelectItem({ subtask, taskFull }: SubtaskSelectItemProps) {
 			<button
 				type="button"
 				onClick={handleCopyPrompt}
-				className="flex-shrink-0 px-2 py-2.5 text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
+				className="shrink-0 px-2 py-2.5 text-muted-foreground hover:text-foreground hover:bg-secondary/50 transition-colors"
 				title="Copiar prompt"
 			>
-				{copied ? <FileCheck size={14} className="text-primary" /> : <Copy size={14} />}
+				{copied ? (
+					<FileCheck size={14} className="text-primary" />
+				) : (
+					<Copy size={14} />
+				)}
 			</button>
 		</div>
 	);

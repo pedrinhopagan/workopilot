@@ -1,14 +1,13 @@
-import { CalendarCheck, CheckCircle2, Circle, Loader2 } from "lucide-react";
-import { memo, useMemo } from "react";
-
-import { cn } from "@/lib/utils";
 import { EmptyFeedback } from "@/components/ui/empty-feedback";
 import {
 	deriveProgressState,
 	getProgressStateColor,
 	getProgressStateIndicator,
 } from "@/lib/constants/taskStatus";
+import { cn } from "@/lib/utils";
 import type { TaskFull } from "@/types";
+import { CalendarCheck, CheckCircle2, Circle, Loader2 } from "lucide-react";
+import { memo, useMemo } from "react";
 
 type DayTaskItemProps = {
 	task: TaskFull;
@@ -54,12 +53,7 @@ const DayTaskItem = memo(function DayTaskItem({
 					/>
 				);
 			default:
-				return (
-					<Circle
-						size={14}
-						className="text-muted-foreground/50"
-					/>
-				);
+				return <Circle size={14} className="text-muted-foreground/50" />;
 		}
 	}, [indicator, stateColor]);
 
@@ -72,7 +66,7 @@ const DayTaskItem = memo(function DayTaskItem({
 				"text-left transition-colors duration-200",
 				"hover:bg-secondary/50",
 				"focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-				isSelected && "bg-secondary/70"
+				isSelected && "bg-secondary/70",
 			)}
 		>
 			{isSelected && (
@@ -84,14 +78,14 @@ const DayTaskItem = memo(function DayTaskItem({
 				/>
 			)}
 
-			<div className="flex-shrink-0">{StatusIndicator}</div>
+			<div className="shrink-0">{StatusIndicator}</div>
 
 			<span
 				className={cn(
 					"flex-1 text-sm truncate transition-colors duration-200",
 					progressState === "done"
 						? "text-muted-foreground line-through"
-						: "text-foreground group-hover:text-primary"
+						: "text-foreground group-hover:text-primary",
 				)}
 			>
 				{task.title}
@@ -155,7 +149,7 @@ export const DayTasksList = memo(function DayTasksList({
 
 	const dateHeader = useMemo(
 		() => formatDateHeader(selectedDate),
-		[selectedDate]
+		[selectedDate],
 	);
 
 	return (
@@ -186,7 +180,8 @@ export const DayTasksList = memo(function DayTasksList({
 					<div
 						className="absolute inset-0 pointer-events-none opacity-30"
 						style={{
-							background: "radial-gradient(ellipse at top left, hsl(var(--chart-2) / 0.1) 0%, transparent 60%)",
+							background:
+								"radial-gradient(ellipse at top left, hsl(var(--chart-2) / 0.1) 0%, transparent 60%)",
 						}}
 					/>
 					{dayTasks.map((task) => (

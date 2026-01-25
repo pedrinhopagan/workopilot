@@ -19,7 +19,6 @@ components/
 ├── PageHeader.tsx
 ├── ProjectSelect.tsx
 ├── HotkeyInput.tsx
-└── StructuringCompleteModal.tsx
 ```
 
 ## UI COMPONENTS

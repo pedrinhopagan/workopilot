@@ -1,18 +1,17 @@
-import { Link } from "@tanstack/react-router";
-import { ExternalLink, Inbox, Loader2 } from "lucide-react";
-import { memo, useMemo } from "react";
-
-import { cn } from "@/lib/utils";
-import { ProgressCircle } from "@/components/ui/progress-circle";
 import { EmptyFeedback } from "@/components/ui/empty-feedback";
+import { ProgressCircle } from "@/components/ui/progress-circle";
 import {
 	deriveProgressState,
 	getSuggestedAction,
-	getSuggestedActionLabel,
 	getSuggestedActionColor,
+	getSuggestedActionLabel,
 	type SuggestedAction,
 } from "@/lib/constants/taskStatus";
+import { cn } from "@/lib/utils";
 import type { TaskFull } from "@/types";
+import { Link } from "@tanstack/react-router";
+import { ExternalLink, Inbox, Loader2 } from "lucide-react";
+import { memo, useMemo } from "react";
 
 type ActionButtonProps = {
 	action: SuggestedAction;
@@ -41,7 +40,7 @@ const ActionButton = memo(function ActionButton({
 				"transition-colors duration-200",
 				"hover:bg-secondary/50",
 				"focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-				"disabled:opacity-50 disabled:cursor-not-allowed"
+				"disabled:opacity-50 disabled:cursor-not-allowed",
 			)}
 			style={{
 				borderColor: `${color}40`,
@@ -79,19 +78,13 @@ export const TaskSummaryCard = memo(function TaskSummaryCard({
 	isLoading,
 	className,
 }: TaskSummaryCardProps) {
-	const progressState = useMemo(
-		() => deriveProgressState(task),
-		[task]
-	);
+	const progressState = useMemo(() => deriveProgressState(task), [task]);
 
-	const suggestedAction = useMemo(
-		() => getSuggestedAction(task),
-		[task]
-	);
+	const suggestedAction = useMemo(() => getSuggestedAction(task), [task]);
 
 	const actionColor = useMemo(
 		() => getSuggestedActionColor(suggestedAction) || "#909d63",
-		[suggestedAction]
+		[suggestedAction],
 	);
 
 	const progressInfo = useMemo(() => {
@@ -108,7 +101,9 @@ export const TaskSummaryCard = memo(function TaskSummaryCard({
 
 	if (!task) {
 		return (
-			<div className={cn("relative bg-card border border-border p-5", className)}>
+			<div
+				className={cn("relative bg-card border border-border p-5", className)}
+			>
 				<EmptyFeedback
 					icon={Inbox}
 					title="Nenhuma tarefa selecionada"
@@ -132,7 +127,12 @@ export const TaskSummaryCard = memo(function TaskSummaryCard({
 	};
 
 	return (
-		<div className={cn("group/card relative bg-card border border-border", className)}>
+		<div
+			className={cn(
+				"group/card relative bg-card border border-border",
+				className,
+			)}
+		>
 			<div
 				className="absolute left-0 top-0 bottom-0 w-[3px] transition-all duration-300"
 				style={{

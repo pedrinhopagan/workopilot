@@ -1,7 +1,7 @@
-import { useNavigate } from "@tanstack/react-router";
-import { Bot, Check, ChevronDown, ChevronLeft, FileText } from "lucide-react";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
+import { useNavigate } from "@tanstack/react-router";
+import { Bot, Check, ChevronDown, ChevronLeft, FileText } from "lucide-react";
 
 const CATEGORIES = [
 	{ id: "feature", name: "feature", color: "#61afef" },
@@ -78,7 +78,7 @@ export function ManageTaskHeader({
 
 				{/* Task icon with glow */}
 				<div
-					className="flex-shrink-0 p-1.5 animate-scale-in"
+					className="shrink-0 p-1.5 animate-scale-in"
 					style={{
 						color: accentColor,
 						boxShadow: `0 0 12px ${accentColor}30`,
@@ -101,7 +101,7 @@ export function ManageTaskHeader({
 					onValueChange={(id) => onCategoryChange(id)}
 					triggerClassName={cn(
 						"flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-card min-w-[100px]",
-						"hover:bg-popover hover:border-muted-foreground transition-colors"
+						"hover:bg-popover hover:border-muted-foreground transition-colors",
 					)}
 					contentClassName="min-w-[140px]"
 					renderTrigger={() => {
@@ -109,13 +109,13 @@ export function ManageTaskHeader({
 						return (
 							<>
 								<span
-									className="size-2 rounded-full flex-shrink-0"
+									className="size-2 rounded-full shrink-0"
 									style={{ backgroundColor: selected?.color || "#6b7280" }}
 								/>
 								<span className="flex-1 text-sm text-foreground truncate text-left">
 									{selected?.name || "Categoria"}
 								</span>
-								<ChevronDown className="size-3 text-muted-foreground flex-shrink-0" />
+								<ChevronDown className="size-3 text-muted-foreground shrink-0" />
 							</>
 						);
 					}}
@@ -123,22 +123,24 @@ export function ManageTaskHeader({
 						<div
 							className={cn(
 								"flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors",
-								isSelected ? "bg-popover" : "hover:bg-popover"
+								isSelected ? "bg-popover" : "hover:bg-popover",
 							)}
 						>
 							<span
-								className="size-2 rounded-full flex-shrink-0"
+								className="size-2 rounded-full shrink-0"
 								style={{ backgroundColor: item.color }}
 							/>
-							<span className={cn(
-								"flex-1 text-sm truncate",
-								isSelected ? "text-foreground font-medium" : "text-foreground"
-							)}>
+							<span
+								className={cn(
+									"flex-1 text-sm truncate",
+									isSelected
+										? "text-foreground font-medium"
+										: "text-foreground",
+								)}
+							>
 								{item.name}
 							</span>
-							{isSelected && (
-								<Check className="size-3 text-primary flex-shrink-0" />
-							)}
+							{isSelected && <Check className="size-3 text-primary shrink-0" />}
 						</div>
 					)}
 				/>
@@ -149,7 +151,7 @@ export function ManageTaskHeader({
 					onValueChange={(id) => onPriorityChange(Number.parseInt(id, 10))}
 					triggerClassName={cn(
 						"flex items-center gap-2 px-3 py-1.5 rounded-md border border-border bg-card min-w-[90px]",
-						"hover:bg-popover hover:border-muted-foreground transition-colors"
+						"hover:bg-popover hover:border-muted-foreground transition-colors",
 					)}
 					contentClassName="min-w-[120px]"
 					renderTrigger={() => {
@@ -157,13 +159,13 @@ export function ManageTaskHeader({
 						return (
 							<>
 								<span
-									className="size-2 rounded-full flex-shrink-0"
+									className="size-2 rounded-full shrink-0"
 									style={{ backgroundColor: selected?.color || "#6b7280" }}
 								/>
 								<span className="flex-1 text-sm text-foreground truncate text-left">
 									{selected?.name || "Prioridade"}
 								</span>
-								<ChevronDown className="size-3 text-muted-foreground flex-shrink-0" />
+								<ChevronDown className="size-3 text-muted-foreground shrink-0" />
 							</>
 						);
 					}}
@@ -171,27 +173,33 @@ export function ManageTaskHeader({
 						<div
 							className={cn(
 								"flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors",
-								isSelected ? "bg-popover" : "hover:bg-popover"
+								isSelected ? "bg-popover" : "hover:bg-popover",
 							)}
 						>
 							<span
-								className="size-2 rounded-full flex-shrink-0"
+								className="size-2 rounded-full shrink-0"
 								style={{ backgroundColor: item.color }}
 							/>
-							<span className={cn(
-								"flex-1 text-sm truncate",
-								isSelected ? "text-foreground font-medium" : "text-foreground"
-							)}>
+							<span
+								className={cn(
+									"flex-1 text-sm truncate",
+									isSelected
+										? "text-foreground font-medium"
+										: "text-foreground",
+								)}
+							>
 								{item.name}
 							</span>
-							{isSelected && (
-								<Check className="size-3 text-primary flex-shrink-0" />
-							)}
+							{isSelected && <Check className="size-3 text-primary shrink-0" />}
 						</div>
 					)}
 				/>
 
-				{isSaving && <span className="text-xs text-muted-foreground animate-pulse">Salvando...</span>}
+				{isSaving && (
+					<span className="text-xs text-muted-foreground animate-pulse">
+						Salvando...
+					</span>
+				)}
 
 				{aiUpdatedRecently && (
 					<span className="text-xs text-primary flex items-center gap-1 animate-pulse">
@@ -203,8 +211,12 @@ export function ManageTaskHeader({
 				<div
 					className={`w-2 h-2 transition-all duration-300 ${isOpenCodeConnected ? "animate-glow-pulse" : ""}`}
 					style={{
-						backgroundColor: isOpenCodeConnected ? accentColor : "hsl(var(--muted-foreground))",
-						boxShadow: isOpenCodeConnected ? `0 0 8px ${accentColor}80` : "none",
+						backgroundColor: isOpenCodeConnected
+							? accentColor
+							: "hsl(var(--muted-foreground))",
+						boxShadow: isOpenCodeConnected
+							? `0 0 8px ${accentColor}80`
+							: "none",
 					}}
 					title={
 						isOpenCodeConnected
