@@ -1,12 +1,14 @@
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { ListTodo } from "lucide-react";
 import { trpc } from "../../../services/trpc";
 import { useSelectedProjectStore } from "../../../stores/selectedProject";
-import { useGetTaskData, useProjectPath } from "../-utils";
+import { useGetTaskData } from "../-utils";
 import { useGetTaskQuery } from "../-utils/useGetTaskQuery";
 import type { Task, TaskFull } from "../../../types";
+import { PageHeader } from "@/components/PageHeader";
+import { InlineTaskCreate } from "@/components/tasks/InlineTaskCreate";
 import { TasksHeader } from "./TasksHeader";
-import { TasksNewTask } from "./TasksNewTask";
 import { TasksList } from "./TasksList";
 
 export function TasksRoot() {
@@ -14,11 +16,9 @@ export function TasksRoot() {
 	const selectedProjectId = useSelectedProjectStore((s) => s.selectedProjectId);
 	const projectsList = useSelectedProjectStore((s) => s.projectsList);
 	
-	const [isNewTaskOpen, setIsNewTaskOpen] = useState(false);
 	const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
 	const queryState = useGetTaskQuery(selectedProjectId);
-	const { data: projectPath } = useProjectPath(selectedProjectId);
 	
 	const {
 		tasks,
@@ -127,17 +127,45 @@ export function TasksRoot() {
 		}
 	}, [deleteConfirmId, handleDeleteTask]);
 
-	const handleTaskCreated = useCallback(() => {
-		setIsNewTaskOpen(false);
-		refetch();
-	}, [refetch]);
+	const selectedProject = useMemo(() => {
+		return projectsList.find((p) => p.id === selectedProjectId);
+	}, [projectsList, selectedProjectId]);
+
+	const subtitle = useMemo(() => {
+		const total = pagination.total;
+		const pendingCount = pendingTasks.length;
+		const doneCount = doneTasks.length;
+		
+		if (total === 0) {
+			return "Nenhuma tarefa";
+		}
+		
+		if (selectedProject) {
+			return `${total} tarefa${total !== 1 ? "s" : ""} em ${selectedProject.name}`;
+		}
+		
+		return `${pendingCount} pendente${pendingCount !== 1 ? "s" : ""}, ${doneCount} concluída${doneCount !== 1 ? "s" : ""}`;
+	}, [pagination.total, pendingTasks.length, doneTasks.length, selectedProject]);
 
 	return (
 		<>
+			<div className="px-6 pt-6 pb-2">
+				<PageHeader
+					title="Tarefas"
+					subtitle={subtitle}
+					icon={ListTodo}
+					accentColor={selectedProject?.color}
+					className="mb-3"
+				/>
+
+				<InlineTaskCreate
+					projectId={selectedProjectId}
+					onCreated={refetch}
+				/>
+			</div>
+
 			<TasksHeader
 				queryState={queryState}
-				onNewTaskClick={() => setIsNewTaskOpen(true)}
-				canCreateTask={!!selectedProjectId}
 			/>
 
 			<TasksList
@@ -156,15 +184,6 @@ export function TasksRoot() {
 				onDeleteClick={handleDeleteClick}
 				onPageChange={queryState.setPage}
 			/>
-
-			{isNewTaskOpen && selectedProjectId && projectPath && (
-				<TasksNewTask
-					projectId={selectedProjectId}
-					projectPath={projectPath}
-					onClose={() => setIsNewTaskOpen(false)}
-					onCreated={handleTaskCreated}
-				/>
-			)}
 		</>
 	);
 }

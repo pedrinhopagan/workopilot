@@ -1,16 +1,18 @@
-import { Check, ListChecks, Loader2, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { TASK_PRIORITIES } from "../-utils/useGetTaskQuery";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
 	getComplexityColor,
 	getComplexityLabel,
-	getTaskProgressStateLabel,
-	getTaskProgressStateContainerClass,
 	getTaskProgressStateBadgeVariant,
+	getTaskProgressStateContainerClass,
 	getTaskProgressStateIndicator,
+	getTaskProgressStateLabel,
 } from "@/lib/constants/taskStatus";
-import type { Subtask, Task, TaskExecution, TaskFull } from "@/types";
 import { cn } from "@/lib/utils";
+import type { Subtask, Task, TaskExecution, TaskFull } from "@/types";
+import { useNavigate } from "@tanstack/react-router";
+import { Check, ListChecks, Loader2, Trash2 } from "lucide-react";
+import { TASK_PRIORITIES } from "../-utils/useGetTaskQuery";
 
 type TasksListItemProps = {
 	task: Task;
@@ -55,18 +57,20 @@ export function TasksListItem({
 	const noDoneSubtasks = subtasks.length > 0 && doneSubtasks === 0;
 
 	// Última subtask concluída (por completed_at DESC)
-	const lastCompletedSubtask = subtasks
-		.filter((s) => s.status === "done" && s.completed_at)
-		.sort((a, b) => {
-			const dateA = a.completed_at ? new Date(a.completed_at).getTime() : 0;
-			const dateB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
-			return dateB - dateA; // DESC
-		})[0] || null;
+	const lastCompletedSubtask =
+		subtasks
+			.filter((s) => s.status === "done" && s.completed_at)
+			.sort((a, b) => {
+				const dateA = a.completed_at ? new Date(a.completed_at).getTime() : 0;
+				const dateB = b.completed_at ? new Date(b.completed_at).getTime() : 0;
+				return dateB - dateA; // DESC
+			})[0] || null;
 
 	// Próxima subtask pendente (por order ASC)
-	const nextPendingSubtask = subtasks
-		.filter((s) => s.status !== "done")
-		.sort((a, b) => a.order - b.order)[0] || null;
+	const nextPendingSubtask =
+		subtasks
+			.filter((s) => s.status !== "done")
+			.sort((a, b) => a.order - b.order)[0] || null;
 
 	function handleKeyDown(e: React.KeyboardEvent) {
 		if (e.key === "Enter" || e.key === " ") {
@@ -81,7 +85,7 @@ export function TasksListItem({
 				type="button"
 				onClick={onEdit}
 				onKeyDown={handleKeyDown}
-				className="flex items-center gap-3 px-3 py-2 bg-card hover:bg-secondary transition-colors group cursor-pointer w-full text-left"
+				className="flex items-center gap-3 px-3 py-2 bg-card border border-transparent hover:border-border hover:bg-secondary/50 transition-all duration-200 group cursor-pointer w-full text-left"
 			>
 				{projectColor && (
 					<span
@@ -90,25 +94,11 @@ export function TasksListItem({
 						aria-hidden="true"
 					/>
 				)}
-				<span
-					role="checkbox"
-					aria-checked="true"
-					tabIndex={0}
-					onClick={(e) => {
-						e.stopPropagation();
-						onToggle();
-					}}
-					onKeyDown={(e) => {
-						if (e.key === "Enter" || e.key === " ") {
-							e.preventDefault();
-							e.stopPropagation();
-							onToggle();
-						}
-					}}
+				<Checkbox
+					checked={isDone}
+					onCheckedChange={onToggle}
 					className="text-primary shrink-0 cursor-pointer"
-				>
-					[x]
-				</span>
+				/>
 				<span className="flex-1 text-foreground text-sm line-through text-left">
 					{task.title}
 				</span>
@@ -123,10 +113,19 @@ export function TasksListItem({
 	return (
 		<div
 			className={cn(
-				"transition-colors group",
+				"relative border border-transparent transition-colors duration-200 group",
+				"hover:border-border hover:bg-secondary/30",
 				containerClass,
-				isExecuting && "ring-1 ring-primary"
+				isExecuting && "ring-1 ring-primary",
 			)}
+			style={
+				projectColor
+					? {
+							borderLeftColor: projectColor,
+							borderLeftWidth: "3px",
+						}
+					: undefined
+			}
 		>
 			<button
 				type="button"
@@ -134,13 +133,6 @@ export function TasksListItem({
 				onKeyDown={handleKeyDown}
 				className="flex items-center gap-3 px-3 py-2 cursor-pointer w-full text-left"
 			>
-				{projectColor && (
-					<span
-						className="w-1 h-4 shrink-0 rounded-sm"
-						style={{ backgroundColor: projectColor }}
-						aria-hidden="true"
-					/>
-				)}
 				{showSpinner ? (
 					<Loader2
 						size={14}
@@ -148,25 +140,11 @@ export function TasksListItem({
 						aria-label="Carregando"
 					/>
 				) : (
-					<span
-						role="checkbox"
-						aria-checked="false"
-						tabIndex={0}
-						onClick={(e) => {
-							e.stopPropagation();
-							onToggle();
-						}}
-						onKeyDown={(e) => {
-							if (e.key === "Enter" || e.key === " ") {
-								e.preventDefault();
-								e.stopPropagation();
-								onToggle();
-							}
-						}}
+					<Checkbox
+						checked={isDone}
+						onCheckedChange={onToggle}
 						className="text-muted-foreground hover:text-primary transition-colors shrink-0 cursor-pointer"
-					>
-						[ ]
-					</span>
+					/>
 				)}
 
 				<span className="flex-1 text-foreground text-sm flex items-center gap-2 text-left min-w-0">
@@ -186,7 +164,9 @@ export function TasksListItem({
 				)}
 
 				{complexity && (
-					<span className={cn("text-xs shrink-0", getComplexityColor(complexity))}>
+					<span
+						className={cn("text-xs shrink-0", getComplexityColor(complexity))}
+					>
 						{getComplexityLabel(complexity)}
 					</span>
 				)}
@@ -200,7 +180,6 @@ export function TasksListItem({
 				<PriorityBadge priority={task.priority} />
 
 				<DeleteButton isConfirming={isDeleteConfirming} onDelete={onDelete} />
-
 			</button>
 
 			{subtasks.length > 0 && (
@@ -217,6 +196,7 @@ export function TasksListItem({
 							{nextPendingSubtask && (
 								<SubtaskRow
 									subtask={nextPendingSubtask}
+									taskId={task.id}
 									onToggle={() => onToggleSubtask(nextPendingSubtask.id)}
 								/>
 							)}
@@ -226,12 +206,14 @@ export function TasksListItem({
 							{lastCompletedSubtask && (
 								<SubtaskRow
 									subtask={lastCompletedSubtask}
+									taskId={task.id}
 									onToggle={() => onToggleSubtask(lastCompletedSubtask.id)}
 								/>
 							)}
 							{nextPendingSubtask && (
 								<SubtaskRow
 									subtask={nextPendingSubtask}
+									taskId={task.id}
 									onToggle={() => onToggleSubtask(nextPendingSubtask.id)}
 								/>
 							)}
@@ -244,7 +226,14 @@ export function TasksListItem({
 }
 
 type StatusBadgeProps = {
-	variant: "default" | "secondary" | "destructive" | "outline" | "success" | "warning" | "muted";
+	variant:
+		| "default"
+		| "secondary"
+		| "destructive"
+		| "outline"
+		| "success"
+		| "warning"
+		| "muted";
 	label: string;
 };
 
@@ -265,9 +254,7 @@ function PriorityBadge({ priority }: PriorityBadgeProps) {
 	const colorClass = priorityInfo?.color || "bg-muted";
 
 	return (
-		<Badge
-			className={cn("shrink-0 text-primary-foreground", colorClass)}
-		>
+		<Badge className={cn("shrink-0 text-primary-foreground", colorClass)}>
 			P{priority}
 		</Badge>
 	);
@@ -288,7 +275,9 @@ function DeleteButton({ isConfirming, onDelete }: DeleteButtonProps) {
 			}}
 			className={cn(
 				"opacity-0 group-hover:opacity-100 p-1 transition-all shrink-0",
-				isConfirming ? "text-destructive" : "text-muted-foreground hover:text-destructive"
+				isConfirming
+					? "text-destructive"
+					: "text-muted-foreground hover:text-destructive",
 			)}
 			title={isConfirming ? "Confirmar exclusao" : "Excluir tarefa"}
 		>
@@ -299,29 +288,38 @@ function DeleteButton({ isConfirming, onDelete }: DeleteButtonProps) {
 
 type SubtaskRowProps = {
 	subtask: Subtask;
+	taskId: string;
 	onToggle: () => void;
 };
 
-function SubtaskRow({ subtask, onToggle }: SubtaskRowProps) {
+function SubtaskRow({ subtask, taskId, onToggle }: SubtaskRowProps) {
+	const navigate = useNavigate();
 	const isDone = subtask.status === "done";
 
+	function handleClick() {
+		navigate({ to: "/tasks/$taskId", params: { taskId } });
+	}
+
 	return (
-		<div
-			className={cn("flex items-center gap-2 text-sm", isDone && "opacity-50")}
+		<button
+			type="button"
+			onClick={handleClick}
+			className={cn(
+				"flex items-center gap-2 text-sm cursor-pointer transition-colors hover:bg-secondary/50 rounded px-1 -mx-1",
+				isDone && "opacity-50",
+			)}
 		>
-			<button
-				type="button"
-				onClick={onToggle}
+			<Checkbox
+				checked={isDone}
+				onCheckedChange={onToggle}
 				className={cn(
-					"text-xs",
-					isDone ? "text-primary" : "text-muted-foreground hover:text-primary"
+					"text-xs transition-colors",
+					isDone ? "text-primary" : "text-muted-foreground hover:text-primary",
 				)}
-			>
-				{isDone ? "[x]" : "[ ]"}
-			</button>
+			/>
 			<span className={cn("text-foreground", isDone && "line-through")}>
 				{subtask.title}
 			</span>
-		</div>
+		</button>
 	);
 }
