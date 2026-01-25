@@ -5,6 +5,8 @@ import { tasksRouter } from './routers/tasks';
 import { subtasksRouter } from './routers/subtasks';
 import { settingsRouter } from './routers/settings';
 import { executionsRouter } from './routers/executions';
+import { categoriesRouter } from './routers/categories';
+import { urgenciesRouter } from './routers/urgencies';
 
 export const appRouter = router({
   system: systemRouter,
@@ -13,6 +15,8 @@ export const appRouter = router({
   subtasks: subtasksRouter,
   settings: settingsRouter,
   executions: executionsRouter,
+  categories: categoriesRouter,
+  urgencies: urgenciesRouter,
 });
 
 export type AppRouter = typeof appRouter;
