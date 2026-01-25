@@ -6,6 +6,8 @@ export { ProjectsModule } from './modules/ProjectsModule';
 export { SubtasksModule } from './modules/SubtasksModule';
 export { SettingsModule } from './modules/SettingsModule';
 export { ExecutionsModule } from './modules/ExecutionsModule';
+export { CategoriesModule } from './modules/CategoriesModule';
+export { UrgenciesModule } from './modules/UrgenciesModule';
 
 export type {
   Task,
@@ -34,6 +36,18 @@ export type {
 } from '@workopilot/core';
 
 export type { Setting } from '@workopilot/core';
+
+export type {
+  Category,
+  CreateCategoryInput,
+  UpdateCategoryInput,
+} from '@workopilot/core';
+
+export type {
+  Urgency,
+  CreateUrgencyInput,
+  UpdateUrgencyInput,
+} from '@workopilot/core';
 
 export type {
   TaskExecution,

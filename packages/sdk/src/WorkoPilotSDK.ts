@@ -5,6 +5,8 @@ import { ProjectsModule } from './modules/ProjectsModule';
 import { SubtasksModule } from './modules/SubtasksModule';
 import { SettingsModule } from './modules/SettingsModule';
 import { ExecutionsModule } from './modules/ExecutionsModule';
+import { CategoriesModule } from './modules/CategoriesModule';
+import { UrgenciesModule } from './modules/UrgenciesModule';
 
 export interface WorkoPilotSDKOptions {
   /** Custom database path. Defaults to ~/.local/share/workopilot/workopilot.db */
@@ -55,6 +57,8 @@ export class WorkoPilotSDK {
   public readonly subtasks: SubtasksModule;
   public readonly settings: SettingsModule;
   public readonly executions: ExecutionsModule;
+  public readonly categories: CategoriesModule;
+  public readonly urgencies: UrgenciesModule;
 
   private constructor(core: Core) {
     this.core = core;
@@ -63,6 +67,8 @@ export class WorkoPilotSDK {
     this.subtasks = new SubtasksModule(core);
     this.settings = new SettingsModule(core);
     this.executions = new ExecutionsModule(core);
+    this.categories = new CategoriesModule(core);
+    this.urgencies = new UrgenciesModule(core);
   }
 
   /**
