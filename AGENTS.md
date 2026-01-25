@@ -131,6 +131,67 @@ src-tauri (spawns) → sidecar (depends) → core
 | `as any` / `@ts-ignore` | Type safety violation |
 | Committing `dist/` folder | Only commit source code, build artifacts are generated |
 
+## ANIMATION GUIDELINES
+
+**Princípio fundamental**: Hover deve ser SEMPRE sutil - apenas mudanças de cor e opacidade.
+
+### Hover Effects - REGRAS OBRIGATÓRIAS
+
+| Permitido | Proibido |
+|-----------|----------|
+| `transition-colors` | `hover:translate-y-*` |
+| `transition-opacity` | `hover:translate-x-*` |
+| `hover:text-*` (cor) | `hover:scale-*` |
+| `hover:bg-*` (cor) | `hover:rotate-*` |
+| `hover:border-*` (cor) | `group-hover:scale-*` |
+| `hover:opacity-*` | `group-hover:translate-*` |
+| `group-hover:text-*` | `hover-lift` (classe CSS) |
+| `group-hover:opacity-*` | `hover:transform` |
+
+### Exemplos Corretos
+
+```tsx
+// ✅ BOM - hover sutil apenas com cor/opacidade
+<div className="transition-colors hover:bg-secondary hover:text-foreground" />
+<div className="opacity-0 group-hover:opacity-100 transition-opacity" />
+<button className="text-muted-foreground hover:text-primary transition-colors" />
+```
+
+### Exemplos Proibidos
+
+```tsx
+// ❌ PROIBIDO - movimento e escala em hover
+<div className="hover:translate-y-[-2px]" />
+<div className="group-hover:scale-105" />
+<div className="hover-lift" /> // classe CSS que move elementos
+<button className="hover:scale-110" />
+```
+
+### Entry Animations
+
+Entry animations são permitidas, mas devem ser:
+- **Rápidas**: máximo 300ms de duração
+- **Discretas**: preferir `fade-in` sobre `slide-in` ou `scale-in`
+- **Sem exagero**: evitar múltiplos efeitos simultâneos (staggered + slide + scale)
+
+```tsx
+// ✅ BOM - entry animation discreta
+<div className="animate-fade-in" />
+
+// ⚠️ COM MODERAÇÃO - entry com movimento
+<div className="animate-slide-up-fade" /> // usar com delay curto
+
+// ❌ EVITAR - múltiplos efeitos sobrepostos
+<div className="animate-stagger-fade-in hover:translate-y-[-3px] group-hover:scale-105" />
+```
+
+### Transições de Estado
+
+Para mudanças de estado (loading, done, error), usar:
+- `transition-all duration-200` para transições suaves
+- `animate-pulse` para estados de loading (com moderação)
+- Evitar `animate-spin` excessivo - usar apenas em ícones de loading pequenos
+
 ## CONVENTIONS
 
 - **Task status flow:** `pending` → `in_progress` (AI working) → `done`

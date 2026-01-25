@@ -5,6 +5,8 @@ import { TabBar } from "../components/TabBar";
 import { HotkeyInput, type HotkeyValue } from "../components/HotkeyInput";
 import { Switch } from "@/components/ui/switch";
 import { trpc } from "../services/trpc";
+import { PageHeader } from "@/components/PageHeader";
+import { Settings } from "lucide-react";
 
 interface ShortcutConfig {
   modifier: string;
@@ -93,10 +95,11 @@ function SettingsPage() {
       <TabBar />
       <main className="flex-1 overflow-y-auto p-4">
         <div className="max-w-xl">
-          <div className="mb-6">
-            <h1 className="text-xl text-foreground mb-1">Configuracoes</h1>
-            <p className="text-sm text-muted-foreground">Configuracoes globais da aplicacao</p>
-          </div>
+          <PageHeader
+            title="Configurações"
+            subtitle="Personalize sua experiência"
+            icon={Settings}
+          />
 
           <div className="bg-card border border-border p-4">
             <h2 className="text-sm text-muted-foreground uppercase tracking-wide mb-4">Comportamento da Janela</h2>

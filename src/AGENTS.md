@@ -30,6 +30,8 @@ src/
 | Tauri bridge | `src/services/tauri.ts` | safeInvoke/safeListen wrappers |
 | Task mutations | `src/hooks/useUpdateTask.ts` | tRPC mutation wrappers |
 | UI state | `src/stores/` | Zustand stores |
+| UI primitives | `src/components/ui/` | shadcn/ui + CustomSelect |
+| Custom dropdowns | `src/components/ui/custom-select.tsx` | Generic select with render props |
 
 ## CONVENTIONS
 

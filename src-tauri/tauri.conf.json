@@ -14,8 +14,8 @@
       {
         "label": "main",
         "title": "WorkOpilot",
-        "width": 900,
-        "height": 600,
+        "width": 1000,
+        "height": 750,
         "minWidth": 512,
         "minHeight": 500,
         "center": true,

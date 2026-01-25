@@ -1,6 +1,6 @@
 import { createRootRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef } from "react";
-import { StructuringCompleteModal } from "../components/StructuringCompleteModal";
+import { Toaster } from "../components/ui/sonner";
 import { useDbChangedListener } from "../hooks/useDbChangedListener";
 import { openCodeService } from "../services/opencode";
 import {
@@ -79,13 +79,13 @@ function RootLayout() {
 		const handleKeydown = (e: KeyboardEvent) => {
 			if (e.altKey && e.key >= "0" && e.key <= "9") {
 				e.preventDefault();
-			const tabMap: Record<string, string> = {
-				"1": "/home",
-				"2": "/projects",
-				"3": "/tasks",
-				"4": "/agenda",
-				"0": "/settings",
-			};
+				const tabMap: Record<string, string> = {
+					"1": "/home",
+					"2": "/projects",
+					"3": "/tasks",
+					"4": "/agenda",
+					"0": "/settings",
+				};
 				const path = tabMap[e.key];
 				if (path) {
 					navigate({ to: path });
@@ -98,9 +98,9 @@ function RootLayout() {
 	}, [navigate]);
 
 	return (
-		<div className="h-screen min-w-lg flex flex-col bg-background p-3">
+		<div className="h-screen min-w-lg flex flex-col bg-background border-4 border-[#141414]">
 			<Outlet />
-			<StructuringCompleteModal />
+			<Toaster position="bottom-right" />
 		</div>
 	);
 }
