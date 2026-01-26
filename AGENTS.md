@@ -59,7 +59,7 @@ workopilot/
 - Subtasks: `pending` → `in_progress` → `done`
 - Executions: `running` → `completed` | `error`
 
-## OPENCODE SKILLS (5 total)
+## OPENCODE SKILLS (6 total)
 
 Skills define AI workflows. Located in `src-tauri/resources/opencode-skills/`:
 
@@ -68,7 +68,8 @@ Skills define AI workflows. Located in `src-tauri/resources/opencode-skills/`:
 | `workopilot-structure` | "estruturar" | Dialogue to collect description, rules, criteria; creates subtasks |
 | `workopilot-execute-all` | "executar" (full) | Implements all subtasks sequentially |
 | `workopilot-execute-subtask` | "executar subtask" | Implements single subtask with focus |
-| `workopilot-review` | "revisar" | Verifies acceptance criteria, runs checks, approves/rejects |
+| `workopilot-review` | "revisar" | Verifies acceptance criteria, runs checks, signals approval (does NOT mark done) |
+| `workopilot-commit` | "commit" | Uses git-master to commit changes and marks task as done |
 | `workopilot-quickfix` | "quickfix" | Minimal adjustments, preserves structure |
 
 **Skills use CLI:** `cd packages/cli && bun run src/index.ts <command>`
@@ -92,6 +93,54 @@ link-terminal <taskId> -t <session>  # Link tmux session
 db-info                              # Database stats
 sync-skills                          # Sync skills to OpenCode
 ```
+
+## ACTION SYSTEM
+
+WorkoPilot uses a centralized **Action Registry** (`src/lib/constants/actionRegistry.ts`) that defines all available task actions declaratively.
+
+### Task Action Flow
+
+```
+Structure → Execute → Review → Commit → Done
+```
+
+Each step corresponds to an action in the registry that maps to an OpenCode skill.
+
+### Actions
+
+| Action ID | Label | Skill | Color Source | Suggested When |
+|-----------|-------|-------|-------------|----------------|
+| `focus_terminal` | Ver terminal | _(none)_ | `ai-working` | AI is actively working (`ai-working` state) |
+| `commit` | Commit | `workopilot-commit` | `ready-to-commit` (#6c5ce7) | All subtasks done + `last_completed_action === 'review'` + status !== 'done' |
+| `review` | Revisar | `workopilot-review` | `ready-to-review` (#c9a227) | Progress state is `ready-to-review` |
+| `execute_subtask` | Executar Subtask | `workopilot-execute-subtask` | `in-execution` (#b33a3a) | In execution, or ready-to-start with >3 subtasks |
+| `execute_all` | Executar Tudo | `workopilot-execute-all` | `ready-to-start` (#4a8ec2) | Ready-to-start with <=3 subtasks |
+| `structure` | Estruturar | `workopilot-structure` | `started` (#c2722a) | Idle or started state |
+
+### ActionDefinition Interface
+
+```typescript
+interface ActionDefinition {
+  id: ActionId;
+  label: string;
+  icon: LucideIcon;
+  skill: string;
+  color: string;
+  suggestedWhen: (task: TaskFull) => boolean;
+  generatePrompt: (task: TaskFull, subtaskId?: string) => string;
+  beforeExecute?: { setStatus?: TaskStatus };
+  afterExecute?: { setStatus?: TaskStatus };
+  requiresSubtaskSelect?: boolean;
+}
+```
+
+### Key Behaviors
+
+- **Review does NOT mark task as done** - it sets `last_completed_action='review'` via CLI
+- **Commit marks task as done** - it uses git-master to commit and then sets status to done
+- **`ready-to-commit` progress state** is derived (not persisted): all subtasks done + `last_completed_action === 'review'` + status !== 'done'
+- Actions are rendered dynamically from the registry in `ManageTaskStatus.tsx`
+- Action suggestion priority follows array order (first match wins)
 
 ## ARCHITECTURE CONSTRAINTS
 

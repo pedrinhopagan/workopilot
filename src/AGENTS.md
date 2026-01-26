@@ -33,6 +33,54 @@ src/
 | UI primitives | `src/components/ui/` | shadcn/ui + CustomSelect |
 | Custom dropdowns | `src/components/ui/custom-select.tsx` | Generic select with render props |
 
+## ACTION REGISTRY
+
+**File:** `src/lib/constants/actionRegistry.ts`
+
+Centralized, declarative definition of all task actions. Each action maps to an OpenCode skill and defines its UI behavior.
+
+### Interface
+
+```typescript
+interface ActionDefinition {
+  id: ActionId;           // 'structure' | 'execute_all' | 'execute_subtask' | 'review' | 'commit' | 'focus_terminal'
+  label: string;          // Portuguese UI label
+  icon: LucideIcon;       // lucide-react icon
+  skill: string;          // OpenCode skill name
+  color: string;          // Hex color from PROGRESS_STATE_COLORS
+  suggestedWhen: (task: TaskFull) => boolean;  // When to suggest this action
+  generatePrompt: (task: TaskFull, subtaskId?: string) => string;  // Prompt for OpenCode
+  beforeExecute?: { setStatus?: TaskStatus };  // Status change before execution
+  afterExecute?: { setStatus?: TaskStatus };   // Status change after execution
+  requiresSubtaskSelect?: boolean;             // Whether user must pick a subtask first
+}
+```
+
+### Helpers
+
+| Function | Returns |
+|----------|---------|
+| `getActionById(id)` | `ActionDefinition \| undefined` |
+| `getSuggestedActionFromRegistry(task)` | `ActionDefinition \| null` (first match wins by array order) |
+
+### Action Flow
+
+```
+Structure → Execute → Review → Commit → Done
+```
+
+Actions are rendered dynamically from the `ACTIONS` array. Suggestion priority follows array order (first match wins). Colors are derived from `PROGRESS_STATE_COLORS` in `taskProgressState.ts`.
+
+### Key Files
+
+| File | Role |
+|------|------|
+| `src/lib/constants/actionRegistry.ts` | Action definitions and registry |
+| `src/lib/constants/taskProgressState.ts` | Progress states, colors, labels |
+| `src/lib/constants/taskStatus.ts` | `deriveProgressState()` logic |
+| `src/routes/tasks/$taskId/-components/ManageTaskStatus.tsx` | Renders action buttons from registry |
+| `src/routes/tasks/$taskId/-components/ManageTaskRoot.tsx` | Action handlers |
+
 ## CONVENTIONS
 
 - Use `trpc.*` hooks for data; avoid direct `invoke()` for CRUD.

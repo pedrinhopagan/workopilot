@@ -154,6 +154,7 @@ program
   .option("--business-rules <rules>", "Set business rules (JSON array or comma-separated values)")
   .option("--technical-notes <notes>", "Set technical notes")
   .option("--structuring-complete <bool>", "Set structuring_complete (true/false)")
+  .option("--last-completed-action <action>", "Set last_completed_action in ai_metadata (e.g. 'review', 'execute', or 'null' to clear)")
   .option("--scheduled-date <date>", "Set scheduled date (YYYY-MM-DD format, or 'null' to unschedule)")
   .action(
     async (
@@ -168,6 +169,7 @@ program
         businessRules?: string;
         technicalNotes?: string;
         structuringComplete?: string;
+        lastCompletedAction?: string;
         scheduledDate?: string;
       }
     ) => {
@@ -281,9 +283,18 @@ program
         
         if (options.structuringComplete !== undefined) {
           updateInput.ai_metadata = {
+            ...updateInput.ai_metadata,
             structuring_complete: options.structuringComplete === "true",
           };
           updates.structuring_complete = options.structuringComplete === "true";
+        }
+        if (options.lastCompletedAction !== undefined) {
+          const value = options.lastCompletedAction === "null" || options.lastCompletedAction === "" ? null : options.lastCompletedAction;
+          updateInput.ai_metadata = {
+            ...updateInput.ai_metadata,
+            last_completed_action: value,
+          };
+          updates.last_completed_action = value;
         }
         if (options.scheduledDate !== undefined) {
           if (options.scheduledDate === "null" || options.scheduledDate === "") {
