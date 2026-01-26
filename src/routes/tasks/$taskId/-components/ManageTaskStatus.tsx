@@ -214,69 +214,82 @@ export function ManageTaskStatus({
 					className="px-4 py-4 flex items-stretch gap-3 animate-slide-up-fade"
 					style={{ animationDelay: "0.1s" }}
 				>
-					<ActionButton
-						label="Estruturar"
-						icon={<FileText size={20} />}
-						isLoading={isLaunchingTerminalAction}
-						isSuggested={suggestedAction === "structure"}
-						suggestedColor="accent"
-						prompt={generateStructurePrompt(taskFull.title, taskFull.id)}
-						onClick={onStructureTask}
-					/>
+				<ActionButton
+					label="Estruturar"
+					icon={<FileText size={20} />}
+					isLoading={isLaunchingTerminalAction}
+					isSuggested={suggestedAction === "structure"}
+					suggestedHexColor={progressColor}
+					prompt={generateStructurePrompt(taskFull.title, taskFull.id)}
+					onClick={onStructureTask}
+				/>
 
-					<ActionButton
-						label="Executar Tudo"
-						icon={<Rocket size={20} />}
-						isLoading={isLaunchingTerminalAction}
-						isSuggested={suggestedAction === "execute_all"}
-						suggestedColor="primary"
-						prompt={generateExecuteAllPrompt(taskFull.title, taskFull.id)}
-						onClick={onExecuteAll}
-					/>
+				<ActionButton
+					label="Executar Tudo"
+					icon={<Rocket size={20} />}
+					isLoading={isLaunchingTerminalAction}
+					isSuggested={suggestedAction === "execute_all"}
+					suggestedHexColor={progressColor}
+					prompt={generateExecuteAllPrompt(taskFull.title, taskFull.id)}
+					onClick={onExecuteAll}
+				/>
 
-					<div className="flex-1 relative">
-						<CustomSelect
-							items={pendingSubtasks}
-							onValueChange={(subtaskId) => onExecuteSubtask(subtaskId)}
-							label="Selecione uma subtask"
-							disabled={isLaunchingTerminalAction || !canExecuteSubtask}
-							triggerClassName={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 border transition-all duration-200 ${
-								suggestedAction === "execute_subtask"
-									? "border-chart-4 bg-chart-4/10 text-chart-4 shadow-lg shadow-chart-4/10"
-									: "border-border bg-card text-foreground hover:border-muted hover:bg-secondary"
-							}`}
-							contentClassName="min-w-[var(--radix-select-trigger-width)]"
-							renderTrigger={() => (
-								<>
-									<Target size={20} />
-									<span className="text-sm font-medium">Executar Subtask</span>
-									{canExecuteSubtask && (
-										<span className="text-[10px] opacity-60">
-											({pendingSubtasks.length})
-										</span>
-									)}
-								</>
-							)}
-							renderItem={(subtask) => (
-								<SubtaskSelectItem subtask={subtask} taskFull={taskFull} />
-							)}
-						/>
-						{suggestedAction === "execute_subtask" && (
-							<span className="absolute -top-2 -left-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider bg-chart-4 text-background z-10">
-								Sugestão
-							</span>
+				<div className="flex-1 relative">
+					<CustomSelect
+						items={pendingSubtasks}
+						onValueChange={(subtaskId) => onExecuteSubtask(subtaskId)}
+						label="Selecione uma subtask"
+						disabled={isLaunchingTerminalAction || !canExecuteSubtask}
+						triggerClassName={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 border transition-all duration-200 ${
+							suggestedAction === "execute_subtask"
+								? "shadow-lg"
+								: "border-border bg-card text-foreground hover:border-muted hover:bg-secondary"
+						}`}
+						triggerStyle={
+							suggestedAction === "execute_subtask"
+								? {
+										borderColor: progressColor,
+										backgroundColor: `${progressColor}1a`,
+										color: progressColor,
+										boxShadow: `0 10px 15px -3px ${progressColor}1a, 0 4px 6px -4px ${progressColor}1a`,
+									}
+								: undefined
+						}
+						contentClassName="min-w-[var(--radix-select-trigger-width)]"
+						renderTrigger={() => (
+							<>
+								<Target size={20} />
+								<span className="text-sm font-medium">Executar Subtask</span>
+								{canExecuteSubtask && (
+									<span className="text-[10px] opacity-60">
+										({pendingSubtasks.length})
+									</span>
+								)}
+							</>
 						)}
-					</div>
-
-					<ActionButton
-						label="Revisar"
-						icon={<FileCheck size={20} />}
-						isLoading={isLaunchingTerminalAction}
-						isSuggested={suggestedAction === "review"}
-						suggestedColor="accent"
-						prompt={generateReviewPrompt(taskFull.title, taskFull.id)}
-						onClick={onReviewTask}
+						renderItem={(subtask) => (
+							<SubtaskSelectItem subtask={subtask} taskFull={taskFull} />
+						)}
 					/>
+					{suggestedAction === "execute_subtask" && (
+						<span
+							className="absolute -top-2 -left-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-background z-10"
+							style={{ backgroundColor: progressColor }}
+						>
+							Sugestão
+						</span>
+					)}
+				</div>
+
+				<ActionButton
+					label="Revisar"
+					icon={<FileCheck size={20} />}
+					isLoading={isLaunchingTerminalAction}
+					isSuggested={suggestedAction === "review"}
+					suggestedHexColor={progressColor}
+					prompt={generateReviewPrompt(taskFull.title, taskFull.id)}
+					onClick={onReviewTask}
+				/>
 				</div>
 			</div>
 		</>
@@ -288,7 +301,7 @@ interface ActionButtonProps {
 	icon: React.ReactNode;
 	isLoading: boolean;
 	isSuggested: boolean;
-	suggestedColor: "primary" | "accent";
+	suggestedHexColor: string;
 	prompt: string;
 	onClick: () => void;
 }
@@ -298,7 +311,7 @@ function ActionButton({
 	icon,
 	isLoading,
 	isSuggested,
-	suggestedColor,
+	suggestedHexColor,
 	prompt,
 	onClick,
 }: ActionButtonProps) {
@@ -332,11 +345,6 @@ function ActionButton({
 		}
 	}
 
-	const suggestedClasses =
-		suggestedColor === "primary"
-			? "border-primary bg-primary/10 text-primary shadow-lg shadow-primary/10"
-			: "border-accent bg-accent/10 text-accent shadow-lg shadow-accent/10";
-
 	return (
 		<div className="flex-1 relative" ref={menuRef}>
 			<button
@@ -344,9 +352,19 @@ function ActionButton({
 				onClick={onClick}
 				className={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 border transition-all duration-200 ${
 					isSuggested
-						? suggestedClasses
+						? "shadow-lg"
 						: "border-border bg-card text-foreground hover:border-muted hover:bg-secondary"
 				}`}
+				style={
+					isSuggested
+						? {
+								borderColor: suggestedHexColor,
+								backgroundColor: `${suggestedHexColor}1a`,
+								color: suggestedHexColor,
+								boxShadow: `0 10px 15px -3px ${suggestedHexColor}1a, 0 4px 6px -4px ${suggestedHexColor}1a`,
+							}
+						: undefined
+				}
 			>
 				{isLoading ? <Loader2 size={20} className="animate-spin" /> : icon}
 				<span className="text-sm font-medium">{label}</span>
@@ -378,9 +396,8 @@ function ActionButton({
 
 			{isSuggested && (
 				<span
-					className={`absolute -top-2 -left-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-background ${
-						suggestedColor === "primary" ? "bg-primary" : "bg-accent"
-					}`}
+					className="absolute -top-2 -left-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-background"
+					style={{ backgroundColor: suggestedHexColor }}
 				>
 					Sugestão
 				</span>

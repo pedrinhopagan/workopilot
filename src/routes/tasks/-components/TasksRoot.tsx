@@ -1,5 +1,4 @@
 import { useCallback, useMemo, useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import { ListTodo } from "lucide-react";
 import { trpc } from "../../../services/trpc";
 import { useSelectedProjectStore } from "../../../stores/selectedProject";
@@ -12,7 +11,6 @@ import { TasksHeader } from "./TasksHeader";
 import { TasksList } from "./TasksList";
 
 export function TasksRoot() {
-	const navigate = useNavigate();
 	const selectedProjectId = useSelectedProjectStore((s) => s.selectedProjectId);
 	const projectsList = useSelectedProjectStore((s) => s.projectsList);
 	
@@ -70,10 +68,6 @@ export function TasksRoot() {
 			{ onError: (e) => console.error("Failed to update task:", e) }
 		);
 	}, [updateStatusMutation]);
-
-	const handleEditTask = useCallback((taskId: string) => {
-		navigate({ to: "/tasks/$taskId", params: { taskId } });
-	}, [navigate]);
 
 	const handleToggleSubtask = useCallback((taskId: string, subtaskId: string) => {
 		const taskFull = taskFullCache.get(taskId);
@@ -179,7 +173,6 @@ export function TasksRoot() {
 				pagination={pagination}
 				getSubtasks={getSubtasks}
 				onToggleTask={handleToggleTask}
-				onEditTask={handleEditTask}
 				onToggleSubtask={handleToggleSubtask}
 				onDeleteClick={handleDeleteClick}
 				onPageChange={queryState.setPage}

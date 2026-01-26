@@ -1,17 +1,7 @@
 import { useState } from "react";
-import { useNavigate } from "@tanstack/react-router";
 import type { Task } from "../../../types";
 import { useAgendaStore } from "../../../stores/agenda";
-
-const priorityColors: Record<number, string> = {
-  1: "hsl(var(--destructive))",
-  2: "hsl(var(--accent))",
-  3: "hsl(var(--primary))",
-};
-
-type UnscheduledTaskProps = {
-  task: Task;
-};
+import { TaskItem } from "../../../components/tasks/TaskItem";
 
 function formatDueDate(date: string | null): string {
   if (!date) return "";
@@ -19,15 +9,17 @@ function formatDueDate(date: string | null): string {
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
 
+type UnscheduledTaskProps = {
+  task: Task;
+};
+
 export function UnscheduledTask({ task }: UnscheduledTaskProps) {
-  const navigate = useNavigate();
   const setDraggedTask = useAgendaStore((s) => s.setDraggedTask);
   const isDistributionMode = useAgendaStore((s) => s.isDistributionMode);
   const selectedTaskIds = useAgendaStore((s) => s.selectedTaskIds);
   const toggleTaskSelection = useAgendaStore((s) => s.toggleTaskSelection);
   const [isDragging, setIsDragging] = useState(false);
 
-  const priorityColor = priorityColors[task.priority] ?? "hsl(var(--primary))";
   const isOverdue = task.due_date ? new Date(task.due_date) < new Date() : false;
   const isSelected = selectedTaskIds.has(task.id);
 
@@ -49,12 +41,8 @@ export function UnscheduledTask({ task }: UnscheduledTaskProps) {
     setDraggedTask(null);
   }
 
-  function handleClick() {
-    if (isDistributionMode) {
-      toggleTaskSelection(task.id);
-      return;
-    }
-    navigate({ to: "/tasks/$taskId", params: { taskId: task.id } });
+  function handleDistributionClick() {
+    toggleTaskSelection(task.id);
   }
 
   function handleCheckboxChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -62,42 +50,70 @@ export function UnscheduledTask({ task }: UnscheduledTaskProps) {
     toggleTaskSelection(task.id);
   }
 
-  return (
-    <div
-      draggable={!isDistributionMode}
-      role="button"
-      tabIndex={0}
-      className={`flex items-center gap-2 px-2 py-1.5 bg-card transition-all hover:bg-popover ${
-        isDragging ? "opacity-50 cursor-grabbing" : isDistributionMode ? "cursor-pointer" : "cursor-grab"
-      } ${isSelected ? "ring-1 ring-primary bg-popover" : ""}`}
-      style={{
-        borderLeftColor: isOverdue ? "hsl(var(--destructive))" : "hsl(var(--primary))",
-        borderLeftWidth: "3px",
-        borderLeftStyle: "solid",
-      }}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-      onClick={handleClick}
-      onKeyDown={(e) => e.key === "Enter" && handleClick()}
-    >
-      {isDistributionMode && (
+  const borderColor = isOverdue ? "hsl(var(--destructive))" : "hsl(var(--primary))";
+
+  if (isDistributionMode) {
+    return (
+      <button
+        type="button"
+        className={`flex items-center gap-2 transition-colors w-full text-left ${
+          isSelected ? "ring-1 ring-primary bg-popover" : ""
+        } cursor-pointer`}
+        onClick={handleDistributionClick}
+      >
         <input
           type="checkbox"
           checked={isSelected}
           onChange={handleCheckboxChange}
-          className="w-4 h-4 accent-primary cursor-pointer"
+          className="w-4 h-4 accent-primary cursor-pointer ml-2 shrink-0"
           onClick={(e) => e.stopPropagation()}
         />
-      )}
-      <span className="flex-1 text-sm text-foreground truncate">{task.title}</span>
-      {task.due_date && (
-        <span className={`text-xs ${isOverdue ? "text-destructive" : "text-muted-foreground"}`}>
-          {formatDueDate(task.due_date)}
-        </span>
-      )}
-      <span style={{ color: priorityColor }} className="text-xs font-medium">
-        P{task.priority}
-      </span>
+        <div className="flex-1 min-w-0">
+          <TaskItem
+            task={task}
+            taskFull={null}
+            variant="compact"
+            isDone={false}
+            onToggle={handleDistributionClick}
+            projectColor={borderColor}
+            disableNavigation
+          />
+        </div>
+        {task.due_date && (
+          <span className={`text-xs shrink-0 pr-2 ${isOverdue ? "text-destructive" : "text-muted-foreground"}`}>
+            {formatDueDate(task.due_date)}
+          </span>
+        )}
+      </button>
+    );
+  }
+
+  return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: drag-and-drop wrapper
+    <div
+      draggable
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      className={`cursor-grab ${isDragging ? "opacity-50 cursor-grabbing" : ""}`}
+    >
+      <div className="flex items-center">
+        <div className="flex-1 min-w-0">
+          <TaskItem
+            task={task}
+            taskFull={null}
+            variant="compact"
+            isDone={false}
+            onToggle={() => {}}
+            projectColor={borderColor}
+            disableNavigation={false}
+          />
+        </div>
+        {task.due_date && (
+          <span className={`text-xs shrink-0 pr-2 ${isOverdue ? "text-destructive" : "text-muted-foreground"}`}>
+            {formatDueDate(task.due_date)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

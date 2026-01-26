@@ -15,6 +15,7 @@ interface CustomSelectProps<T extends { id: string }> {
   disabled?: boolean
   className?: string
   triggerClassName?: string
+  triggerStyle?: React.CSSProperties
   contentClassName?: string
   align?: "start" | "center" | "end"
   side?: "top" | "bottom" | "left" | "right"
@@ -31,6 +32,7 @@ function CustomSelect<T extends { id: string }>({
   disabled = false,
   className,
   triggerClassName,
+  triggerStyle,
   contentClassName,
   align = "start",
   side = "bottom",
@@ -54,6 +56,7 @@ function CustomSelect<T extends { id: string }>({
           "flex items-center justify-between gap-2 whitespace-nowrap transition-all outline-none disabled:cursor-not-allowed disabled:opacity-50",
           triggerClassName
         )}
+        style={triggerStyle}
       >
         {renderTrigger ? (
           renderTrigger()

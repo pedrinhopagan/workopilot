@@ -49,13 +49,13 @@ export const PROGRESS_STATE_PRIORITY: Record<TaskProgressState, number> = {
  * Visual styling for each progress state
  */
 export const PROGRESS_STATE_COLORS: Record<TaskProgressState, string> = {
-  'in-execution': '#61afef',
-  'ready-to-start': '#e5c07b',
-  'ready-to-review': '#98c379',
-  'ai-working': '#c678dd',
-  'started': '#d19a66',
-  'idle': '#636363',
-  'done': '#909d63',
+  'in-execution': '#b33a3a',
+  'ready-to-start': '#4a8ec2',
+  'ready-to-review': '#c9a227',
+  'ai-working': '#2a9d8f',
+  'started': '#c2722a',
+  'idle': '#7a7a7a',
+  'done': '#4a4a4a',
 };
 
 /**
@@ -65,12 +65,12 @@ export const PROGRESS_STATE_BADGE_VARIANTS: Record<
   TaskProgressState,
   'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'muted'
 > = {
-  'in-execution': 'default',
-  'ready-to-start': 'warning',
-  'ready-to-review': 'success',
+  'in-execution': 'destructive',
+  'ready-to-start': 'default',
+  'ready-to-review': 'warning',
   'ai-working': 'secondary',
-  'started': 'outline',
-  'idle': 'muted',
+  'started': 'warning',
+  'idle': 'outline',
   'done': 'muted',
 };
 
@@ -78,11 +78,11 @@ export const PROGRESS_STATE_BADGE_VARIANTS: Record<
  * Container classes for task list items (background + border + hover)
  */
 export const PROGRESS_STATE_CONTAINER_CLASSES: Record<TaskProgressState, string> = {
-  'in-execution': 'bg-[#61afef]/10 ring-1 ring-[#61afef] hover:bg-[#61afef]/15',
-  'ready-to-start': 'bg-[#e5c07b]/10 border-l-4 border-l-[#e5c07b] hover:bg-[#e5c07b]/15',
-  'ready-to-review': 'bg-[#98c379]/15 ring-1 ring-[#98c379] hover:bg-[#98c379]/20',
-  'ai-working': 'bg-[#c678dd]/10 ring-1 ring-[#c678dd] animate-pulse',
-  'started': 'bg-card border-l-4 border-l-[#d19a66] hover:bg-secondary',
+  'in-execution': 'bg-[#b33a3a]/10 ring-1 ring-[#b33a3a] hover:bg-[#b33a3a]/15',
+  'ready-to-start': 'bg-[#4a8ec2]/10 hover:bg-[#4a8ec2]/15',
+  'ready-to-review': 'bg-[#c9a227]/15 ring-1 ring-[#c9a227] hover:bg-[#c9a227]/20',
+  'ai-working': 'bg-[#2a9d8f]/10 ring-1 ring-[#2a9d8f] animate-pulse',
+  'started': 'bg-card hover:bg-secondary',
   'idle': 'bg-card hover:bg-secondary',
   'done': 'bg-card hover:bg-secondary opacity-60',
 };

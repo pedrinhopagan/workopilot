@@ -1,18 +1,15 @@
 import { DayDrawer } from "@/components/agenda";
 import { PageHeader } from "@/components/PageHeader";
 import { Badge } from "@/components/ui/badge";
+import { TaskItem } from "@/components/tasks/TaskItem";
 import {
-	getComplexityColor,
-	getComplexityLabel,
 	getTaskProgressState,
-	getTaskProgressStateBadgeVariant,
-	getTaskProgressStateIndicator,
-	getTaskProgressStateLabel,
 	type SuggestedAction,
 } from "@/lib/constants/taskStatus";
 import { cn } from "@/lib/utils";
 import { safeInvoke } from "@/services/tauri";
 import { trpc } from "@/services/trpc";
+import { useSelectedProjectStore } from "@/stores/selectedProject";
 import type { Task, TaskFull } from "@/types";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -326,198 +323,7 @@ const WeekDayCard = memo(function WeekDayCard({
 	);
 });
 
-type InProgressTaskCardProps = {
-	task: TaskFull;
-	onClick: () => void;
-	variant?: "default" | "compact";
-	isSelected?: boolean;
-};
 
-const InProgressTaskCard = memo(function InProgressTaskCard({
-	task,
-	onClick,
-	variant = "default",
-	isSelected = false,
-}: InProgressTaskCardProps) {
-	const isCompact = variant === "compact";
-	const progressLabel = getTaskProgressStateLabel(task);
-	const badgeVariant = getTaskProgressStateBadgeVariant(task);
-	const indicator = getTaskProgressStateIndicator(task);
-	const progressState = getTaskProgressState(task);
-
-	const subtasks = task.subtasks ?? [];
-	const doneSubtasks = subtasks.filter((s) => s.status === "done").length;
-	const progressPercent =
-		subtasks.length > 0
-			? Math.round((doneSubtasks / subtasks.length) * 100)
-			: 0;
-
-	const accentColor =
-		progressState === "ai-working"
-			? "hsl(var(--chart-4))"
-			: progressState === "ready-to-review"
-				? "hsl(var(--chart-2))"
-				: "hsl(var(--primary))";
-
-	return (
-		<button
-			type="button"
-			onClick={onClick}
-			className={cn(
-				"group relative w-full text-left",
-				"border border-border bg-card",
-				"transition-colors duration-200",
-				"hover:border-primary/40 hover:bg-secondary/30",
-				"focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-				isCompact ? "p-2.5" : "p-4",
-				isSelected && "border-primary/60 bg-secondary/40",
-			)}
-		>
-			<div
-				className={cn(
-					"absolute left-0 top-0 bottom-0 transition-all duration-300",
-					isCompact ? "w-[2px]" : "w-[3px] group-hover:w-[4px]",
-				)}
-				style={{
-					background: `linear-gradient(180deg, ${accentColor} 0%, ${accentColor} 50%, transparent 100%)`,
-				}}
-			/>
-
-			{!isCompact && (
-				<div
-					className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-400 pointer-events-none"
-					style={{
-						background: `radial-gradient(ellipse at top left, ${accentColor.replace(")", " / 0.1)")} 0%, transparent 60%)`,
-					}}
-				/>
-			)}
-
-			{progressState === "ai-working" && (
-				<div
-					className="absolute inset-0 animate-pulse pointer-events-none"
-					style={{
-						background: `radial-gradient(ellipse at center, ${accentColor.replace(")", " / 0.05)")} 0%, transparent 70%)`,
-					}}
-				/>
-			)}
-
-			{!isCompact && (
-				<>
-					<div
-						className="absolute inset-0 transition-all duration-300 pointer-events-none"
-						style={{
-							boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-						}}
-					/>
-					<div
-						className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none"
-						style={{
-							boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
-						}}
-					/>
-				</>
-			)}
-
-			<div className={cn("relative", isCompact ? "pl-1.5" : "pl-2")}>
-				<div className={cn("flex items-start gap-3", !isCompact && "mb-3")}>
-					<div className="pt-0.5">
-						{indicator === "spinner" ? (
-							<div className="relative">
-								<Loader2
-									size={isCompact ? 14 : 16}
-									className="text-chart-4 animate-spin"
-									aria-label="IA trabalhando"
-								/>
-								{!isCompact && (
-									<div
-										className="absolute inset-0 animate-ping opacity-30"
-										style={{ color: accentColor }}
-									>
-										<Loader2 size={16} />
-									</div>
-								)}
-							</div>
-						) : (
-							<div
-								className={cn(
-									"border-2 transition-all duration-200",
-									"group-hover:border-primary",
-									isCompact ? "w-3.5 h-3.5" : "w-4 h-4",
-								)}
-								style={{ borderColor: `${accentColor}60` }}
-							/>
-						)}
-					</div>
-
-					<div className="flex-1 min-w-0">
-						<h3
-							className={cn(
-								"font-medium text-foreground truncate transition-all duration-200 group-hover:text-primary",
-								isCompact ? "text-xs" : "text-sm",
-							)}
-						>
-							{task.title}
-						</h3>
-
-						{!isCompact && (
-							<div className="flex items-center gap-2 mt-1.5">
-								{task.complexity && (
-									<span
-										className={cn(
-											"text-xs transition-colors duration-200",
-											getComplexityColor(task.complexity),
-										)}
-									>
-										{getComplexityLabel(task.complexity)}
-									</span>
-								)}
-								{subtasks.length > 0 && (
-									<span className="text-xs text-muted-foreground">
-										{doneSubtasks}/{subtasks.length} subtarefas
-									</span>
-								)}
-							</div>
-						)}
-					</div>
-
-					{isCompact ? (
-						subtasks.length > 0 && (
-							<span className="text-xs text-muted-foreground shrink-0">
-								{doneSubtasks}/{subtasks.length}
-							</span>
-						)
-					) : (
-						<Badge variant={badgeVariant} className="shrink-0">
-							{progressLabel}
-						</Badge>
-					)}
-				</div>
-
-				{!isCompact && subtasks.length > 0 && (
-					<div className="mt-2">
-						<div className="h-1 bg-secondary/60 overflow-hidden">
-							<div
-								className="h-full transition-all duration-700 ease-out animate-progress-shine"
-								style={{
-									width: `${progressPercent}%`,
-									background: `linear-gradient(90deg, ${accentColor} 0%, ${accentColor.replace(")", " / 0.8)")} 100%)`,
-									boxShadow: `0 0 8px ${accentColor.replace(")", " / 0.4)")}`,
-								}}
-							/>
-						</div>
-					</div>
-				)}
-			</div>
-
-			{!isCompact && (
-				<ChevronRight
-					size={14}
-					className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground/50 group-hover:text-primary transition-colors duration-200"
-				/>
-			)}
-		</button>
-	);
-});
 
 type EmptySectionProps = {
 	icon: React.ReactNode;
@@ -593,6 +399,7 @@ function useTerminalActionMutation() {
 
 function HomePage() {
 	const navigate = useNavigate();
+	const projectsList = useSelectedProjectStore((s) => s.projectsList);
 
 	const {
 		tasks: inProgressTasks,
@@ -605,6 +412,51 @@ function HomePage() {
 		weekTaskCount,
 		isLoading: isLoadingWeek,
 	} = useWeekTasks();
+
+	const executionsQuery = trpc.executions.listAllActive.useQuery(undefined, {
+		staleTime: 5_000,
+		refetchInterval: 10_000,
+	});
+
+	const activeExecutions = useMemo(() => {
+		const map = new Map<string, import("@/types").TaskExecution>();
+		for (const exec of executionsQuery.data ?? []) {
+			map.set(exec.task_id, exec);
+		}
+		return map;
+	}, [executionsQuery.data]);
+
+	const taskFullCache = useMemo(() => {
+		const cache = new Map<string, TaskFull>();
+		for (const task of inProgressTasks) {
+			cache.set(task.id, task);
+		}
+		return cache;
+	}, [inProgressTasks]);
+
+	const utils = trpc.useUtils();
+
+	const updateStatusMutation = trpc.tasks.updateStatus.useMutation({
+		onSuccess: () => {
+			utils.tasks.invalidate();
+		},
+	});
+
+	const handleToggleTask = useCallback(
+		(taskId: string, currentStatus: string) => {
+			const newStatus = currentStatus === "done" ? "pending" : "done";
+			updateStatusMutation.mutate(
+				{ id: taskId, status: newStatus as "pending" | "done" },
+				{ onError: (e) => console.error("Failed to update task:", e) },
+			);
+		},
+		[updateStatusMutation],
+	);
+
+	const getSubtasks = useCallback(
+		(taskId: string) => taskFullCache.get(taskId)?.subtasks ?? [],
+		[taskFullCache],
+	);
 
 	const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
 	const [selectedDate, setSelectedDate] = useState<string>(getTodayString());
@@ -720,6 +572,7 @@ function HomePage() {
 					selectedDate={selectedDate}
 					selectedTaskId={selectedTaskId}
 					onTaskSelect={handleSidebarTaskSelect}
+					onStatusChange={handleToggleTask}
 					onActionClick={handleActionClick}
 					onNavigate={handleNavigate}
 					isActionLoading={terminalActionMutation.isPending}
@@ -746,30 +599,37 @@ function HomePage() {
 							accentColor="hsl(var(--chart-4))"
 						/>
 
-						<div className="space-y-2">
-							{isLoadingTasks ? (
-								<LoadingState />
-							) : inProgressTasks.length === 0 ? (
-								<EmptySection
-									icon={
-										<CheckCircle2 size={20} className="text-muted-foreground" />
+					<div className="space-y-1">
+						{isLoadingTasks ? (
+							<LoadingState />
+						) : inProgressTasks.length === 0 ? (
+							<EmptySection
+								icon={
+									<CheckCircle2 size={20} className="text-muted-foreground" />
+								}
+								message="Nenhuma tarefa em andamento"
+								linkTo="/tasks"
+								linkLabel="Criar nova tarefa"
+							/>
+						) : (
+							inProgressTasks.map((task) => (
+								<TaskItem
+									key={task.id}
+									task={task as unknown as Task}
+									taskFull={taskFullCache.get(task.id) ?? null}
+									variant="full"
+									execution={activeExecutions.get(task.id)}
+									subtasks={getSubtasks(task.id)}
+									projectColor={
+										projectsList.find((p) => p.id === task.project_id)?.color
 									}
-									message="Nenhuma tarefa em andamento"
-									linkTo="/tasks"
-									linkLabel="Criar nova tarefa"
+									onToggle={() => handleToggleTask(task.id, task.status)}
+									onClick={() => handleTaskClick(task.id)}
+									disableNavigation
 								/>
-							) : (
-								inProgressTasks.map((task) => (
-									<InProgressTaskCard
-										key={task.id}
-										task={task}
-										onClick={() => handleTaskClick(task.id)}
-										variant="compact"
-										isSelected={selectedTaskId === task.id}
-									/>
-								))
-							)}
-						</div>
+							))
+						)}
+					</div>
 					</section>
 
 					<section>

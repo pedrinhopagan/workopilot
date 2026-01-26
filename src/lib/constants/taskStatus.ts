@@ -158,12 +158,19 @@ export const SUGGESTED_ACTION_LABELS: Record<Exclude<SuggestedAction, null>, str
 	focus_terminal: "Ver terminal",
 };
 
+/**
+ * Suggested action colors derived from progress state colors.
+ * Each action inherits the color of the progress state that suggests it.
+ * 
+ * Mapping: idle/started → structure, ready-to-start → execute_all,
+ * in-execution → execute_subtask, ai-working → focus_terminal, ready-to-review → review
+ */
 export const SUGGESTED_ACTION_COLORS: Record<Exclude<SuggestedAction, null>, string> = {
-	structure: "#e5c07b",
-	execute_all: "#909d63",
-	execute_subtask: "#61afef",
-	review: "#98c379",
-	focus_terminal: "#c678dd",
+	structure: PROGRESS_STATE_COLORS['started'],
+	execute_all: PROGRESS_STATE_COLORS['ready-to-start'],
+	execute_subtask: PROGRESS_STATE_COLORS['in-execution'],
+	review: PROGRESS_STATE_COLORS['ready-to-review'],
+	focus_terminal: PROGRESS_STATE_COLORS['ai-working'],
 };
 
 export function getSuggestedActionLabel(action: SuggestedAction): string | null {
@@ -217,9 +224,9 @@ export const statusLabels: Record<TaskStatus, string> = {
 };
 
 export const statusColors: Record<TaskStatus, string> = {
-	pending: "#636363",
-	in_progress: "#61afef",
-	done: "#909d63",
+	pending: "#7a7a7a",
+	in_progress: "#c2722a",
+	done: "#4a4a4a",
 };
 
 /**

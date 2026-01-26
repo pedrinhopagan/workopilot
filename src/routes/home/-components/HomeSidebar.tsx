@@ -13,6 +13,7 @@ type HomeSidebarProps = {
 	selectedDate: string;
 	selectedTaskId: string | null;
 	onTaskSelect: (taskId: string) => void;
+	onStatusChange?: (taskId: string, currentStatus: string) => void;
 	onActionClick: (action: SuggestedAction, task: TaskFull) => void;
 	onNavigate: (taskId: string) => void;
 	isActionLoading?: boolean;
@@ -25,6 +26,7 @@ export const HomeSidebar = memo(function HomeSidebar({
 	selectedDate,
 	selectedTaskId,
 	onTaskSelect,
+	onStatusChange,
 	onActionClick,
 	onNavigate,
 	isActionLoading,
@@ -59,6 +61,7 @@ export const HomeSidebar = memo(function HomeSidebar({
 					selectedDate={selectedDate}
 					selectedTaskId={selectedTaskId}
 					onTaskSelect={onTaskSelect}
+					onStatusChange={onStatusChange}
 				/>
 
 				<div className="border-t border-border/30" />

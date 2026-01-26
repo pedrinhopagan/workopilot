@@ -83,7 +83,7 @@ export const TaskSummaryCard = memo(function TaskSummaryCard({
 	const suggestedAction = useMemo(() => getSuggestedAction(task), [task]);
 
 	const actionColor = useMemo(
-		() => getSuggestedActionColor(suggestedAction) || "#909d63",
+		() => getSuggestedActionColor(suggestedAction) || "#4a4a4a",
 		[suggestedAction],
 	);
 
@@ -232,7 +232,7 @@ export const TaskSummaryCard = memo(function TaskSummaryCard({
 						action="focus_terminal"
 						onClick={handleTerminalClick}
 						isLoading={false}
-						color="#c678dd"
+						color={getSuggestedActionColor("focus_terminal") || "#4a4a4a"}
 					/>
 				)}
 			</div>

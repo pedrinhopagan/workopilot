@@ -1,26 +1,19 @@
-import { Badge } from "@/components/ui/badge";
+import { TaskItem } from "@/components/tasks/TaskItem";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { Project, Task } from "@/types";
+import type { Project } from "@/types";
 import { Link } from "@tanstack/react-router";
 import {
 	CheckCircle2,
-	ChevronRight,
 	Clock,
 	FolderOpen,
 	ListTodo,
-	Loader2,
 	Settings,
 	Terminal,
 	TrendingUp,
 	X,
 } from "lucide-react";
-import { memo, useEffect, useMemo } from "react";
-import {
-	getTaskProgressStateBadgeVariant,
-	getTaskProgressStateIndicator,
-	getTaskProgressStateLabel,
-} from "../../../lib/constants/taskStatus";
+import { memo, useCallback, useEffect, useMemo } from "react";
 import { safeInvoke } from "../../../services/tauri";
 import { trpc } from "../../../services/trpc";
 
@@ -81,19 +74,31 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 		return urgentTasks.filter((t) => t.project_id === project.id).slice(0, 5);
 	}, [urgentTasks, project.id]);
 
-	const activeTaskFullQueries = trpc.useQueries((t) =>
-		projectActiveTasks.map((task) => t.tasks.getFull({ id: task.id })),
+	const allProjectTasks = useMemo(() => {
+		const seen = new Set<string>();
+		const result: typeof projectActiveTasks = [];
+		for (const task of [...projectActiveTasks, ...projectUrgentTasks]) {
+			if (!seen.has(task.id)) {
+				seen.add(task.id);
+				result.push(task);
+			}
+		}
+		return result;
+	}, [projectActiveTasks, projectUrgentTasks]);
+
+	const taskFullQueries = trpc.useQueries((t) =>
+		allProjectTasks.map((task) => t.tasks.getFull({ id: task.id })),
 	);
-	const activeTasksFullCache = useMemo(() => {
+	const taskFullCache = useMemo(() => {
 		const map = new Map();
-		for (let i = 0; i < projectActiveTasks.length; i++) {
-			const result = activeTaskFullQueries[i];
+		for (let i = 0; i < allProjectTasks.length; i++) {
+			const result = taskFullQueries[i];
 			if (result?.data) {
-				map.set(projectActiveTasks[i].id, result.data);
+				map.set(allProjectTasks[i].id, result.data);
 			}
 		}
 		return map;
-	}, [projectActiveTasks, activeTaskFullQueries]);
+	}, [allProjectTasks, taskFullQueries]);
 
 	const metrics = useMemo(() => {
 		if (!stats) {
@@ -148,44 +153,24 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 		return () => window.removeEventListener("keydown", handleKeydown);
 	}, [onClose]);
 
-	function renderTaskItem(task: Task, showProgress = false) {
-		const taskFull = activeTasksFullCache.get(task.id) || null;
-		const progressLabel = getTaskProgressStateLabel(taskFull);
-		const badgeVariant = getTaskProgressStateBadgeVariant(taskFull);
-		const indicator = getTaskProgressStateIndicator(taskFull);
+	const utils = trpc.useUtils();
 
-		return (
-			<Link
-				key={task.id}
-				to="/tasks/$taskId"
-				params={{ taskId: task.id }}
-				className={cn(
-					"flex items-center gap-2 p-2 bg-background/50 border border-border/50",
-					"hover:bg-secondary/50 hover:border-border",
-					"transition-colors duration-200 group",
-				)}
-			>
-				{showProgress && indicator === "spinner" && (
-					<Loader2
-						className="size-3.5 animate-spin shrink-0 text-chart-4"
-						aria-label="IA trabalhando"
-					/>
-				)}
-				<span className="flex-1 text-sm text-foreground truncate group-hover:text-primary transition-colors duration-200">
-					{task.title}
-				</span>
-				{showProgress && (
-					<Badge variant={badgeVariant} className="text-xs">
-						{progressLabel}
-					</Badge>
-				)}
-				<ChevronRight
-					size={14}
-					className="text-muted-foreground/50 group-hover:text-primary transition-colors duration-200"
-				/>
-			</Link>
-		);
-	}
+	const updateStatusMutation = trpc.tasks.updateStatus.useMutation({
+		onSuccess: () => {
+			utils.tasks.invalidate();
+		},
+	});
+
+	const handleToggleTask = useCallback(
+		(taskId: string, currentStatus: string) => {
+			const newStatus = currentStatus === "done" ? "pending" : "done";
+			updateStatusMutation.mutate(
+				{ id: taskId, status: newStatus as "pending" | "done" },
+				{ onError: (e) => console.error("Failed to update task:", e) },
+			);
+		},
+		[updateStatusMutation],
+	);
 
 	return (
 		<>
@@ -374,15 +359,22 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 								</Link>
 							</div>
 							<div className="space-y-2">
-								{projectActiveTasks.map((task, index) => (
-									<div
-										key={task.id}
-										className="animate-content-reveal"
-										style={{ animationDelay: `${0.25 + index * 0.05}s` }}
-									>
-										{renderTaskItem(task, true)}
-									</div>
-								))}
+						{projectActiveTasks.map((task, index) => (
+								<div
+									key={task.id}
+									className="animate-content-reveal"
+									style={{ animationDelay: `${0.25 + index * 0.05}s` }}
+								>
+									<TaskItem
+										task={task}
+										taskFull={taskFullCache.get(task.id) || null}
+										variant="compact"
+										projectColor={projectColor}
+										isDone={task.status === "done"}
+										onToggle={() => handleToggleTask(task.id, task.status)}
+									/>
+								</div>
+							))}
 							</div>
 						</div>
 					)}
@@ -404,15 +396,22 @@ export const ProjectDetailsPanel = memo(function ProjectDetailsPanel({
 								</Link>
 							</div>
 							<div className="space-y-2">
-								{projectUrgentTasks.map((task, index) => (
-									<div
-										key={task.id}
-										className="animate-content-reveal"
-										style={{ animationDelay: `${0.25 + index * 0.05}s` }}
-									>
-										{renderTaskItem(task, false)}
-									</div>
-								))}
+						{projectUrgentTasks.map((task, index) => (
+								<div
+									key={task.id}
+									className="animate-content-reveal"
+									style={{ animationDelay: `${0.25 + index * 0.05}s` }}
+								>
+									<TaskItem
+										task={task}
+										taskFull={taskFullCache.get(task.id) || null}
+										variant="compact"
+										projectColor={projectColor}
+										isDone={task.status === "done"}
+										onToggle={() => handleToggleTask(task.id, task.status)}
+									/>
+								</div>
+							))}
 							</div>
 						</div>
 					)}
