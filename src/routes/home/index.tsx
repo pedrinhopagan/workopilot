@@ -373,7 +373,8 @@ interface TerminalActionParams {
 		| "structure"
 		| "execute_all"
 		| "execute_subtask"
-		| "review";
+		| "review"
+		| "commit";
 	projectId: string;
 	taskId?: string;
 	subtaskId?: string;
@@ -534,13 +535,19 @@ function HomePage() {
 					}
 					break;
 				}
-				case "review":
-					terminalActionMutation.mutate(
-						{ action: "review", projectId: task.project_id, taskId: task.id },
-						{ onSuccess: hideWindowAfterDelay },
-					);
-					break;
-				case "focus_terminal":
+			case "review":
+				terminalActionMutation.mutate(
+					{ action: "review", projectId: task.project_id, taskId: task.id },
+					{ onSuccess: hideWindowAfterDelay },
+				);
+				break;
+			case "commit":
+				terminalActionMutation.mutate(
+					{ action: "commit", projectId: task.project_id, taskId: task.id },
+					{ onSuccess: hideWindowAfterDelay },
+				);
+				break;
+			case "focus_terminal":
 					terminalActionMutation.mutate({
 						action: "focus",
 						projectId: task.project_id,

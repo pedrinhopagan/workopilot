@@ -14,7 +14,7 @@ interface UpdateTaskStatusParams {
 }
 
 interface TerminalActionParams {
-	action: "launch_project" | "focus" | "structure" | "execute_all" | "execute_subtask" | "review";
+	action: "launch_project" | "focus" | "structure" | "execute_all" | "execute_subtask" | "review" | "commit";
 	projectId: string;
 	taskId?: string;
 	subtaskId?: string;

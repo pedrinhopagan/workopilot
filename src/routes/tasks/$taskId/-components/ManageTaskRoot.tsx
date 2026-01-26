@@ -216,6 +216,14 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 		);
 	}
 
+	function handleCommitTask() {
+		if (!task?.project_id) return;
+		terminalActionMutation.mutate(
+			{ action: "commit", projectId: task.project_id, taskId: task.id },
+			{ onSuccess: hideWindowAfterDelay },
+		);
+	}
+
 	function handleFocusTerminal() {
 		if (!task?.project_id) return;
 		terminalActionMutation.mutate(
@@ -331,6 +339,7 @@ export function ManageTaskRoot({ taskId }: ManageTaskRootProps) {
 				onExecuteAll={handleExecuteAll}
 				onExecuteSubtask={handleExecuteSubtask}
 				onReviewTask={handleReviewTask}
+				onCommitTask={handleCommitTask}
 				onFocusTerminal={handleFocusTerminal}
 			/>
 

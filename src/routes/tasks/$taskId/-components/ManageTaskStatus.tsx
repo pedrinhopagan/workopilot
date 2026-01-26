@@ -1,8 +1,11 @@
 import { TaskStatusSelect } from "@/components/tasks/TaskStatusSelect";
 import { CustomSelect } from "@/components/ui/custom-select";
 import {
+	getActionById,
+	getSuggestedActionFromRegistry,
+} from "@/lib/constants/actionRegistry";
+import {
 	deriveProgressState,
-	getSuggestedAction,
 	getTaskProgressStateColor,
 	getTaskProgressStateContainerClass,
 	getTaskProgressStateHighlight,
@@ -14,36 +17,12 @@ import {
 	AlertTriangle,
 	Copy,
 	FileCheck,
-	FileText,
 	Loader2,
 	Monitor,
 	MoreVertical,
-	Rocket,
-	Target,
 	X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-
-function generateStructurePrompt(taskTitle: string, taskId: string): string {
-	return `Estruturar: ${taskTitle}, utilize a skill workopilot-structure para estruturar a task de id: ${taskId}`;
-}
-
-function generateExecuteAllPrompt(taskTitle: string, taskId: string): string {
-	return `Executar: ${taskTitle}, utilize a skill workopilot-execute-all para executar a task de id: ${taskId}`;
-}
-
-function generateExecuteSubtaskPrompt(
-	subtaskTitle: string,
-	taskTitle: string,
-	subtaskId: string,
-	taskId: string,
-): string {
-	return `Executar subtask: ${subtaskTitle} (task: ${taskTitle}), utilize a skill workopilot-execute-subtask para executar a subtask ${subtaskId} da task ${taskId}`;
-}
-
-function generateReviewPrompt(taskTitle: string, taskId: string): string {
-	return `Revisar: ${taskTitle}, utilize a skill workopilot-review para revisar a task de id: ${taskId}`;
-}
 
 interface ManageTaskStatusProps {
 	taskFull: TaskFull;
@@ -58,6 +37,7 @@ interface ManageTaskStatusProps {
 	onExecuteAll: () => void;
 	onExecuteSubtask: (subtaskId: string) => void;
 	onReviewTask: () => void;
+	onCommitTask: () => void;
 	onFocusTerminal: () => void;
 }
 
@@ -74,6 +54,7 @@ export function ManageTaskStatus({
 	onExecuteAll,
 	onExecuteSubtask,
 	onReviewTask,
+	onCommitTask,
 	onFocusTerminal,
 }: ManageTaskStatusProps) {
 	const progressState = deriveProgressState(taskFull);
@@ -81,7 +62,25 @@ export function ManageTaskStatus({
 	const progressLabel = getTaskProgressStateLabel(taskFull);
 	const progressHighlight = getTaskProgressStateHighlight(taskFull);
 	const progressContainerClass = getTaskProgressStateContainerClass(taskFull);
-	const suggestedAction = getSuggestedAction(taskFull);
+	const suggestedAction = getSuggestedActionFromRegistry(taskFull);
+
+	const actionCallbacks: Record<string, () => void> = {
+		structure: onStructureTask,
+		execute_all: onExecuteAll,
+		review: onReviewTask,
+		commit: onCommitTask,
+		focus_terminal: onFocusTerminal,
+	};
+
+	const executeSubtaskAction = getActionById("execute_subtask");
+
+	const DISPLAY_ORDER: Array<{ type: "button"; id: string } | { type: "subtask_select" }> = [
+		{ type: "button", id: "structure" },
+		{ type: "button", id: "execute_all" },
+		{ type: "subtask_select" },
+		{ type: "button", id: "review" },
+		{ type: "button", id: "commit" },
+	];
 
 	return (
 		<>
@@ -161,135 +160,150 @@ export function ManageTaskStatus({
 						</div>
 					)}
 
-					<div className="ml-auto flex items-center gap-1">
-						<span
-							className={`w-1.5 h-1.5 rounded-full transition-colors ${
-								progressState !== "idle" ? "bg-primary" : "bg-border"
-							}`}
-							title="Pendente -> Iniciada"
-						/>
-						<span
-							className={`w-4 h-px ${
-								[
-									"ready-to-start",
-									"in-execution",
-									"ready-to-review",
-									"ai-working",
-									"done",
-								].includes(progressState)
-									? "bg-primary"
-									: "bg-border"
-							}`}
-						/>
-						<span
-							className={`w-1.5 h-1.5 rounded-full transition-colors ${
-								[
-									"in-execution",
-									"ready-to-review",
-									"ai-working",
-									"done",
-								].includes(progressState)
-									? "bg-primary"
-									: "bg-border"
-							}`}
-							title="Estruturada -> Trabalhando"
-						/>
-						<span
-							className={`w-4 h-px ${
-								["ready-to-review", "done"].includes(progressState)
-									? "bg-primary"
-									: "bg-border"
-							}`}
-						/>
-						<span
-							className={`w-1.5 h-1.5 rounded-full transition-colors ${
-								progressState === "done" ? "bg-primary" : "bg-border"
-							}`}
-							title="Concluida"
-						/>
-					</div>
+				<div className="ml-auto flex items-center gap-1">
+					<span
+						className={`w-1.5 h-1.5 rounded-full transition-colors ${
+							progressState !== "idle" ? "bg-primary" : "bg-border"
+						}`}
+						title="Pendente -> Iniciada"
+					/>
+					<span
+						className={`w-4 h-px ${
+							[
+								"ready-to-start",
+								"in-execution",
+								"ready-to-review",
+								"ready-to-commit",
+								"ai-working",
+								"done",
+							].includes(progressState)
+								? "bg-primary"
+								: "bg-border"
+						}`}
+					/>
+					<span
+						className={`w-1.5 h-1.5 rounded-full transition-colors ${
+							[
+								"in-execution",
+								"ready-to-review",
+								"ready-to-commit",
+								"ai-working",
+								"done",
+							].includes(progressState)
+								? "bg-primary"
+								: "bg-border"
+						}`}
+						title="Estruturada -> Trabalhando"
+					/>
+					<span
+						className={`w-4 h-px ${
+							["ready-to-review", "ready-to-commit", "done"].includes(progressState)
+								? "bg-primary"
+								: "bg-border"
+						}`}
+					/>
+					<span
+						className={`w-1.5 h-1.5 rounded-full transition-colors ${
+							["ready-to-commit", "done"].includes(progressState)
+								? "bg-primary"
+								: "bg-border"
+						}`}
+						title="Revisada -> Commit"
+					/>
+					<span
+						className={`w-4 h-px ${
+							progressState === "done" ? "bg-primary" : "bg-border"
+						}`}
+					/>
+					<span
+						className={`w-1.5 h-1.5 rounded-full transition-colors ${
+							progressState === "done" ? "bg-primary" : "bg-border"
+						}`}
+						title="Concluida"
+					/>
+				</div>
 				</div>
 
 				<div
 					className="px-4 py-4 flex items-stretch gap-3 animate-slide-up-fade"
 					style={{ animationDelay: "0.1s" }}
 				>
-				<ActionButton
-					label="Estruturar"
-					icon={<FileText size={20} />}
-					isLoading={isLaunchingTerminalAction}
-					isSuggested={suggestedAction === "structure"}
-					suggestedHexColor={progressColor}
-					prompt={generateStructurePrompt(taskFull.title, taskFull.id)}
-					onClick={onStructureTask}
-				/>
-
-				<ActionButton
-					label="Executar Tudo"
-					icon={<Rocket size={20} />}
-					isLoading={isLaunchingTerminalAction}
-					isSuggested={suggestedAction === "execute_all"}
-					suggestedHexColor={progressColor}
-					prompt={generateExecuteAllPrompt(taskFull.title, taskFull.id)}
-					onClick={onExecuteAll}
-				/>
-
-				<div className="flex-1 relative">
-					<CustomSelect
-						items={pendingSubtasks}
-						onValueChange={(subtaskId) => onExecuteSubtask(subtaskId)}
-						label="Selecione uma subtask"
-						disabled={isLaunchingTerminalAction || !canExecuteSubtask}
-						triggerClassName={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 border transition-all duration-200 ${
-							suggestedAction === "execute_subtask"
-								? "shadow-lg"
-								: "border-border bg-card text-foreground hover:border-muted hover:bg-secondary"
-						}`}
-						triggerStyle={
-							suggestedAction === "execute_subtask"
-								? {
-										borderColor: progressColor,
-										backgroundColor: `${progressColor}1a`,
-										color: progressColor,
-										boxShadow: `0 10px 15px -3px ${progressColor}1a, 0 4px 6px -4px ${progressColor}1a`,
+				{DISPLAY_ORDER.map((slot) => {
+					if (slot.type === "subtask_select" && executeSubtaskAction) {
+						return (
+							<div key="execute_subtask" className="flex-1 relative">
+								<CustomSelect
+									items={pendingSubtasks}
+									onValueChange={(subtaskId) => onExecuteSubtask(subtaskId)}
+									label="Selecione uma subtask"
+									disabled={isLaunchingTerminalAction || !canExecuteSubtask}
+									triggerClassName={`w-full h-full flex flex-row items-center justify-center gap-2 p-4 border transition-all duration-200 ${
+										suggestedAction?.id === "execute_subtask"
+											? "shadow-lg"
+											: "border-border bg-card text-foreground hover:border-muted hover:bg-secondary"
+									}`}
+									triggerStyle={
+										suggestedAction?.id === "execute_subtask"
+											? {
+													borderColor: executeSubtaskAction.color,
+													backgroundColor: `${executeSubtaskAction.color}1a`,
+													color: executeSubtaskAction.color,
+													boxShadow: `0 10px 15px -3px ${executeSubtaskAction.color}1a, 0 4px 6px -4px ${executeSubtaskAction.color}1a`,
+												}
+											: undefined
 									}
-								: undefined
-						}
-						contentClassName="min-w-[var(--radix-select-trigger-width)]"
-						renderTrigger={() => (
-							<>
-								<Target size={20} />
-								<span className="text-sm font-medium">Executar Subtask</span>
-								{canExecuteSubtask && (
-									<span className="text-[10px] opacity-60">
-										({pendingSubtasks.length})
+									contentClassName="min-w-[var(--radix-select-trigger-width)]"
+									renderTrigger={() => {
+										const SubtaskIcon = executeSubtaskAction.icon;
+										return (
+											<>
+												<SubtaskIcon size={20} />
+												<span className="text-sm font-medium">{executeSubtaskAction.label}</span>
+												{canExecuteSubtask && (
+													<span className="text-[10px] opacity-60">
+														({pendingSubtasks.length})
+													</span>
+												)}
+											</>
+										);
+									}}
+									renderItem={(subtask) => (
+										<SubtaskSelectItem subtask={subtask} taskFull={taskFull} />
+									)}
+								/>
+								{suggestedAction?.id === "execute_subtask" && (
+									<span
+										className="absolute -top-2 -left-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-background z-10"
+										style={{ backgroundColor: executeSubtaskAction.color }}
+									>
+										Sugestão
 									</span>
 								)}
-							</>
-						)}
-						renderItem={(subtask) => (
-							<SubtaskSelectItem subtask={subtask} taskFull={taskFull} />
-						)}
-					/>
-					{suggestedAction === "execute_subtask" && (
-						<span
-							className="absolute -top-2 -left-2 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider text-background z-10"
-							style={{ backgroundColor: progressColor }}
-						>
-							Sugestão
-						</span>
-					)}
-				</div>
+							</div>
+						);
+					}
 
-				<ActionButton
-					label="Revisar"
-					icon={<FileCheck size={20} />}
-					isLoading={isLaunchingTerminalAction}
-					isSuggested={suggestedAction === "review"}
-					suggestedHexColor={progressColor}
-					prompt={generateReviewPrompt(taskFull.title, taskFull.id)}
-					onClick={onReviewTask}
-				/>
+					if (slot.type === "button") {
+						const action = getActionById(slot.id);
+						if (!action) return null;
+						const isSuggested = suggestedAction?.id === action.id;
+						const ActionIcon = action.icon;
+						return (
+							<ActionButton
+								key={action.id}
+								label={action.label}
+								icon={<ActionIcon size={20} />}
+								isLoading={isLaunchingTerminalAction}
+								isSuggested={isSuggested}
+								suggestedHexColor={isSuggested ? action.color : progressColor}
+								prompt={action.generatePrompt(taskFull)}
+								onClick={actionCallbacks[action.id]}
+							/>
+						);
+					}
+
+					return null;
+				})}
 				</div>
 			</div>
 		</>
@@ -413,16 +427,14 @@ interface SubtaskSelectItemProps {
 
 function SubtaskSelectItem({ subtask, taskFull }: SubtaskSelectItemProps) {
 	const [copied, setCopied] = useState(false);
+	const executeSubtaskAction = getActionById("execute_subtask");
 
 	async function handleCopyPrompt(e: React.MouseEvent) {
 		e.stopPropagation();
 		e.preventDefault();
-		const prompt = generateExecuteSubtaskPrompt(
-			subtask.title,
-			taskFull.title,
-			subtask.id,
-			taskFull.id,
-		);
+		const prompt = executeSubtaskAction
+			? executeSubtaskAction.generatePrompt(taskFull, subtask.id)
+			: "";
 		try {
 			await navigator.clipboard.writeText(prompt);
 			setCopied(true);
