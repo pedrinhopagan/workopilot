@@ -56,6 +56,9 @@ export function deriveProgressState(task: TaskFull | null): TaskProgressState {
 	const doneSubtaskCount = subtasks.filter((s) => s.status === "done").length;
 
 	if (subtaskCount > 0 && doneSubtaskCount === subtaskCount) {
+		if (task.ai_metadata?.last_completed_action === "review") {
+			return "ready-to-commit";
+		}
 		return "ready-to-review";
 	}
 
@@ -115,6 +118,7 @@ export type SuggestedAction =
 	| "execute_all"
 	| "execute_subtask"
 	| "review"
+	| "commit"
 	| "focus_terminal"
 	| null;
 
@@ -142,6 +146,9 @@ export function getSuggestedAction(task: TaskFull | null): SuggestedAction {
 		case "ready-to-review":
 			return "review";
 
+		case "ready-to-commit":
+			return "commit";
+
 		case "done":
 			return null;
 
@@ -155,6 +162,7 @@ export const SUGGESTED_ACTION_LABELS: Record<Exclude<SuggestedAction, null>, str
 	execute_all: "Executar tudo",
 	execute_subtask: "Executar subtask",
 	review: "Revisar",
+	commit: "Commit",
 	focus_terminal: "Ver terminal",
 };
 
@@ -170,6 +178,7 @@ export const SUGGESTED_ACTION_COLORS: Record<Exclude<SuggestedAction, null>, str
 	execute_all: PROGRESS_STATE_COLORS['ready-to-start'],
 	execute_subtask: PROGRESS_STATE_COLORS['in-execution'],
 	review: PROGRESS_STATE_COLORS['ready-to-review'],
+	commit: PROGRESS_STATE_COLORS['ready-to-commit'],
 	focus_terminal: PROGRESS_STATE_COLORS['ai-working'],
 };
 

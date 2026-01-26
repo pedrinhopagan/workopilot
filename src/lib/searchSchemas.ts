@@ -9,6 +9,7 @@ export const taskProgressStateEnum = z.enum([
 	'in-execution',
 	'ready-to-start',
 	'ready-to-review',
+	'ready-to-commit',
 	'ai-working',
 	'started',
 	'idle',
