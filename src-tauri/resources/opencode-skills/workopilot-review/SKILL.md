@@ -1,6 +1,6 @@
 ---
 name: workopilot-review
-description: Revisar uma task completa do WorkoPilot, verificando criterios de aceite, rodando verificacoes tecnicas e finalizando a task se aprovada.
+description: Revisar uma task completa do WorkoPilot, verificando criterios de aceite, rodando verificacoes tecnicas e sinalizando aprovacao via last_completed_action.
 license: MIT
 compatibility: opencode
 metadata:
@@ -11,13 +11,14 @@ metadata:
 ## When to use me
 - Quando o prompt mencionar "revisar" a task
 - Quando `status === 'pending'` e todas as subtasks estao com status "done"
-- Quando o usuario quer verificar a implementacao antes de finalizar
+- Quando o usuario quer verificar a implementacao antes de commitar
 
 ## What I do
 - Verifico se todos os criterios de aceite foram atendidos
 - Rodo verificacoes tecnicas (build, lint, tests)
 - Apresento um resumo da revisao ao usuario
-- Se aprovado, marco a task como "completed" via CLI
+- Se aprovado, sinalizo aprovacao setando `last_completed_action=review` via CLI
+- **NAO marco a task como done** - o fluxo Commit fara isso depois
 - Se reprovado, informo os problemas encontrados
 
 ---
@@ -32,18 +33,26 @@ Use os comandos da CLI WorkoPilot para ler e atualizar dados:
 # Ler task completa (inclui subtasks)
 cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts get-task {taskId}
 
-# Aprovar task (marcar como completed)
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status completed
+# Sinalizar aprovacao (setar last_completed_action=review)
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --last-completed-action review
+
+# Marcar task como pendente (sinaliza que IA terminou)
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status pending
 ```
 
 **IMPORTANTE**: A CLI grava diretamente no SQLite. O WorkoPilot detecta mudancas automaticamente.
+
+**IMPORTANTE**: Esta skill NAO marca a task como done/completed. Apenas sinaliza que a revisao foi aprovada. O passo seguinte (Commit) e responsavel por finalizar a task.
 
 ---
 
 ## Contexto
 
 Voce foi iniciado pelo WorkoPilot para REVISAR uma task.
-Seu objetivo e verificar se a implementacao atende aos requisitos antes de finalizar.
+Seu objetivo e verificar se a implementacao atende aos requisitos.
+
+**Fluxo completo**: Structure -> Execute -> **Review** -> Commit -> Done
+Voce esta no passo Review. Apos sua aprovacao, o usuario podera commitar.
 
 ---
 
@@ -110,14 +119,16 @@ Crie um resumo da revisao:
 ### 7. Decisao final
 
 **Se APROVADO:**
-Pergunte ao usuario: "A revisao foi positiva. Deseja marcar a task como concluida?"
-
-Se sim:
+Sinalizar aprovacao via CLI:
 ```bash
-cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --status completed
+cd /home/pedro/Documents/projects/workopilot/packages/cli && bun run src/index.ts update-task {taskId} --last-completed-action review
 ```
 
-**NOTA**: O status `completed` marca a task como finalizada no sistema.
+Depois, informe ao usuario:
+> "Revisao aprovada! A task esta pronta para commit.
+> Volte ao WorkoPilot e use a acao **Commit** para finalizar."
+
+**IMPORTANTE**: NAO marque a task como done/completed. O Commit e o proximo passo.
 
 **Se REPROVADO:**
 Informe os problemas encontrados e pergunte como proceder:
@@ -131,8 +142,7 @@ Informe os problemas encontrados e pergunte como proceder:
 | Comando | Descricao |
 |---------|-----------|
 | `get-task {id}` | Retorna JSON completo da task com subtasks |
-| `update-task {id} --status completed` | Marca task como concluida |
-| `update-task {id} --status active` | Marca que IA esta trabalhando |
+| `update-task {id} --last-completed-action review` | Sinaliza que revisao foi aprovada |
 | `update-task {id} --status pending` | Marca que IA terminou (usuario pode agir) |
 | `get-logs --entity-id {id}` | Ver historico de operacoes |
 
@@ -140,15 +150,15 @@ Informe os problemas encontrados e pergunte como proceder:
 
 ## Finalizacao
 
-**Se aprovado e finalizado:**
-> "Task '{titulo}' revisada e CONCLUIDA!
+**Se aprovado:**
+> "Task '{titulo}' revisada e APROVADA!
 > 
 > **Resumo:**
 > - Todos os criterios de aceite atendidos
 > - {N} subtasks implementadas com sucesso
 > - Verificacoes tecnicas passaram
 > 
-> A task foi marcada como 'completed'. Parabens!"
+> **Proximo passo:** Use a acao **Commit** no WorkoPilot para commitar as mudancas e finalizar a task."
 
 **Se reprovado:**
 > "Task '{titulo}' revisada - encontrados {N} problemas.
@@ -190,6 +200,7 @@ Antes de encerrar, verifique:
 - [ ] Verifiquei todos os criterios de aceite?
 - [ ] Rodei verificacoes tecnicas?
 - [ ] Apresentei resumo ao usuario?
-- [ ] Se aprovado, atualizei status para completed via CLI?
+- [ ] Se aprovado, setei `--last-completed-action review` via CLI?
+- [ ] NAO marquei a task como done (o Commit fara isso)?
 
 **A CLI GRAVA DIRETAMENTE NO SQLITE - NAO USE ARQUIVOS JSON!**
