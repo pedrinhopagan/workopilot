@@ -15,6 +15,7 @@ pub enum TerminalAction {
     ExecuteAll,
     ExecuteSubtask,
     Review,
+    Commit,
 }
 
 impl TerminalAction {
@@ -26,6 +27,7 @@ impl TerminalAction {
             "execute_all" => Ok(TerminalAction::ExecuteAll),
             "execute_subtask" => Ok(TerminalAction::ExecuteSubtask),
             "review" => Ok(TerminalAction::Review),
+            "commit" => Ok(TerminalAction::Commit),
             _ => Err(format!("Unknown terminal action: {}", s)),
         }
     }
@@ -290,6 +292,10 @@ pub fn generate_prompt(
         }
         TerminalAction::Review => format!(
             "Revisar: {}, utilize a skill workopilot-review para revisar a task de id: {}",
+            task.title, task.id
+        ),
+        TerminalAction::Commit => format!(
+            "Commit: {}, utilize a skill workopilot-commit para commitar as mudanças da task de id: {}",
             task.title, task.id
         ),
         TerminalAction::LaunchProject | TerminalAction::FocusSession => String::new(),
@@ -683,6 +689,14 @@ pub fn terminal_action(
             let prompt = generate_prompt(&action_type, &task, None);
             execute_task_action(&project, &tid, &prompt, false)?;
         }
+
+        TerminalAction::Commit => {
+            let tid = task_id.ok_or("task_id required for commit action")?;
+            let task = task_opt.ok_or("task not found")?;
+
+            let prompt = generate_prompt(&action_type, &task, None);
+            execute_task_action(&project, &tid, &prompt, false)?;
+        }
     }
 
     Ok(())
@@ -789,6 +803,10 @@ mod tests {
         assert_eq!(
             TerminalAction::from_str("review").unwrap(),
             TerminalAction::Review
+        );
+        assert_eq!(
+            TerminalAction::from_str("commit").unwrap(),
+            TerminalAction::Commit
         );
         assert!(TerminalAction::from_str("invalid").is_err());
     }
