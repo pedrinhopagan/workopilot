@@ -2,6 +2,7 @@ import { EmptyFeedback } from "@/components/ui/empty-feedback";
 import { ProgressCircle } from "@/components/ui/progress-circle";
 import {
 	deriveProgressState,
+	getProgressStateLabel,
 	getSuggestedAction,
 	getSuggestedActionColor,
 	getSuggestedActionLabel,
@@ -99,6 +100,19 @@ export const TaskSummaryCard = memo(function TaskSummaryCard({
 	const isAiWorking = progressState === "ai-working";
 	const showTerminalButton = isAiWorking;
 
+	const subtitle = useMemo(() => {
+		if (!task) return "";
+		if (task.complexity) {
+			const complexityLabels: Record<string, string> = {
+				simple: "Simples",
+				medium: "Media",
+				complex: "Complexa",
+			};
+			return complexityLabels[task.complexity] || task.complexity;
+		}
+		return getProgressStateLabel(progressState);
+	}, [task, progressState]);
+
 	if (!task) {
 		return (
 			<div
@@ -154,29 +168,24 @@ export const TaskSummaryCard = memo(function TaskSummaryCard({
 				}}
 			/>
 
-			<div className="relative flex items-start justify-between p-4 pb-3 border-b border-border/30">
+			<Link
+				to="/tasks/$taskId"
+				params={{ taskId: task.id }}
+				onClick={() => onNavigate(task.id)}
+				className="relative flex items-start justify-between p-4 pb-3 border-b border-border/30 group/header transition-colors duration-200 hover:bg-secondary/30"
+			>
 				<div className="flex-1 min-w-0 pr-2">
-					<h3 className="text-sm font-medium text-foreground truncate transition-colors duration-200 group-hover/card:text-primary">
+					<h3 className="text-sm font-medium text-foreground truncate transition-colors duration-200 group-hover/header:text-primary">
 						{task.title}
 					</h3>
-					{task.complexity && (
-						<span className="text-xs text-muted-foreground">
-							{task.complexity === "simple" && "Simples"}
-							{task.complexity === "medium" && "Media"}
-							{task.complexity === "complex" && "Complexa"}
-						</span>
-					)}
+					<span className="text-xs text-muted-foreground transition-colors duration-200 group-hover/header:text-muted-foreground/80">
+						{subtitle}
+					</span>
 				</div>
-				<Link
-					to="/tasks/$taskId"
-					params={{ taskId: task.id }}
-					onClick={() => onNavigate(task.id)}
-					className="p-1.5 text-muted-foreground hover:text-primary transition-colors duration-200"
-					title="Abrir tarefa"
-				>
+				<div className="p-1.5 text-muted-foreground group-hover/header:text-primary transition-colors duration-200">
 					<ExternalLink size={14} />
-				</Link>
-			</div>
+				</div>
+			</Link>
 
 			<div className="relative flex flex-col items-center py-8">
 				<div className="relative">

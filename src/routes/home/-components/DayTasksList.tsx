@@ -2,7 +2,8 @@ import { TaskItem } from "@/components/tasks/TaskItem";
 import { EmptyFeedback } from "@/components/ui/empty-feedback";
 import { cn } from "@/lib/utils";
 import type { Task, TaskFull } from "@/types";
-import { CalendarCheck } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { CalendarCheck, ChevronRight } from "lucide-react";
 import { memo, useMemo } from "react";
 
 function formatDateHeader(selectedDate: string): string {
@@ -67,19 +68,29 @@ export const DayTasksList = memo(function DayTasksList({
 
 	return (
 		<div className={cn("space-y-3", className)}>
-			<div className="flex items-center gap-2 mb-3">
-				<div
-					className="relative p-1.5 bg-chart-2/10"
-					style={{
-						boxShadow: "inset 0 0 0 1px hsl(var(--chart-2) / 0.2)",
-					}}
-				>
-					<CalendarCheck size={14} className="text-chart-2" />
+			<Link
+				to="/agenda"
+				search={() => {
+					const [year, month, day] = selectedDate.split("-").map(Number);
+					return { year, month, day };
+				}}
+				className="flex items-center justify-between gap-2 mb-3 group cursor-pointer"
+			>
+				<div className="flex items-center gap-2">
+					<div
+						className="relative p-1.5 bg-chart-2/10"
+						style={{
+							boxShadow: "inset 0 0 0 1px hsl(var(--chart-2) / 0.2)",
+						}}
+					>
+						<CalendarCheck size={14} className="text-chart-2" />
+					</div>
+					<h3 className="text-sm font-medium text-foreground uppercase tracking-wide transition-colors group-hover:text-primary">
+						Tarefas - {dateHeader}
+					</h3>
 				</div>
-				<h3 className="text-sm font-medium text-foreground uppercase tracking-wide">
-					Tarefas - {dateHeader}
-				</h3>
-			</div>
+				<ChevronRight size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+			</Link>
 
 			{dayTasks.length === 0 ? (
 				<EmptyFeedback

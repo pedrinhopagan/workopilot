@@ -9,6 +9,7 @@ import type { TaskFull } from "@/types";
 const LINK_COLORS: Record<string, string> = {
 	"task-to-execute": "hsl(var(--chart-1))",
 	"task-to-review": "hsl(var(--chart-2))",
+	"task-to-commit": "#6c5ce7",
 	"tomorrow-empty": "hsl(var(--chart-3))",
 	"overdue-task": "hsl(var(--destructive))",
 	settings: "hsl(var(--muted-foreground))",
@@ -25,7 +26,8 @@ const QuickLinkItem = memo(function QuickLinkItem({ link }: QuickLinkItemProps) 
 
 	return (
 		<Link
-			to={link.href}
+			to={link.to}
+			search={link.search}
 			className={cn(
 				"group relative flex items-center gap-3 px-3 py-3",
 				"bg-card border border-border",
