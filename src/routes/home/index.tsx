@@ -1,5 +1,6 @@
 import { DayDrawer } from "@/components/agenda";
 import { PageHeader } from "@/components/PageHeader";
+import { ProjectCard } from "@/components/projects";
 import { Badge } from "@/components/ui/badge";
 import { TaskItem } from "@/components/tasks/TaskItem";
 import {
@@ -18,46 +19,75 @@ import {
 	Calendar,
 	CheckCircle2,
 	ChevronRight,
+	FolderOpen,
 	LayoutDashboard,
 	Loader2,
+	TrendingUp,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { HomeSidebar } from "./-components/HomeSidebar";
+import { TaskActivityChart } from "./-components/TaskActivityChart";
+
+const MAX_VISIBLE_TASKS = 5;
+
+const STATE_ORDER: Record<string, number> = {
+	"ai-working": 0,
+	"in-execution": 1,
+	"ready-to-review": 2,
+	"ready-to-commit": 3,
+	"ready-to-start": 4,
+	started: 5,
+	idle: 6,
+	done: 7,
+};
 
 function useInProgressTasks() {
 	const tasksFullQuery = trpc.tasks.listFull.useQuery(undefined, {
 		staleTime: 60_000,
 	});
 
-	const inProgressTasks = useMemo(() => {
+	const { inProgressTasks, inProgressCount, displayTasks } = useMemo(() => {
 		const tasks = tasksFullQuery.data ?? [];
-		return tasks
+
+		const sortByState = (a: TaskFull, b: TaskFull) => {
+			const stateA = getTaskProgressState(a);
+			const stateB = getTaskProgressState(b);
+			const orderA = STATE_ORDER[stateA] ?? 6;
+			const orderB = STATE_ORDER[stateB] ?? 6;
+			if (orderA !== orderB) return orderA - orderB;
+			return (a.priority || 3) - (b.priority || 3);
+		};
+
+		const active = tasks
 			.filter((task) => {
 				const state = getTaskProgressState(task);
 				return state !== "idle" && state !== "done";
 			})
-			.sort((a, b) => {
-				const stateA = getTaskProgressState(a);
-				const stateB = getTaskProgressState(b);
+			.sort(sortByState);
 
-				const stateOrder: Record<string, number> = {
-					"ai-working": 0,
-					"in-execution": 1,
-					"ready-to-review": 2,
-					"ready-to-start": 3,
-					started: 4,
-				};
+		const activeCount = active.length;
 
-				const orderA = stateOrder[stateA] ?? 5;
-				const orderB = stateOrder[stateB] ?? 5;
+		let display: TaskFull[];
+		if (active.length >= MAX_VISIBLE_TASKS) {
+			display = active.slice(0, MAX_VISIBLE_TASKS);
+		} else {
+			const idle = tasks
+				.filter((task) => getTaskProgressState(task) === "idle")
+				.sort((a, b) => (a.priority || 3) - (b.priority || 3));
+			display = [...active, ...idle].slice(0, MAX_VISIBLE_TASKS);
+		}
 
-				if (orderA !== orderB) return orderA - orderB;
-				return (a.priority || 3) - (b.priority || 3);
-			});
+		return {
+			inProgressTasks: active,
+			inProgressCount: activeCount,
+			displayTasks: display,
+		};
 	}, [tasksFullQuery.data]);
 
 	return {
 		tasks: inProgressTasks,
+		displayTasks,
+		inProgressCount,
 		allTasks: tasksFullQuery.data ?? [],
 		isLoading: tasksFullQuery.isLoading,
 		refetch: tasksFullQuery.refetch,
@@ -404,6 +434,8 @@ function HomePage() {
 
 	const {
 		tasks: inProgressTasks,
+		displayTasks,
+		inProgressCount,
 		allTasks,
 		isLoading: isLoadingTasks,
 	} = useInProgressTasks();
@@ -429,11 +461,14 @@ function HomePage() {
 
 	const taskFullCache = useMemo(() => {
 		const cache = new Map<string, TaskFull>();
+		for (const task of displayTasks) {
+			cache.set(task.id, task);
+		}
 		for (const task of inProgressTasks) {
 			cache.set(task.id, task);
 		}
 		return cache;
-	}, [inProgressTasks]);
+	}, [displayTasks, inProgressTasks]);
 
 	const utils = trpc.useUtils();
 
@@ -464,15 +499,19 @@ function HomePage() {
 	const terminalActionMutation = useTerminalActionMutation();
 
 	useEffect(() => {
-		if (inProgressTasks.length > 0 && selectedTaskId === null) {
-			setSelectedTaskId(inProgressTasks[0].id);
+		if (displayTasks.length > 0 && selectedTaskId === null) {
+			setSelectedTaskId(displayTasks[0].id);
 		}
-	}, [inProgressTasks, selectedTaskId]);
+	}, [displayTasks, selectedTaskId]);
 
 	const selectedTask = useMemo(() => {
 		if (!selectedTaskId) return null;
-		return inProgressTasks.find((t) => t.id === selectedTaskId) ?? null;
-	}, [inProgressTasks, selectedTaskId]);
+		return (
+			displayTasks.find((t) => t.id === selectedTaskId) ??
+			inProgressTasks.find((t) => t.id === selectedTaskId) ??
+			null
+		);
+	}, [displayTasks, inProgressTasks, selectedTaskId]);
 
 	const handleTaskClick = useCallback(
 		(taskId: string) => {
@@ -566,9 +605,20 @@ function HomePage() {
 		[navigate],
 	);
 
-	const handleDayClick = useCallback((date: string) => {
-		setSelectedDate(date);
-	}, []);
+	const handleDayClick = useCallback(
+		(date: string) => {
+			if (selectedDate === date) {
+				const [year, month, day] = date.split("-").map(Number);
+				navigate({
+					to: "/agenda",
+					search: { year, month, day },
+				});
+			} else {
+				setSelectedDate(date);
+			}
+		},
+		[selectedDate, navigate],
+	);
 
 	return (
 		<>
@@ -594,36 +644,35 @@ function HomePage() {
 						accentColor="hsl(var(--primary))"
 					/>
 
-					<section className="mb-6">
-						<SectionHeader
-							title="Tarefas em Andamento"
-							icon={<Activity size={14} className="text-chart-4" />}
-							linkTo="/tasks"
-							linkLabel="ver todas"
-							badge={
-								inProgressTasks.length > 0 ? inProgressTasks.length : undefined
-							}
-							accentColor="hsl(var(--chart-4))"
-						/>
+				<section className="mb-6">
+					<SectionHeader
+						title="Tarefas em Andamento"
+						icon={<Activity size={14} className="text-chart-4" />}
+						linkTo="/tasks"
+						linkLabel="ver todas"
+						badge={inProgressCount > 0 ? inProgressCount : undefined}
+						accentColor="hsl(var(--chart-4))"
+					/>
 
-					<div className="space-y-1">
-						{isLoadingTasks ? (
-							<LoadingState />
-						) : inProgressTasks.length === 0 ? (
-							<EmptySection
-								icon={
-									<CheckCircle2 size={20} className="text-muted-foreground" />
-								}
-								message="Nenhuma tarefa em andamento"
-								linkTo="/tasks"
-								linkLabel="Criar nova tarefa"
-							/>
-						) : (
-							inProgressTasks.map((task) => (
+				<div className="h-[280px] overflow-hidden space-y-1">
+					{isLoadingTasks ? (
+						<LoadingState />
+					) : displayTasks.length === 0 ? (
+						<EmptySection
+							icon={
+								<CheckCircle2 size={20} className="text-muted-foreground" />
+							}
+							message="Nenhuma tarefa em andamento"
+							linkTo="/tasks"
+							linkLabel="Criar nova tarefa"
+						/>
+					) : (
+						<>
+							{displayTasks.map((task) => (
 								<TaskItem
 									key={task.id}
 									task={task as unknown as Task}
-									taskFull={taskFullCache.get(task.id) ?? null}
+									taskFull={taskFullCache.get(task.id) ?? task}
 									variant="full"
 									execution={activeExecutions.get(task.id)}
 									subtasks={getSubtasks(task.id)}
@@ -634,14 +683,66 @@ function HomePage() {
 									onClick={() => handleTaskClick(task.id)}
 									disableNavigation
 								/>
-							))
+							))}
+							{displayTasks.length < MAX_VISIBLE_TASKS &&
+								Array.from({ length: MAX_VISIBLE_TASKS - displayTasks.length }).map(
+									(_, idx) => (
+										<div
+											key={`empty-slot-${MAX_VISIBLE_TASKS - idx}`}
+											className="h-[52px] border border-transparent"
+										/>
+									),
+								)}
+						</>
+					)}
+				</div>
+			</section>
+
+					<section className="mb-6">
+						<SectionHeader
+							title="Meus Projetos"
+							icon={<FolderOpen size={14} className="text-chart-3" />}
+							linkTo="/projects"
+							linkLabel="ver projetos"
+							badge={projectsList.length > 0 ? projectsList.length : undefined}
+							accentColor="hsl(var(--chart-3))"
+						/>
+
+						{projectsList.length === 0 ? (
+							<EmptySection
+								icon={<FolderOpen size={20} className="text-muted-foreground" />}
+								message="Nenhum projeto cadastrado"
+								linkTo="/projects"
+								linkLabel="Criar novo projeto"
+							/>
+						) : (
+							<div className="flex flex-wrap gap-2">
+								{projectsList.map((project) => {
+									const pendingCount = allTasks.filter(
+										(t) => t.project_id === project.id && t.status !== "done",
+									).length;
+									return (
+										<ProjectCard
+											key={project.id}
+											project={project}
+											variant="compact"
+											pendingTaskCount={pendingCount}
+											onClick={() =>
+												navigate({
+													to: "/tasks",
+													search: { projectId: project.id },
+												})
+											}
+										/>
+									);
+								})}
+							</div>
 						)}
-					</div>
 					</section>
 
-					<section>
-						<SectionHeader
-							title="Minha Semana"
+				<section>
+					<SectionHeader
+						title="Minha Semana"
 							icon={<Calendar size={14} className="text-chart-2" />}
 							linkTo="/agenda"
 							linkLabel="ver agenda"
@@ -666,6 +767,17 @@ function HomePage() {
 								))}
 							</div>
 						)}
+				</section>
+
+					<section className="mt-6">
+						<SectionHeader
+							title="Atividade"
+							icon={<TrendingUp size={14} className="text-chart-5" />}
+							linkTo="/tasks"
+							linkLabel="ver tarefas"
+							accentColor="hsl(var(--chart-5))"
+						/>
+						<TaskActivityChart tasks={allTasks} />
 					</section>
 				</main>
 			</div>
