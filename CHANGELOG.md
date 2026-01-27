@@ -5,6 +5,54 @@ All notable changes to WorkoPilot will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-01-27
+
+### Changes
+- tentaiva de fix do hook
+- better UI homepage
+- get projects na home
+- chore: add recharts dependency and update opencode plugin with clawdbot hooks
+- fix(ui): replace Checkbox with text toggle and fix PopoverTrigger in task components
+- feat(tasks): support projectId filter in tasks page
+- feat(home): fixed-height sidebar with clickable headers and agenda navigation
+- feat(home): add projects section, task limit, activity chart and agenda navigation
+- feat(home): add projectId filter and ready-to-commit quick link
+- refactor(home): extract ProjectCard to global component with full/compact variants
+- docs: add Action System documentation and CLI last-completed-action
+- feat(ui): integrate Commit button and Action Registry in task UI
+- feat(skill): add workopilot-commit skill and adjust review skill
+- feat(tauri): add Commit terminal action in Rust backend
+- feat(core): add ready-to-commit progress state
+- feat(core): add Action Registry with centralized action definitions
+- unificando tasklist + cores melhoradas
+- cleanupzao
+- Configs: atualizar deps, documentação e ajustes gerais
+- Projects e Agenda: migrar para CustomSelect e simplificar animações
+
+## [0.7.0] - 2026-01-27
+
+### Changes
+- tentaiva de fix do hook
+- better UI homepage
+- get projects na home
+- chore: add recharts dependency and update opencode plugin with clawdbot hooks
+- fix(ui): replace Checkbox with text toggle and fix PopoverTrigger in task components
+- feat(tasks): support projectId filter in tasks page
+- feat(home): fixed-height sidebar with clickable headers and agenda navigation
+- feat(home): add projects section, task limit, activity chart and agenda navigation
+- feat(home): add projectId filter and ready-to-commit quick link
+- refactor(home): extract ProjectCard to global component with full/compact variants
+- docs: add Action System documentation and CLI last-completed-action
+- feat(ui): integrate Commit button and Action Registry in task UI
+- feat(skill): add workopilot-commit skill and adjust review skill
+- feat(tauri): add Commit terminal action in Rust backend
+- feat(core): add ready-to-commit progress state
+- feat(core): add Action Registry with centralized action definitions
+- unificando tasklist + cores melhoradas
+- cleanupzao
+- Configs: atualizar deps, documentação e ajustes gerais
+- Projects e Agenda: migrar para CustomSelect e simplificar animações
+
 ## [0.6.4] - 2026-01-24
 
 ### Changes
