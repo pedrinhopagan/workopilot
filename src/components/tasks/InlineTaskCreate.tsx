@@ -1,7 +1,7 @@
 import {
 	Popover,
+	PopoverAnchor,
 	PopoverContent,
-	PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/services/trpc";
@@ -177,7 +177,7 @@ export function InlineTaskCreate({
 					open={isProjectSelectOpen}
 					onOpenChange={setIsProjectSelectOpen}
 				>
-					<PopoverTrigger asChild>
+					<PopoverAnchor asChild>
 						<button
 							type="button"
 							onClick={handleSubmit}
@@ -192,7 +192,7 @@ export function InlineTaskCreate({
 							Adicionar tarefa
 							<Plus className="size-4" />
 						</button>
-					</PopoverTrigger>
+					</PopoverAnchor>
 
 					<PopoverContent align="end" className="w-64 p-0">
 						<div className="px-3 py-2 border-b border-border">

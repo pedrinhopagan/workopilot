@@ -1,5 +1,4 @@
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
 	getComplexityColor,
 	getComplexityLabel,
@@ -119,11 +118,21 @@ export const TaskItem = memo(function TaskItem({
 					onKeyDown={handleKeyDown}
 					className="flex items-center gap-3 px-3 py-2 bg-card border border-transparent hover:border-border hover:bg-secondary/50 transition-colors duration-200 w-full text-left"
 				>
-					<Checkbox
-						checked={isDone}
-						onCheckedChange={onToggle}
-						className="text-primary shrink-0"
-					/>
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							onToggle();
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === " ") {
+								e.stopPropagation();
+							}
+						}}
+						className="text-primary shrink-0 transition-colors"
+					>
+						{isDone ? "[x]" : "[ ]"}
+					</button>
 					<span className="flex-1 text-foreground text-sm line-through text-left">
 						{task.title}
 					</span>
@@ -168,11 +177,21 @@ export const TaskItem = memo(function TaskItem({
 								aria-label="Carregando"
 							/>
 						) : (
-							<Checkbox
-								checked={isDone}
-								onCheckedChange={onToggle}
+							<button
+								type="button"
+								onClick={(e) => {
+									e.stopPropagation();
+									onToggle();
+								}}
+								onKeyDown={(e) => {
+									if (e.key === "Enter" || e.key === " ") {
+										e.stopPropagation();
+									}
+								}}
 								className="text-muted-foreground hover:text-primary transition-colors shrink-0"
-							/>
+							>
+								{isDone ? "[x]" : "[ ]"}
+							</button>
 						)}
 
 						<span className="flex-1 text-foreground text-sm truncate text-left min-w-0">
@@ -221,11 +240,21 @@ export const TaskItem = memo(function TaskItem({
 						aria-label="Carregando"
 					/>
 				) : (
-					<Checkbox
-						checked={isDone}
-						onCheckedChange={onToggle}
+					<button
+						type="button"
+						onClick={(e) => {
+							e.stopPropagation();
+							onToggle();
+						}}
+						onKeyDown={(e) => {
+							if (e.key === "Enter" || e.key === " ") {
+								e.stopPropagation();
+							}
+						}}
 						className="text-muted-foreground hover:text-primary transition-colors shrink-0"
-					/>
+					>
+						{isDone ? "[x]" : "[ ]"}
+					</button>
 				)}
 
 				<span className="flex-1 text-foreground text-sm flex items-center gap-2 text-left min-w-0">
@@ -387,14 +416,14 @@ function SubtaskRow({ subtask, onToggle }: SubtaskRowProps) {
 				onToggle();
 			}}
 		>
-			<Checkbox
-				checked={isDone}
-				onCheckedChange={onToggle}
+			<span
 				className={cn(
 					"text-xs transition-colors",
-					isDone ? "text-primary" : "text-muted-foreground hover:text-primary",
+					isDone ? "text-primary" : "text-muted-foreground",
 				)}
-			/>
+			>
+				{isDone ? "[x]" : "[ ]"}
+			</span>
 			<span className={cn("text-foreground", isDone && "line-through")}>
 				{subtask.title}
 			</span>
