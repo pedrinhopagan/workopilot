@@ -22,6 +22,7 @@ export const tasksSearchSchema = z.object({
 	category: taskCategoryEnum.optional().catch(undefined),
 	priority: z.coerce.number().min(1).max(3).optional().catch(undefined),
 	q: optionalString(),
+	projectId: optionalString(),
 	page: z.coerce.number().min(1).optional().catch(1),
 	perPage: z.coerce.number().min(10).max(100).optional().catch(20),
 	sortBy: z.enum(["priority", "created_at", "title", "progress_state"]).optional().catch("progress_state"),

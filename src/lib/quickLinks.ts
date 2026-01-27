@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Play,
   CheckSquare,
+  GitCommitHorizontal,
   CalendarX,
   AlertTriangle,
   Settings,
@@ -9,15 +10,17 @@ import {
 } from "lucide-react";
 import type { TaskFull } from "@/types";
 import { deriveProgressState } from "@/lib/constants/taskStatus";
+import type { TasksSearch } from "@/lib/searchSchemas";
 
 export interface QuickLink {
   id: string;
   title: string;
   description: string;
-  href: string;
   icon: LucideIcon;
   isFixed?: boolean;
   taskId?: string;
+  to: string;
+  search?: TasksSearch | Record<string, string>;
 }
 
 function getToday(): string {
@@ -63,6 +66,22 @@ export function getTaskToReview(tasks: TaskFull[]): TaskFull | null {
   );
 }
 
+export function hasTaskToCommit(tasks: TaskFull[]): boolean {
+  return tasks.some((task) => {
+    const state = deriveProgressState(task);
+    return state === "ready-to-commit";
+  });
+}
+
+export function getTaskToCommit(tasks: TaskFull[]): TaskFull | null {
+  return (
+    tasks.find((task) => {
+      const state = deriveProgressState(task);
+      return state === "ready-to-commit";
+    }) ?? null
+  );
+}
+
 export function hasTomorrowEmpty(tasks: TaskFull[]): boolean {
   const tomorrow = getTomorrow();
   const tasksForTomorrow = tasks.filter(
@@ -94,7 +113,7 @@ const FIXED_LINKS: QuickLink[] = [
     id: "settings",
     title: "Configuracoes",
     description: "Ajustar preferencias",
-    href: "/settings",
+    to: "/settings",
     icon: Settings,
     isFixed: true,
   },
@@ -102,7 +121,8 @@ const FIXED_LINKS: QuickLink[] = [
     id: "new-project",
     title: "Novo projeto",
     description: "Criar um projeto",
-    href: "/projects?newProject=true",
+    to: "/projects",
+    search: { newProject: "true" },
     icon: FolderPlus,
     isFixed: true,
   },
@@ -117,7 +137,8 @@ export function getActiveQuickLinks(tasks: TaskFull[]): QuickLink[] {
       id: "task-to-execute",
       title: "Tarefa pra executar",
       description: taskToExecute.title,
-      href: `/tasks/${taskToExecute.id}`,
+      to: "/tasks",
+      search: { progressState: "ready-to-start" },
       icon: Play,
       taskId: taskToExecute.id,
     });
@@ -129,9 +150,23 @@ export function getActiveQuickLinks(tasks: TaskFull[]): QuickLink[] {
       id: "task-to-review",
       title: "Tarefa pra revisar",
       description: taskToReview.title,
-      href: `/tasks/${taskToReview.id}`,
+      to: "/tasks",
+      search: { progressState: "ready-to-review" },
       icon: CheckSquare,
       taskId: taskToReview.id,
+    });
+  }
+
+  const taskToCommit = getTaskToCommit(tasks);
+  if (taskToCommit) {
+    dynamicLinks.push({
+      id: "task-to-commit",
+      title: "Pronto para comittar",
+      description: taskToCommit.title,
+      to: "/tasks",
+      search: { progressState: "ready-to-commit" },
+      icon: GitCommitHorizontal,
+      taskId: taskToCommit.id,
     });
   }
 
@@ -140,7 +175,7 @@ export function getActiveQuickLinks(tasks: TaskFull[]): QuickLink[] {
       id: "tomorrow-empty",
       title: "Agenda de amanha vazia",
       description: "Agende tarefas para amanha",
-      href: "/agenda",
+      to: "/agenda",
       icon: CalendarX,
     });
   }
@@ -151,7 +186,7 @@ export function getActiveQuickLinks(tasks: TaskFull[]): QuickLink[] {
       id: "overdue-task",
       title: "Task nao concluida",
       description: overdueTask.title,
-      href: `/tasks/${overdueTask.id}`,
+      to: `/tasks/${overdueTask.id}`,
       icon: AlertTriangle,
       taskId: overdueTask.id,
     });
