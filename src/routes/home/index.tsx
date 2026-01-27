@@ -1,8 +1,8 @@
 import { DayDrawer } from "@/components/agenda";
 import { PageHeader } from "@/components/PageHeader";
 import { ProjectCard } from "@/components/projects";
-import { Badge } from "@/components/ui/badge";
 import { TaskItem } from "@/components/tasks/TaskItem";
+import { Badge } from "@/components/ui/badge";
 import {
 	getTaskProgressState,
 	type SuggestedAction,
@@ -10,7 +10,6 @@ import {
 import { cn } from "@/lib/utils";
 import { safeInvoke } from "@/services/tauri";
 import { trpc } from "@/services/trpc";
-
 import type { Task, TaskFull } from "@/types";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -353,8 +352,6 @@ const WeekDayCard = memo(function WeekDayCard({
 	);
 });
 
-
-
 type EmptySectionProps = {
 	icon: React.ReactNode;
 	message: string;
@@ -586,19 +583,19 @@ function HomePage() {
 					}
 					break;
 				}
-			case "review":
-				terminalActionMutation.mutate(
-					{ action: "review", projectId: task.project_id, taskId: task.id },
-					{ onSuccess: hideWindowAfterDelay },
-				);
-				break;
-			case "commit":
-				terminalActionMutation.mutate(
-					{ action: "commit", projectId: task.project_id, taskId: task.id },
-					{ onSuccess: hideWindowAfterDelay },
-				);
-				break;
-			case "focus_terminal":
+				case "review":
+					terminalActionMutation.mutate(
+						{ action: "review", projectId: task.project_id, taskId: task.id },
+						{ onSuccess: hideWindowAfterDelay },
+					);
+					break;
+				case "commit":
+					terminalActionMutation.mutate(
+						{ action: "commit", projectId: task.project_id, taskId: task.id },
+						{ onSuccess: hideWindowAfterDelay },
+					);
+					break;
+				case "focus_terminal":
 					terminalActionMutation.mutate({
 						action: "focus",
 						projectId: task.project_id,
@@ -648,7 +645,7 @@ function HomePage() {
 					className="w-[340px] min-w-[340px] shrink-0 border-r border-border bg-background"
 				/>
 
-				<main className="flex-1 overflow-y-auto p-6">
+				<main className="flex-1 overflow-y-auto p-6 space-y-6">
 					<PageHeader
 						title="Dashboard"
 						subtitle="Seu painel de controle"
@@ -656,63 +653,64 @@ function HomePage() {
 						accentColor="hsl(var(--primary))"
 					/>
 
-			<section className="mb-3">
-				<SectionHeader
-					title="Tarefas em Andamento"
-						icon={<Activity size={14} className="text-chart-4" />}
-						linkTo="/tasks"
-						linkLabel="ver todas"
-						badge={inProgressCount > 0 ? inProgressCount : undefined}
-						accentColor="hsl(var(--chart-4))"
-					/>
-
-				<div className="h-[280px] overflow-hidden space-y-1">
-					{isLoadingTasks ? (
-						<LoadingState />
-					) : displayTasks.length === 0 ? (
-						<EmptySection
-							icon={
-								<CheckCircle2 size={20} className="text-muted-foreground" />
-							}
-							message="Nenhuma tarefa em andamento"
+					<section className="">
+						<SectionHeader
+							title="Tarefas em Andamento"
+							icon={<Activity size={14} className="text-chart-4" />}
 							linkTo="/tasks"
-							linkLabel="Criar nova tarefa"
+							linkLabel="ver todas"
+							badge={inProgressCount > 0 ? inProgressCount : undefined}
+							accentColor="hsl(var(--chart-4))"
 						/>
-					) : (
-						<>
-							{displayTasks.map((task) => (
-								<TaskItem
-									key={task.id}
-									task={task as unknown as Task}
-									taskFull={taskFullCache.get(task.id) ?? task}
-									variant="full"
-									execution={activeExecutions.get(task.id)}
-									subtasks={getSubtasks(task.id)}
-									projectColor={
-										projectsList.find((p) => p.id === task.project_id)?.color
-									}
-									onToggle={() => handleToggleTask(task.id, task.status)}
-									onClick={() => handleTaskClick(task.id)}
-									disableNavigation
-								/>
-							))}
-							{displayTasks.length < MAX_VISIBLE_TASKS &&
-								Array.from({ length: MAX_VISIBLE_TASKS - displayTasks.length }).map(
-									(_, idx) => (
-										<div
-											key={`empty-slot-${MAX_VISIBLE_TASKS - idx}`}
-											className="h-[52px] border border-transparent"
-										/>
-									),
-								)}
-						</>
-					)}
-				</div>
-			</section>
 
-				<section className="mb-3">
-					<SectionHeader
-						title="Meus Projetos"
+						<div className="h-[180px] overflow-hidden space-y-1">
+							{isLoadingTasks ? (
+								<LoadingState />
+							) : displayTasks.length === 0 ? (
+								<EmptySection
+									icon={
+										<CheckCircle2 size={20} className="text-muted-foreground" />
+									}
+									message="Nenhuma tarefa em andamento"
+									linkTo="/tasks"
+									linkLabel="Criar nova tarefa"
+								/>
+							) : (
+								<>
+									{displayTasks.map((task) => (
+										<TaskItem
+											key={task.id}
+											task={task as unknown as Task}
+											taskFull={taskFullCache.get(task.id) ?? task}
+											variant="compact"
+											execution={activeExecutions.get(task.id)}
+											subtasks={getSubtasks(task.id)}
+											projectColor={
+												projectsList.find((p) => p.id === task.project_id)
+													?.color
+											}
+											onToggle={() => handleToggleTask(task.id, task.status)}
+											onClick={() => handleTaskClick(task.id)}
+											disableNavigation
+										/>
+									))}
+									{displayTasks.length < MAX_VISIBLE_TASKS &&
+										Array.from({
+											length: MAX_VISIBLE_TASKS - displayTasks.length,
+										}).map((_, idx) => (
+											<div
+												key={`empty-slot-${MAX_VISIBLE_TASKS - idx}`}
+												className="h-[52px] border border-transparent"
+											/>
+										))}
+								</>
+							)}
+						</div>
+					</section>
+
+					<section className="">
+						<SectionHeader
+							title="Meus Projetos"
 							icon={<FolderOpen size={14} className="text-chart-3" />}
 							linkTo="/projects"
 							linkLabel="ver projetos"
@@ -722,7 +720,9 @@ function HomePage() {
 
 						{projectsList.length === 0 ? (
 							<EmptySection
-								icon={<FolderOpen size={20} className="text-muted-foreground" />}
+								icon={
+									<FolderOpen size={20} className="text-muted-foreground" />
+								}
 								message="Nenhum projeto cadastrado"
 								linkTo="/projects"
 								linkLabel="Criar novo projeto"
@@ -752,9 +752,9 @@ function HomePage() {
 						)}
 					</section>
 
-				<section>
-					<SectionHeader
-						title="Minha Semana"
+					<section>
+						<SectionHeader
+							title="Minha Semana"
 							icon={<Calendar size={14} className="text-chart-2" />}
 							linkTo="/agenda"
 							linkLabel="ver agenda"
@@ -779,9 +779,9 @@ function HomePage() {
 								))}
 							</div>
 						)}
-				</section>
+					</section>
 
-					<section className="mt-3">
+					<section className="">
 						<SectionHeader
 							title="Atividade"
 							icon={<TrendingUp size={14} className="text-chart-5" />}

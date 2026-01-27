@@ -89,7 +89,10 @@ export const DayTasksList = memo(function DayTasksList({
 						Tarefas - {dateHeader}
 					</h3>
 				</div>
-				<ChevronRight size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+				<ChevronRight
+					size={14}
+					className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+				/>
 			</Link>
 
 			{dayTasks.length === 0 ? (
@@ -97,7 +100,7 @@ export const DayTasksList = memo(function DayTasksList({
 					icon={CalendarCheck}
 					title="Nenhuma tarefa"
 					subtitle={`Nenhuma tarefa agendada para ${dateHeader.toLowerCase()}`}
-					className="py-6"
+					className="py-12"
 				/>
 			) : (
 				<div className="relative border border-border bg-card">
@@ -113,7 +116,8 @@ export const DayTasksList = memo(function DayTasksList({
 							<div
 								key={task.id}
 								className={cn(
-									selectedTaskId === task.id && "ring-1 ring-primary/50 bg-secondary/30",
+									selectedTaskId === task.id &&
+										"ring-1 ring-primary/50 bg-secondary/30",
 								)}
 							>
 								<TaskItem

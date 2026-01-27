@@ -197,7 +197,7 @@ export const TaskSummaryCard = memo(function TaskSummaryCard({
 						label={
 							progressInfo.total > 0
 								? `${progressInfo.done}/${progressInfo.total} subtarefas`
-								: undefined
+								: "Sem subtarefas"
 						}
 					/>
 					{progressInfo.percent > 0 && (
