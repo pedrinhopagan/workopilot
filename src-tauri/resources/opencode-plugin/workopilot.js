@@ -10,6 +10,10 @@ const CLI_ARGS = ['run', 'src/index.ts'];
 const sessionState = new Map();
 const SKILLS_DIR = path.join(os.homedir(), '.config/opencode/skills');
 
+// Clawdbot webhook config
+const CLAWDBOT_HOOK_URL = 'http://localhost:18789/hooks/wake';
+const CLAWDBOT_HOOK_TOKEN = '539bf0efc71913491769c63c17cf2c79';
+
 function isWorkopilotSkill(skillName) {
   if (!skillName) return false;
   const name = skillName.replace(/^(project:|superpowers:)/, '');
@@ -121,6 +125,8 @@ function detectSkillType(skillName) {
   
   if (lowerName.includes('workopilot-structure')) return 'structure';
   if (lowerName.includes('workopilot-execute')) return 'execute';
+  if (lowerName.includes('workopilot-review')) return 'review';
+  if (lowerName.includes('workopilot-quickfix')) return 'quickfix';
   return null;
 }
 
@@ -134,6 +140,84 @@ function getSessionState(sessionID) {
     });
   }
   return sessionState.get(sessionID);
+}
+
+const ACTION_LABELS = {
+  'structure': 'Estruturação',
+  'execute': 'Execução',
+  'review': 'Revisão',
+  'quickfix': 'Quickfix'
+};
+
+async function notifyClawdbot(client, sessionID, state, directory) {
+  try {
+    // Get session messages from OpenCode API
+    const messagesResult = await client.session.messages({
+      path: { id: sessionID }
+    });
+    const messages = messagesResult.data || [];
+
+    // Find last assistant message
+    const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
+    let lastMessageText = '';
+
+    if (lastAssistant?.parts) {
+      lastMessageText = lastAssistant.parts
+        .filter(p => p.type === 'text')
+        .map(p => p.text)
+        .join('\n');
+    }
+
+    if (!lastMessageText) {
+      lastMessageText = '(sem mensagem de texto disponivel)';
+    }
+
+    // Get task title
+    let taskTitle = 'Tarefa desconhecida';
+    if (state.taskId) {
+      try {
+        const taskData = await runCli('get-task', [state.taskId]);
+        if (taskData?.title) taskTitle = taskData.title;
+      } catch {}
+    }
+
+    const actionLabel = ACTION_LABELS[state.skillType] || state.skillType;
+
+    // Truncate: keep the last 2500 chars (most relevant part — the question)
+    const maxLen = 2500;
+    let msgBody = lastMessageText;
+    if (msgBody.length > maxLen) {
+      msgBody = '...\n' + msgBody.substring(msgBody.length - maxLen);
+    }
+
+    const text = [
+      `[OpenCode] ${actionLabel} finalizada — aguardando input`,
+      `Tarefa: ${taskTitle}`,
+      `TaskID: ${state.taskId}`,
+      `SessionID: ${sessionID}`,
+      `Diretório: ${directory}`,
+      ``,
+      `--- Última mensagem do OpenCode ---`,
+      msgBody
+    ].join('\n');
+
+    const response = await fetch(CLAWDBOT_HOOK_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${CLAWDBOT_HOOK_TOKEN}`
+      },
+      body: JSON.stringify({ text, mode: 'now' })
+    });
+
+    if (response.ok) {
+      console.log(`[WorkoPilot] Clawdbot notified — session ${sessionID}`);
+    } else {
+      console.error(`[WorkoPilot] Clawdbot webhook failed: ${response.status} ${response.statusText}`);
+    }
+  } catch (err) {
+    console.error(`[WorkoPilot] Failed to notify Clawdbot:`, err.message);
+  }
 }
 
 export const WorkoPilotPlugin = async ({ client, directory }) => {
@@ -218,6 +302,9 @@ export const WorkoPilotPlugin = async ({ client, directory }) => {
           const substatus = state.skillType === 'structure' ? 'awaiting_user' : 'awaiting_review';
           await updateTaskSubstatus(state.taskId, substatus);
         }
+
+        // Notify Clawdbot via webhook
+        await notifyClawdbot(client, sessionID, state, directory);
         
         state.activeSkill = null;
         state.skillType = null;
