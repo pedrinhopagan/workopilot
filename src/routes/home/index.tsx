@@ -10,7 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import { safeInvoke } from "@/services/tauri";
 import { trpc } from "@/services/trpc";
-import { useSelectedProjectStore } from "@/stores/selectedProject";
+
 import type { Task, TaskFull } from "@/types";
 import { useMutation } from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
@@ -202,7 +202,7 @@ const SectionHeader = memo(function SectionHeader({
 	accentColor = "hsl(var(--primary))",
 }: SectionHeaderProps) {
 	return (
-		<div className="flex items-center justify-between mb-4">
+		<div className="flex items-center justify-between mb-2">
 			<div className="flex items-center gap-2">
 				<div
 					className="p-1.5 transition-all duration-200"
@@ -430,7 +430,19 @@ function useTerminalActionMutation() {
 
 function HomePage() {
 	const navigate = useNavigate();
-	const projectsList = useSelectedProjectStore((s) => s.projectsList);
+	const { data: rawProjects = [] } = trpc.projects.list.useQuery();
+	const projectsList = useMemo(
+		() =>
+			rawProjects.map((p) => ({
+				id: p.id,
+				name: p.name,
+				description: p.description ?? undefined,
+				display_order: p.display_order,
+				created_at: p.created_at,
+				color: p.color ?? undefined,
+			})),
+		[rawProjects],
+	);
 
 	const {
 		tasks: inProgressTasks,
@@ -644,9 +656,9 @@ function HomePage() {
 						accentColor="hsl(var(--primary))"
 					/>
 
-				<section className="mb-6">
-					<SectionHeader
-						title="Tarefas em Andamento"
+			<section className="mb-3">
+				<SectionHeader
+					title="Tarefas em Andamento"
 						icon={<Activity size={14} className="text-chart-4" />}
 						linkTo="/tasks"
 						linkLabel="ver todas"
@@ -698,9 +710,9 @@ function HomePage() {
 				</div>
 			</section>
 
-					<section className="mb-6">
-						<SectionHeader
-							title="Meus Projetos"
+				<section className="mb-3">
+					<SectionHeader
+						title="Meus Projetos"
 							icon={<FolderOpen size={14} className="text-chart-3" />}
 							linkTo="/projects"
 							linkLabel="ver projetos"
@@ -769,7 +781,7 @@ function HomePage() {
 						)}
 				</section>
 
-					<section className="mt-6">
+					<section className="mt-3">
 						<SectionHeader
 							title="Atividade"
 							icon={<TrendingUp size={14} className="text-chart-5" />}

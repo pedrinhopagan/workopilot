@@ -46,7 +46,7 @@ export const HomeSidebar = memo(function HomeSidebar({
 				}}
 			/>
 
-		<div className="relative flex-1 overflow-y-auto space-y-5 p-5">
+		<div className="relative flex-1 overflow-y-auto space-y-3 p-5">
 			<div className="min-h-[340px]">
 				<TaskSummaryCard
 					task={selectedTask}
