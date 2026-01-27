@@ -81,7 +81,7 @@ export function TasksHeader({ queryState }: TasksHeaderProps) {
 	];
 
 	return (
-		<div className="flex items-center gap-2 p-3 bg-background border-b border-border">
+		<div className="flex items-center gap-2 p-3 bg-background">
 			<div className="relative flex-1 max-w-xs">
 				<Search
 					size={14}
