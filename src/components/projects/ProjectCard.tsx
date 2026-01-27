@@ -4,19 +4,112 @@ import { cn } from "@/lib/utils";
 import { FolderOpen, Clock, CheckCircle2, ListTodo, Activity } from "lucide-react";
 import type { Project } from "@/types";
 
-type ProjectCardProps = {
+type ProjectCardVariant = "full" | "compact";
+
+type ProjectCardBaseProps = {
 	project: Project;
-	isSelected: boolean;
 	onClick: () => void;
+	variant?: ProjectCardVariant;
+};
+
+type ProjectCardFullProps = ProjectCardBaseProps & {
+	variant?: "full";
+	isSelected?: boolean;
 	taskMetrics?: { pending: number; done: number; total: number; lastModified?: string | null };
 };
 
-export const ProjectCard = memo(function ProjectCard({
+type ProjectCardCompactProps = ProjectCardBaseProps & {
+	variant: "compact";
+	pendingTaskCount?: number;
+};
+
+export type ProjectCardProps = ProjectCardFullProps | ProjectCardCompactProps;
+
+// ── Compact Variant ──────────────────────────────────────────────────
+
+const ProjectCardCompact = memo(function ProjectCardCompact({
 	project,
-	isSelected,
+	onClick,
+	pendingTaskCount = 0,
+}: {
+	project: Project;
+	onClick: () => void;
+	pendingTaskCount?: number;
+}) {
+	const projectColor = project.color || "#909d63";
+
+	return (
+		<button
+			type="button"
+			onClick={onClick}
+			className={cn(
+				"group relative flex items-center gap-3 px-4 py-3",
+				"border border-border bg-card",
+				"transition-colors duration-200",
+				"hover:border-primary/40 hover:bg-secondary/30",
+				"focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+				"min-w-0 shrink-0"
+			)}
+		>
+			<div
+				className="absolute left-0 top-0 bottom-0 w-[3px]"
+				style={{
+					background: `linear-gradient(180deg, ${projectColor} 0%, ${projectColor}80 100%)`,
+				}}
+			/>
+
+			<div
+				className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+				style={{
+					background: `radial-gradient(ellipse at left, ${projectColor}10 0%, transparent 70%)`,
+				}}
+			/>
+
+			<div
+				className={cn(
+					"p-1.5 bg-background/60 transition-colors duration-200",
+					"group-hover:bg-background/80"
+				)}
+				style={{
+					boxShadow: `inset 0 0 0 1px ${projectColor}30`,
+				}}
+			>
+				<FolderOpen
+					size={14}
+					style={{ color: projectColor }}
+				/>
+			</div>
+
+			<span className="text-sm font-medium text-foreground truncate max-w-[140px] transition-colors duration-200 group-hover:text-primary">
+				{project.name}
+			</span>
+
+			{pendingTaskCount > 0 && (
+				<Badge
+					variant="outline"
+					className="gap-1 px-1.5 py-0 text-[10px] font-normal border-border/60 bg-background/40 shrink-0"
+				>
+					<ListTodo size={10} className="text-muted-foreground" />
+					<span className="text-muted-foreground">{pendingTaskCount}</span>
+				</Badge>
+			)}
+		</button>
+	);
+});
+
+// ── Full Variant ─────────────────────────────────────────────────────
+
+const ProjectCardFull = memo(function ProjectCardFull({
+	project,
+	isSelected = false,
 	onClick,
 	taskMetrics,
-}: ProjectCardProps) {
+}: {
+	project: Project;
+	isSelected?: boolean;
+	onClick: () => void;
+	taskMetrics?: { pending: number; done: number; total: number; lastModified?: string | null };
+}) {
 	const projectColor = project.color || "#909d63";
 	const completionPercent =
 		taskMetrics && taskMetrics.total > 0
@@ -237,5 +330,28 @@ export const ProjectCard = memo(function ProjectCard({
 				/>
 			)}
 		</button>
+	);
+});
+
+// ── Public Component ─────────────────────────────────────────────────
+
+export const ProjectCard = memo(function ProjectCard(props: ProjectCardProps) {
+	if (props.variant === "compact") {
+		return (
+			<ProjectCardCompact
+				project={props.project}
+				onClick={props.onClick}
+				pendingTaskCount={props.pendingTaskCount}
+			/>
+		);
+	}
+
+	return (
+		<ProjectCardFull
+			project={props.project}
+			isSelected={props.isSelected}
+			onClick={props.onClick}
+			taskMetrics={props.taskMetrics}
+		/>
 	);
 });
