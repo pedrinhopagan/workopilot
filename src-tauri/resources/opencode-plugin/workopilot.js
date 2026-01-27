@@ -62,7 +62,6 @@ const TASK_ID_PATTERNS = [
 
 function extractTaskId(text) {
   if (!text) return null;
-  
   for (const pattern of TASK_ID_PATTERNS) {
     const match = text.match(pattern);
     if (match) return match[1];
@@ -70,10 +69,23 @@ function extractTaskId(text) {
   return null;
 }
 
+// Detect workopilot-related content in text
+const WORKOPILOT_KEYWORDS = [
+  'workopilot', 'workopilot-', 'wop ', 'subtask', 'update-task',
+  'update-subtask', 'get-task', 'acceptance_criteria',
+  'workopilot-structure', 'workopilot-execute', 'workopilot-review',
+  'workopilot-quickfix', 'workopilot-commit'
+];
+
+function hasWorkopilotContent(text) {
+  if (!text) return false;
+  const lower = text.toLowerCase();
+  return WORKOPILOT_KEYWORDS.some(kw => lower.includes(kw));
+}
+
 async function runCli(command, args = []) {
   return new Promise((resolve, reject) => {
     const fullArgs = [...CLI_ARGS, command, ...args];
-    
     const proc = spawn(CLI_COMMAND, fullArgs, {
       cwd: CLI_PATH,
       stdio: ['pipe', 'pipe', 'pipe']
@@ -82,29 +94,19 @@ async function runCli(command, args = []) {
     let stdout = '';
     let stderr = '';
 
-    proc.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
+    proc.stdout.on('data', (data) => { stdout += data.toString(); });
+    proc.stderr.on('data', (data) => { stderr += data.toString(); });
 
     proc.on('close', (code) => {
       if (code === 0) {
-        try {
-          resolve(JSON.parse(stdout));
-        } catch {
-          resolve(stdout);
-        }
+        try { resolve(JSON.parse(stdout)); }
+        catch { resolve(stdout); }
       } else {
         reject(new Error(`CLI exited with code ${code}: ${stderr}`));
       }
     });
 
-    proc.on('error', (err) => {
-      reject(err);
-    });
+    proc.on('error', (err) => { reject(err); });
   });
 }
 
@@ -122,11 +124,11 @@ async function updateTaskSubstatus(taskId, substatus) {
 function detectSkillType(skillName) {
   if (!skillName) return null;
   const lowerName = skillName.toLowerCase();
-  
   if (lowerName.includes('workopilot-structure')) return 'structure';
   if (lowerName.includes('workopilot-execute')) return 'execute';
   if (lowerName.includes('workopilot-review')) return 'review';
   if (lowerName.includes('workopilot-quickfix')) return 'quickfix';
+  if (lowerName.includes('workopilot-commit')) return 'commit';
   return null;
 }
 
@@ -136,7 +138,8 @@ function getSessionState(sessionID) {
       activeSkill: null,
       taskId: null,
       skillType: null,
-      substatusUpdated: false
+      hasActivity: false,
+      lastAssistantText: ''
     });
   }
   return sessionState.get(sessionID);
@@ -146,31 +149,14 @@ const ACTION_LABELS = {
   'structure': 'Estruturação',
   'execute': 'Execução',
   'review': 'Revisão',
-  'quickfix': 'Quickfix'
+  'quickfix': 'Quickfix',
+  'commit': 'Commit'
 };
 
-async function notifyClawdbot(client, sessionID, state, directory) {
+async function notifyClawdbot(sessionID, state, directory) {
   try {
-    // Get session messages from OpenCode API
-    const messagesResult = await client.session.messages({
-      path: { id: sessionID }
-    });
-    const messages = messagesResult.data || [];
-
-    // Find last assistant message
-    const lastAssistant = [...messages].reverse().find(m => m.role === 'assistant');
-    let lastMessageText = '';
-
-    if (lastAssistant?.parts) {
-      lastMessageText = lastAssistant.parts
-        .filter(p => p.type === 'text')
-        .map(p => p.text)
-        .join('\n');
-    }
-
-    if (!lastMessageText) {
-      lastMessageText = '(sem mensagem de texto disponivel)';
-    }
+    // Use stored assistant text (captured in chat.message) — NOT client.session.messages()
+    let lastMessageText = state.lastAssistantText || '(sem mensagem de texto disponivel)';
 
     // Get task title
     let taskTitle = 'Tarefa desconhecida';
@@ -181,9 +167,9 @@ async function notifyClawdbot(client, sessionID, state, directory) {
       } catch {}
     }
 
-    const actionLabel = ACTION_LABELS[state.skillType] || state.skillType;
+    const actionLabel = ACTION_LABELS[state.skillType] || 'Ação';
 
-    // Truncate: keep the last 2500 chars (most relevant part — the question)
+    // Truncate: keep the last 2500 chars (most relevant part)
     const maxLen = 2500;
     let msgBody = lastMessageText;
     if (msgBody.length > maxLen) {
@@ -225,26 +211,41 @@ export const WorkoPilotPlugin = async ({ client, directory }) => {
     "chat.message": async (input, output) => {
       const { sessionID } = input;
       const { parts } = output;
-      
+
+      // Capture assistant text directly here (NOT via client.session.messages later)
       const textParts = parts.filter(p => p.type === 'text');
-      const fullText = textParts.map(p => p.text).join(' ');
-      
-      const taskId = extractTaskId(fullText);
-      if (taskId) {
+      const fullText = textParts.map(p => p.text).join('\n');
+
+      if (fullText) {
         const state = getSessionState(sessionID);
-        state.taskId = taskId;
-        console.log(`[WorkoPilot] Extracted taskId: ${taskId}`);
+
+        // Store latest assistant text
+        state.lastAssistantText = fullText;
+        console.log(`[WorkoPilot] Captured assistant text (${fullText.length} chars)`);
+
+        // Extract taskId from assistant output
+        const taskId = extractTaskId(fullText);
+        if (taskId) {
+          state.taskId = taskId;
+          console.log(`[WorkoPilot] Extracted taskId: ${taskId}`);
+        }
+
+        // Detect workopilot content in assistant response
+        if (hasWorkopilotContent(fullText)) {
+          state.hasActivity = true;
+          console.log(`[WorkoPilot] Detected workopilot content in assistant`);
+        }
       }
     },
 
     "tool.execute.before": async (input, output) => {
       const { tool, sessionID } = input;
       const { args } = output;
-      
+
       if (tool !== 'use_skill') return;
-      
+
       let skillName = args?.skill_name;
-      
+
       if (isWorkopilotSkill(skillName)) {
         const normalizedName = normalizeSkillName(skillName);
         if (normalizedName !== skillName) {
@@ -252,65 +253,68 @@ export const WorkoPilotPlugin = async ({ client, directory }) => {
           skillName = normalizedName;
           console.log(`[WorkoPilot] Normalized skill name to: ${skillName}`);
         }
-        
+
         if (!skillExistsInUserConfig(skillName)) {
           console.log(`[WorkoPilot] Skill ${skillName} not found, syncing...`);
           syncSkills();
         }
       }
-      
+
       const skillType = detectSkillType(skillName);
-      
       if (!skillType) return;
-      
+
       const state = getSessionState(sessionID);
       state.activeSkill = skillName;
       state.skillType = skillType;
-      state.substatusUpdated = false;
-      
+      state.hasActivity = true;
+
       console.log(`[WorkoPilot] Detected ${skillType} skill: ${skillName}`);
-      
+
+      // Substatus update is best-effort — doesn't gate the webhook
       if (state.taskId) {
         const substatus = skillType === 'structure' ? 'structuring' : 'executing';
-        const updated = await updateTaskSubstatus(state.taskId, substatus);
-        state.substatusUpdated = updated;
+        await updateTaskSubstatus(state.taskId, substatus);
       }
     },
-    
+
     "tool.execute.after": async (input, output) => {
       const { tool, sessionID } = input;
-      
+
       if (tool !== 'use_skill') return;
-      
+
       const state = getSessionState(sessionID);
       if (!state.activeSkill) return;
-      
+
       console.log(`[WorkoPilot] Skill ${state.activeSkill} loaded`);
     },
-    
+
     event: async ({ event }) => {
       if (event.type === 'session.idle') {
         const sessionID = event.properties?.sessionID;
         if (!sessionID) return;
-        
+
         const state = sessionState.get(sessionID);
-        if (!state?.activeSkill || !state?.substatusUpdated) return;
-        
-        console.log(`[WorkoPilot] Session idle after ${state.skillType} skill`);
-        
+        // Gate on hasActivity — fires regardless of substatus update success
+        if (!state?.hasActivity) return;
+
+        console.log(`[WorkoPilot] Session idle with workopilot activity (${state.skillType || 'content'})`);
+
+        // Best-effort substatus update on idle
         if (state.taskId) {
           const substatus = state.skillType === 'structure' ? 'awaiting_user' : 'awaiting_review';
           await updateTaskSubstatus(state.taskId, substatus);
         }
 
-        // Notify Clawdbot via webhook
-        await notifyClawdbot(client, sessionID, state, directory);
-        
+        // Notify Clawdbot via webhook — uses stored assistant text, NOT client.session.messages()
+        await notifyClawdbot(sessionID, state, directory);
+
+        // Reset state
         state.activeSkill = null;
         state.skillType = null;
-        state.substatusUpdated = false;
+        state.hasActivity = false;
+        state.lastAssistantText = '';
       }
-      
+
       if (event.type === 'session.deleted') {
         const sessionID = event.properties?.info?.id;
         if (sessionID) sessionState.delete(sessionID);
